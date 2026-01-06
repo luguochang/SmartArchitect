@@ -1,0 +1,205 @@
+# ==========================================
+# Node.js / Frontend Dependencies
+# ==========================================
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+.pnp
+.pnp.js
+
+# ==========================================
+# Python / Backend Dependencies
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Python Virtual Environment
+venv/
+env/
+ENV/
+.venv
+.env.bak
+venv.bak
+
+# Python Distribution / Packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ==========================================
+# Next.js / React
+# ==========================================
+.next/
+out/
+.swc/
+
+# Next.js production build
+next-env.d.ts
+
+# React / TypeScript
+*.tsbuildinfo
+
+# ==========================================
+# Environment Variables (IMPORTANT!)
+# ==========================================
+.env
+.env*.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Keep example files
+!.env.example
+!.env.sample
+
+# ==========================================
+# IDE / Editors
+# ==========================================
+# VSCode
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# JetBrains IDEs (PyCharm, WebStorm, etc.)
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Vim
+*.swp
+*.swo
+*.swn
+*~
+.netrwhist
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# ==========================================
+# OS Generated Files
+# ==========================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# ==========================================
+# Logs
+# ==========================================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+pnpm-debug.log*
+
+# Python logs
+*.log.*
+log/
+
+# ==========================================
+# Testing & Coverage
+# ==========================================
+coverage/
+*.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+.pytest_cache/
+nosetests.xml
+test-results/
+junit/
+
+# ==========================================
+# Temporary Files
+# ==========================================
+tmp/
+temp/
+*.tmp
+*.bak
+*.cache
+
+# Claude Code
+.claude/
+
+# ==========================================
+# Security & Sensitive Data
+# ==========================================
+# SSL certificates
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+
+# Database files (if local development)
+*.db
+*.sqlite
+*.sqlite3
+
+# API Keys / Secrets (double-check!)
+secrets/
+credentials/
+*.secret
+
+# ==========================================
+# Misc
+# ==========================================
+# Vercel
+.vercel
+
+# Turborepo
+.turbo
+
+# Lock files (optional - uncomment if you want to ignore)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml

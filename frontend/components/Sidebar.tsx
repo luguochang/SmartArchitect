@@ -1,0 +1,83 @@
+"use client";
+
+import { useState } from "react";
+import {
+  Database,
+  Globe,
+  Box,
+  Settings,
+  Plus,
+  Image as ImageIcon,
+} from "lucide-react";
+import { useArchitectStore } from "@/lib/store/useArchitectStore";
+import { ModelConfigModal } from "./ModelConfigModal";
+
+export function Sidebar() {
+  const [isConfigOpen, setIsConfigOpen] = useState(false);
+  const { nodes, setNodes } = useArchitectStore();
+
+  const handleAddNode = (type: string) => {
+    const newNode = {
+      id: `node-${Date.now()}`,
+      type,
+      position: { x: Math.random() * 400 + 100, y: Math.random() * 400 + 100 },
+      data: { label: `New ${type}` },
+    };
+    setNodes([...nodes, newNode]);
+  };
+
+  const nodeTypes = [
+    { type: "api", icon: Globe, label: "API", color: "text-blue-600" },
+    { type: "service", icon: Box, label: "Service", color: "text-purple-600" },
+    { type: "database", icon: Database, label: "Database", color: "text-green-600" },
+  ];
+
+  return (
+    <>
+      <aside className="flex w-16 flex-col items-center gap-4 border-r border-slate-200 bg-white py-4 dark:border-slate-800 dark:bg-slate-900">
+        {/* 添加节点按钮 */}
+        <div className="flex flex-col gap-2">
+          {nodeTypes.map(({ type, icon: Icon, label, color }) => (
+            <button
+              key={type}
+              onClick={() => handleAddNode(type)}
+              className="group relative flex h-12 w-12 items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+              title={`Add ${label}`}
+            >
+              <Icon className={`h-6 w-6 ${color}`} />
+              <span className="absolute left-full ml-2 hidden whitespace-nowrap rounded bg-slate-900 px-2 py-1 text-xs text-white group-hover:block">
+                Add {label}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <div className="my-4 h-px w-8 bg-slate-200 dark:bg-slate-800" />
+
+        {/* 图片上传按钮（Phase 2 功能） */}
+        <button
+          className="relative flex h-12 w-12 items-center justify-center rounded-lg opacity-50 hover:bg-slate-100 dark:hover:bg-slate-800"
+          title="Image Upload (Phase 2)"
+          disabled
+        >
+          <ImageIcon className="h-6 w-6 text-slate-400" />
+        </button>
+
+        {/* 设置按钮 */}
+        <button
+          onClick={() => setIsConfigOpen(true)}
+          className="mt-auto flex h-12 w-12 items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+          title="Settings"
+        >
+          <Settings className="h-6 w-6 text-slate-600 dark:text-slate-400" />
+        </button>
+      </aside>
+
+      {/* 模型配置弹窗 */}
+      <ModelConfigModal
+        isOpen={isConfigOpen}
+        onClose={() => setIsConfigOpen(false)}
+      />
+    </>
+  );
+}
