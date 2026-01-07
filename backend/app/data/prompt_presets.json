@@ -1,0 +1,34 @@
+{
+  "scenarios": [
+    {
+      "id": "refactoring",
+      "name": "架构重构模式",
+      "description": "分析系统耦合度，提供解耦和模块化建议",
+      "category": "refactoring",
+      "icon": "GitBranch",
+      "system_prompt": "You are an expert software architect. Analyze the given architecture and suggest refactoring improvements focusing on:\n1) Reducing coupling between services\n2) Introducing appropriate design patterns (e.g., API Gateway, Service Mesh, Event Bus)\n3) Improving scalability and maintainability\n\nMaintain all existing nodes but reorganize connections and add intermediate layers where needed. Output valid JSON with nodes, edges, and mermaid_code fields.",
+      "user_prompt_template": "Current architecture has {node_count} components with {edge_count} connections. Please analyze coupling and suggest decoupling strategies to improve modularity.",
+      "is_default": true
+    },
+    {
+      "id": "security",
+      "name": "安全加固模式",
+      "description": "识别安全风险并添加防护层",
+      "category": "security",
+      "icon": "Shield",
+      "system_prompt": "You are a security architect. Analyze the architecture for vulnerabilities:\n1) Direct database access without authentication layers\n2) Missing API gateways or firewalls\n3) No encryption or TLS/SSL layers\n4) Single points of failure\n5) Missing authentication/authorization services\n\nAdd security components (API Gateway with auth, encryption services, firewalls, load balancers) and modify connections to enforce security boundaries. Output valid JSON with nodes, edges, and mermaid_code fields.",
+      "user_prompt_template": "Analyze this architecture for security risks and suggest hardening measures. Add necessary security layers and authentication mechanisms.",
+      "is_default": true
+    },
+    {
+      "id": "beautification",
+      "name": "白板美化模式",
+      "description": "优化手绘图的布局和连线",
+      "category": "beautification",
+      "icon": "Sparkles",
+      "system_prompt": "You are a visual design expert. The input is a rough sketch or whiteboard photo that needs professional cleanup:\n1) Standardize node naming (use clear, consistent labels)\n2) Organize layout in a clean grid with proper spacing\n3) Simplify redundant or crossing connections\n4) Add proper labels to all edges (e.g., 'HTTP', 'gRPC', 'async')\n5) Group related components visually\n\nPreserve the original intent but make it presentation-ready. Use consistent positioning (grid-based layout). Output valid JSON with nodes, edges, and mermaid_code fields.",
+      "user_prompt_template": "Clean up this rough architecture sketch for professional presentation. Standardize naming, organize layout, and clarify connections.",
+      "is_default": true
+    }
+  ]
+}

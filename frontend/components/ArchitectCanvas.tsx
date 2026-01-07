@@ -14,7 +14,8 @@ import { useArchitectStore } from "@/lib/store/useArchitectStore";
 import { DatabaseNode } from "./nodes/DatabaseNode";
 import { ApiNode } from "./nodes/ApiNode";
 import { ServiceNode } from "./nodes/ServiceNode";
-import { Network, Download, Sparkles } from "lucide-react";
+import ExportMenu from "./ExportMenu";
+import { Network, Sparkles } from "lucide-react";
 
 function ArchitectCanvasInner() {
   const { nodes, edges, onNodesChange, onEdgesChange } = useArchitectStore();
@@ -35,11 +36,6 @@ function ArchitectCanvasInner() {
     fitView({ padding: 0.2 });
   }, [fitView]);
 
-  const handleExport = useCallback(() => {
-    // 导出画布为图片
-    alert("Export功能将在后续实现");
-  }, []);
-
   return (
     <div className="relative h-full w-full">
       <ReactFlow
@@ -49,9 +45,14 @@ function ArchitectCanvasInner() {
         onEdgesChange={onEdgesChange}
         nodeTypes={nodeTypes}
         fitView
-        className="bg-slate-50 dark:bg-slate-900"
+        style={{
+          backgroundColor: "var(--canvas-background)",
+        }}
       >
-        <Background />
+        <Background
+          color="var(--canvas-grid)"
+          gap={20}
+        />
         <Controls />
         <MiniMap
           className="!bg-white dark:!bg-slate-800"
@@ -67,13 +68,7 @@ function ArchitectCanvasInner() {
             <Network className="h-4 w-4" />
             Auto Layout
           </button>
-          <button
-            onClick={handleExport}
-            className="flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm shadow-md hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700"
-          >
-            <Download className="h-4 w-4" />
-            Export
-          </button>
+          <ExportMenu />
         </Panel>
 
         {/* AI 提示 */}

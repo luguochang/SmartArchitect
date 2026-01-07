@@ -3,11 +3,21 @@
 import { ArchitectCanvas } from "@/components/ArchitectCanvas";
 import { CodeEditor } from "@/components/CodeEditor";
 import { Sidebar } from "@/components/Sidebar";
+import ThemeSwitcher from "@/components/ThemeSwitcher";
 import { Sparkles } from "lucide-react";
+import { Toaster } from "sonner";
 
 export default function Home() {
   return (
     <div className="flex h-screen w-screen flex-col bg-slate-50 dark:bg-slate-950">
+      {/* Toast 通知 */}
+      <Toaster
+        position="top-right"
+        richColors
+        closeButton
+        theme="light"
+      />
+
       {/* 顶部导航栏 */}
       <header className="flex h-14 items-center justify-between border-b border-slate-200 bg-white px-6 dark:border-slate-800 dark:bg-slate-900">
         <div className="flex items-center gap-3">
@@ -17,7 +27,8 @@ export default function Home() {
           </h1>
         </div>
         <div className="flex items-center gap-4">
-          <span className="text-sm text-slate-500">Phase 1 MVP</span>
+          <span className="text-sm text-slate-500">Phase 4: RAG + Export</span>
+          <ThemeSwitcher />
         </div>
       </header>
 

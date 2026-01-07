@@ -191,6 +191,22 @@ credentials/
 *.secret
 
 # ==========================================
+# Testing & Output Files
+# ==========================================
+# Test output files
+test_output.*
+test_export.*
+test_script.*
+test_search.*
+test_document.md
+test_results.txt
+test_custom_*.py
+nul
+
+# ChromaDB data (local development)
+backend/chroma_data/
+
+# ==========================================
 # Misc
 # ==========================================
 # Vercel
