@@ -5,6 +5,9 @@ from typing import List, Optional, Literal
 # React Flow 节点和边的数据模型
 class NodeData(BaseModel):
     label: str
+    shape: Optional[Literal["rectangle", "circle", "diamond", "start-event", "end-event", "intermediate-event", "task"]] = None
+    iconType: Optional[str] = None  # Icon identifier (e.g., "play-circle", "stop-circle")
+    color: Optional[str] = None  # Color class or value
 
 
 class Position(BaseModel):
@@ -225,3 +228,41 @@ class SpeechScriptResponse(BaseModel):
     duration: str
     word_count: int
     success: bool = True
+
+
+# ============================================================
+# Phase 5: Chat Generator (Flowchart from Natural Language)
+# ============================================================
+
+# Flow template for quick start
+class FlowTemplate(BaseModel):
+    id: str
+    name: str
+    description: str
+    category: Literal["architecture", "troubleshooting", "business", "algorithm", "devops"]
+    example_input: str
+    icon: Optional[str] = None
+
+
+# Template list response
+class FlowTemplateList(BaseModel):
+    templates: List[FlowTemplate]
+
+
+# Chat generation request
+class ChatGenerationRequest(BaseModel):
+    user_input: str
+    template_id: Optional[str] = None
+    provider: Optional[str] = "gemini"
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+    model_name: Optional[str] = None
+
+
+# Chat generation response
+class ChatGenerationResponse(BaseModel):
+    nodes: List[Node]
+    edges: List[Edge]
+    mermaid_code: str
+    success: bool = True
+    message: Optional[str] = None

@@ -1,5 +1,8 @@
 from fastapi import APIRouter, HTTPException
 from app.models.schemas import ModelConfig, ModelConfigResponse
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 

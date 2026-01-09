@@ -1,12 +1,12 @@
 # SmartArchitect AI - TODO List
 
-**Last Updated:** 2026-01-07
-**Current Version:** 0.4.0
-**Status:** Phase 4 Complete - 97% Test Coverage
+**Last Updated:** 2026-01-08
+**Current Version:** 0.5.0-dev
+**Status:** Phase 5 In Progress (BPMN Nodes - 40% Complete)
 
 ---
 
-## ✅ Completed (Phase 1-4)
+## ✅ Completed (Phase 1-5 Partial)
 
 ### Phase 1: Core Canvas & Mermaid
 - ✅ React Flow interactive canvas
@@ -33,6 +33,17 @@
 - ✅ PowerPoint export (4-slide presentation)
 - ✅ Slidev markdown export
 - ✅ Speech script generation (30s, 2min, 5min)
+- ✅ Chat Generator with 8 templates
+
+### Phase 5: BPMN Nodes (IN PROGRESS - 40%)
+- ✅ **Sidebar Refactor** - 288px width with search and categories
+- ✅ **BPMN 2.0 Shapes** - Start Event, End Event, Task, Gateway, Intermediate Event
+- ✅ **Icon Mapping System** - Sidebar icons → Canvas rendering
+- ✅ **Color Customization** - Custom colors per node
+- ✅ **Shape Config Utility** - Centralized shape configuration
+- 🚧 Mock data update (needs new shape types)
+- 🚧 Group B nodes refactor (Cache, Queue, Storage, Client)
+- 🚧 Theme system extension (4 new node colors)
 
 ### Testing Infrastructure
 - ✅ pytest test suite (31 tests total)
@@ -45,7 +56,175 @@
 - ✅ CLAUDE.md - Developer guidance
 - ✅ SYSTEM_REVIEW.md - Production readiness assessment
 - ✅ TEST_COVERAGE_REPORT.md - Test coverage analysis
+- ✅ PROGRESS.md - Detailed progress tracking (NEW)
+- ✅ QUICKSTART.md - Environment setup guide (NEW)
 - ✅ Design documentation (docs/design/designV1.md)
+
+---
+
+## 🔴 HIGH PRIORITY - Immediate Tasks
+
+### 1. Test BPMN Nodes (JUST IMPLEMENTED)
+- [ ] Refresh browser and verify BPMN category visible
+- [ ] Add Start Event (green, thin border circle, 50x50px)
+- [ ] Add End Event (red, thick border circle, 50x50px)
+- [ ] Add Task (blue, rounded rectangle, 140x80px)
+- [ ] Add Gateway (orange, diamond + X symbol, 80x80px)
+- [ ] Add Intermediate Event (yellow, double border circle, 50x50px)
+- [ ] Verify all colors match sidebar
+- [ ] Test node editing (double-click)
+- [ ] Test node connections
+- [ ] Test theme switching (12 themes)
+
+**Files Modified Today (2026-01-08):**
+- `frontend/components/Sidebar.tsx`
+- `frontend/components/nodes/DefaultNode.tsx`
+- `frontend/components/nodes/GatewayNode.tsx`
+- `frontend/lib/utils/nodeShapes.ts` (NEW)
+- `backend/app/models/schemas.py`
+
+### 2. Update Chat Generator Mock Data
+**File:** `backend/app/services/chat_generator.py` (~Line 150-200)
+
+**Current (WRONG):**
+```python
+{"data": {"label": "开始", "shape": "circle"}}
+{"data": {"label": "结束", "shape": "circle"}}
+```
+
+**Update to (CORRECT):**
+```python
+{"data": {"label": "开始", "shape": "start-event", "iconType": "play-circle", "color": "#16a34a"}}
+{"data": {"label": "结束", "shape": "end-event", "iconType": "stop-circle", "color": "#dc2626"}}
+{"data": {"label": "任务", "shape": "task", "iconType": "box", "color": "#2563eb"}}
+{"data": {"label": "网关", "shape": "diamond"}}  # Keep as-is
+```
+
+- [ ] Update microservice-architecture template
+- [ ] Update high-concurrency-system template
+- [ ] Restart backend
+- [ ] Test template generation
+
+---
+
+## 🟡 MEDIUM PRIORITY - Phase 5 Completion
+
+### 3. Refactor Group B Nodes (CSS Variables)
+
+#### 3.1 CacheNode.tsx
+- [ ] Replace `border-yellow-500` → `var(--cache-border)`
+- [ ] Replace `text-yellow-600` → `var(--cache-icon)`
+- [ ] Unify padding to `px-4 py-3`
+- [ ] Add subtitle "Cache"
+- [ ] Use CSS variable for Handle colors
+
+**Reference:** `frontend/components/nodes/ApiNode.tsx` (template)
+
+#### 3.2 QueueNode.tsx
+- [ ] Replace `border-indigo-500` → `var(--queue-border)`
+- [ ] Replace `text-indigo-600` → `var(--queue-icon)`
+- [ ] Unify padding to `px-4 py-3`
+- [ ] Add subtitle "Queue"
+- [ ] Use CSS variable for Handle colors
+
+#### 3.3 StorageNode.tsx
+- [ ] Replace `border-gray-500` → `var(--storage-border)`
+- [ ] Replace `text-gray-600` → `var(--storage-icon)`
+- [ ] Unify padding to `px-4 py-3`
+- [ ] Add subtitle "Storage"
+- [ ] Use CSS variable for Handle colors
+
+#### 3.4 ClientNode.tsx
+- [ ] Replace `border-cyan-500` → `var(--client-border)`
+- [ ] Replace `text-cyan-600` → `var(--client-icon)`
+- [ ] Unify padding to `px-4 py-3`
+- [ ] Add subtitle "Client"
+- [ ] Use CSS variable for Handle colors
+
+### 4. Extend Theme System for 4 Nodes
+
+#### 4.1 Type Definitions
+**File:** `frontend/lib/themes/types.ts`
+- [ ] Add `cacheNode: NodeColors` to ThemeColors interface
+- [ ] Add `queueNode: NodeColors`
+- [ ] Add `storageNode: NodeColors`
+- [ ] Add `clientNode: NodeColors`
+
+#### 4.2 Theme Presets (480 lines of code)
+**File:** `frontend/lib/themes/presets.ts`
+
+Add to ALL 12 themes:
+- [ ] smartarchitect-default
+- [ ] smartarchitect-dark
+- [ ] smartarchitect-blue
+- [ ] ocean-breeze
+- [ ] sunset-glow
+- [ ] forest-zen
+- [ ] purple-haze
+- [ ] monochrome-light
+- [ ] monochrome-dark
+- [ ] neon-cyberpunk
+- [ ] pastel-dream
+- [ ] autumn-leaves
+
+**Color Scheme:**
+```typescript
+cacheNode: { border: "#eab308", background: "#fefce8", text: "#854d0e", icon: "#eab308", shadow: "rgba(234, 179, 8, 0.1)" },
+queueNode: { border: "#6366f1", background: "#eef2ff", text: "#3730a3", icon: "#6366f1", shadow: "rgba(99, 102, 241, 0.1)" },
+storageNode: { border: "#64748b", background: "#f8fafc", text: "#1e293b", icon: "#64748b", shadow: "rgba(100, 116, 139, 0.1)" },
+clientNode: { border: "#06b6d4", background: "#ecfeff", text: "#155e75", icon: "#06b6d4", shadow: "rgba(6, 182, 212, 0.1)" },
+```
+
+#### 4.3 Apply CSS Variables
+**File:** `frontend/lib/themes/ThemeContext.tsx` (~Line 57)
+
+```typescript
+// Cache Node colors
+root.style.setProperty("--cache-border", colors.cacheNode.border);
+root.style.setProperty("--cache-background", colors.cacheNode.background);
+root.style.setProperty("--cache-text", colors.cacheNode.text);
+root.style.setProperty("--cache-icon", colors.cacheNode.icon);
+root.style.setProperty("--cache-shadow", colors.cacheNode.shadow || "none");
+// Repeat for queueNode, storageNode, clientNode
+```
+
+- [ ] Add CSS variable application code
+- [ ] Verify compilation success
+- [ ] Check browser console for variables
+- [ ] Test theme switching
+
+---
+
+## 🟢 LOW PRIORITY - Visual Enhancements
+
+### 5. CSS Hover Effects
+**File:** `frontend/app/globals.css`
+
+```css
+.react-flow__node {
+  transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.react-flow__node:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.08) !important;
+}
+
+.react-flow__handle:hover {
+  transform: scale(1.5);
+}
+```
+
+- [ ] Add hover effects
+- [ ] Test with 50+ nodes
+- [ ] Adjust animation timing
+
+### 6. Phase 6: Conditional Edges (Optional)
+- [ ] Create `frontend/components/edges/ConditionalEdge.tsx`
+- [ ] Green/red colors for Yes/No branches
+- [ ] Semi-transparent label backgrounds
+- [ ] Register edge type in `ArchitectCanvas.tsx`
+- [ ] Update AI prompt in `chat_generator.py`
 
 ---
 
@@ -84,19 +263,28 @@
 
 ## 📋 Future Feature Enhancements
 
-### Phase 5: Infrastructure Export (Planned)
+### Phase 7: More BPMN Nodes (Planned)
+- [ ] Parallel Gateway (diamond + plus symbol)
+- [ ] Inclusive Gateway (diamond + circle symbol)
+- [ ] Event Gateway (diamond + pentagon symbol)
+- [ ] Subprocess (rectangle + bottom plus)
+- [ ] Timer Event (circle + clock icon)
+- [ ] Message Event (circle + envelope icon)
+- [ ] Error Event (circle + lightning icon)
+
+### Phase 8: Infrastructure Export (Planned)
 - [ ] Terraform (HCL) code generation
 - [ ] Docker Compose file export
 - [ ] Kubernetes manifest generation
 - [ ] CloudFormation template support
 
-### Phase 6: Collaboration (Planned)
+### Phase 9: Collaboration (Planned)
 - [ ] WebSocket real-time collaboration
 - [ ] Multi-user canvas editing
 - [ ] Version control for diagrams
 - [ ] Comment and annotation system
 
-### Phase 7: Advanced AI Features (Planned)
+### Phase 10: Advanced AI Features (Planned)
 - [ ] Architecture optimization suggestions
 - [ ] Bottleneck detection and highlighting
 - [ ] Cost estimation for cloud resources
@@ -138,41 +326,72 @@
 
 ## 📝 Development Notes
 
+### Current Session Summary (2026-01-08)
+**Completed:**
+- ✅ Refactored Sidebar (64px → 288px, search, categories)
+- ✅ Implemented 5 BPMN 2.0 standard shapes
+- ✅ Created icon and color mapping system
+- ✅ Updated backend schemas for new shapes
+- ✅ Created PROGRESS.md and QUICKSTART.md
+
+**Next Session:**
+1. Test BPMN nodes in browser
+2. Update Chat Generator mock data
+3. Continue Group B node refactor
+
 ### Before Starting New Features
 1. Check that tests still pass: `pytest tests/ -v`
 2. Review CLAUDE.md for architecture patterns
-3. Update version number in `app/main.py` and `package.json`
+3. Review PROGRESS.md for current state
+4. Update version number in `app/main.py` and `package.json`
 
 ### Testing Checklist
 - [ ] Run full test suite before committing
 - [ ] Add tests for new API endpoints
 - [ ] Update TEST_COVERAGE_REPORT.md if coverage changes
 - [ ] Test both light and dark themes for UI changes
+- [ ] Test all 5 BPMN node shapes
 
 ### Documentation Updates Needed
-- [ ] Add API examples for all new endpoints
-- [ ] Update README.md with Phase 5+ features
-- [ ] Create user guide for non-technical users
-- [ ] Add video tutorials for complex features
+- [ ] Add BPMN node examples to README
+- [ ] Update API examples for shape field
+- [ ] Create BPMN usage guide
+- [ ] Add video tutorial for BPMN features
 
 ---
 
 ## 🎯 Next Session Priority
 
 **Immediate Tasks:**
-1. Fix `test_export_script_no_api_key` timeout issue
-2. Improve Mermaid parser to detect all nodes
-3. Integrate dagre auto-layout properly
+1. 🔴 Test BPMN nodes (browser refresh required)
+2. 🔴 Update Chat Generator mock data (shape values)
+3. 🟡 Start Group B node refactor (CacheNode first)
 
-**Review Before Production:**
-- SYSTEM_REVIEW.md security recommendations
+**Before Production:**
+- Review SYSTEM_REVIEW.md security recommendations
 - Add authentication system
 - Set up monitoring
+- Fix test timeout issue
+
+**Reference Documents:**
+- `PROGRESS.md` - Detailed progress and technical details
+- `QUICKSTART.md` - Environment setup and quick testing
+- `CLAUDE.md` - Architecture patterns and coding standards
 
 ---
 
 ## 📞 Contact & Resources
 
 - GitHub Issues: Track bugs and feature requests
-- API Documentation: http://localhost:8000/docs
+- API Documentation: http://localhost:8002/docs (backend must be running)
 - Test Reports: `backend/htmlcov/index.html` (after running with --cov)
+- Progress Tracking: `PROGRESS.md`
+- Quick Start: `QUICKSTART.md`
+
+---
+
+**Environment Info:**
+- Backend Port: 8002 (PID: 3852)
+- Frontend Port: 3000
+- Python: 3.12.5 (backend/venv)
+- Node.js: 18+ (recommended)

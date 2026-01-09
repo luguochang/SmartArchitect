@@ -52,7 +52,9 @@ class PrompterService:
         self,
         request: PromptExecutionRequest,
         provider: str = "gemini",
-        api_key: Optional[str] = None
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+        model_name: Optional[str] = None
     ) -> PromptExecutionResponse:
         """执行 Prompter 场景"""
 
@@ -123,7 +125,9 @@ Do NOT include any explanatory text outside the JSON. The response must be parse
         try:
             vision_service = create_vision_service(
                 provider=provider,
-                api_key=api_key
+                api_key=api_key,
+                base_url=base_url,
+                model_name=model_name
             )
 
             # 使用 AI 生成优化后的架构

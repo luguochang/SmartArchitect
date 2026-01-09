@@ -3,7 +3,7 @@
 import { useState, useCallback } from "react";
 import { X, FileText, Upload, CheckCircle, Trash2 } from "lucide-react";
 import { useArchitectStore } from "@/lib/store/useArchitectStore";
-import toast from "react-hot-toast";
+import { toast } from "sonner";
 
 interface DocumentUploadModalProps {
   isOpen: boolean;

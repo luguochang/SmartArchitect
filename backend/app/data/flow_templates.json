@@ -1,0 +1,68 @@
+{
+  "templates": [
+    {
+      "id": "microservice-architecture",
+      "name": "微服务架构流程（完整版）",
+      "description": "展示现代微服务系统的完整请求处理流程，包含网关、缓存、队列、存储等核心组件",
+      "category": "architecture",
+      "example_input": "生成一个电商微服务架构：API网关 → 认证服务 → Redis缓存 → 订单服务 → RabbitMQ消息队列 → 库存服务 → MySQL数据库 → OSS存储",
+      "icon": "Network"
+    },
+    {
+      "id": "oom-troubleshooting",
+      "name": "OOM 故障排查流程",
+      "description": "Java 应用内存溢出问题诊断步骤",
+      "category": "troubleshooting",
+      "example_input": "生成一个 Java 应用 OOM 排查的流程图，包括堆内存分析、GC 日志检查、线程堆栈分析",
+      "icon": "AlertCircle"
+    },
+    {
+      "id": "order-process",
+      "name": "电商订单处理流程",
+      "description": "从下单到支付完成的完整业务流程",
+      "category": "business",
+      "example_input": "生成电商订单处理流程：用户下单 → 验证库存 → 创建订单 → 支付 → 减库存 → 发货",
+      "icon": "ShoppingCart"
+    },
+    {
+      "id": "cicd-pipeline",
+      "name": "CI/CD 部署流水线",
+      "description": "代码提交到生产发布的自动化流程",
+      "category": "devops",
+      "example_input": "生成 CI/CD 流程：代码提交 → 单元测试 → 构建镜像 → 部署到测试环境 → 自动化测试 → 部署生产",
+      "icon": "GitBranch"
+    },
+    {
+      "id": "merge-sort",
+      "name": "归并排序算法",
+      "description": "分治法排序算法的执行流程",
+      "category": "algorithm",
+      "example_input": "生成归并排序的流程图，展示分治递归和合并步骤",
+      "icon": "Code"
+    },
+    {
+      "id": "api-authentication",
+      "name": "API 认证鉴权流程",
+      "description": "JWT Token 认证和权限检查",
+      "category": "troubleshooting",
+      "example_input": "生成 API 鉴权流程：接收请求 → 提取 Token → 验证签名 → 检查权限 → 放行/拒绝",
+      "icon": "Shield"
+    },
+    {
+      "id": "cache-strategy",
+      "name": "缓存更新策略",
+      "description": "读写缓存和数据库的同步流程",
+      "category": "troubleshooting",
+      "example_input": "生成缓存更新流程：读请求先查缓存，缓存未命中查数据库并更新缓存；写请求先更新数据库再删除缓存",
+      "icon": "Database"
+    },
+    {
+      "id": "high-concurrency-system",
+      "name": "高并发秒杀系统",
+      "description": "展示如何使用缓存、队列、限流等技术处理高并发场景",
+      "category": "architecture",
+      "example_input": "生成秒杀系统架构：客户端 → API网关（限流）→ Redis缓存（库存预扣）→ Kafka队列（削峰）→ 订单服务 → MySQL数据库 → 对象存储",
+      "icon": "Zap"
+    }
+  ]
+}

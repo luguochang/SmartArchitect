@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     # CORS Configuration
     CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
+    # Logging Configuration
+    LOG_LEVEL: str = "INFO"              # 日志级别 (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+    LOG_DIR: str = "logs"                # 日志目录（相对于 backend/）
+    ENVIRONMENT: str = "development"     # 环境模式 (development, production)
+
     # AI Model API Keys (Optional)
     GEMINI_API_KEY: str = ""
     OPENAI_API_KEY: str = ""

@@ -143,6 +143,11 @@ pnpm-debug.log*
 *.log.*
 log/
 
+# Backend logs (keep directory structure)
+backend/logs/*.log
+backend/logs/*.log.*
+!backend/logs/.gitkeep
+
 # ==========================================
 # Testing & Coverage
 # ==========================================

@@ -1,0 +1,65 @@
+url:https://api.siliconflow.cn/v1/chat/completions
+method:POST
+request_body:
+{
+  "model": "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
+  "messages": [
+    {
+      "role": "user",
+      "content": "1+1=?"
+    }
+  ],
+  "stream": false,
+  "max_tokens": 4096,
+  "enable_thinking": false,
+  "thinking_budget": 4096,
+  "min_p": 0.05,
+  "stop": null,
+  "temperature": 0.7,
+  "top_p": 0.7,
+  "top_k": 50,
+  "frequency_penalty": 0.5,
+  "n": 1,
+  "response_format": {
+    "type": "text"
+  },
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "<string>",
+        "description": "<string>",
+        "parameters": {},
+        "strict": false
+      }
+    }
+  ]
+}
+
+response_body:
+{
+    "id": "019b9c449e56dbd5f267d64ec333c267",
+    "object": "chat.completion",
+    "created": 1767853301,
+    "model": "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
+    "choices": [
+        {
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "content": "\n\nThe sum of 1 plus 1 equals:\n\n**2**",
+                "reasoning_content": "Okay, so I need to figure out what 1 plus 1 equals. Hmm, I remember from basic math that addition is combining two numbers. So if I have one item and add another, I should have two in total. Let me think about it step by step.\n\nFirst, the numbers involved are both 1. So, 1 is a single unit, and adding another unit would make it two units in total. There's no carryover here because we're only dealing with single digits. \n\nWait, maybe I should visualize it. If I have one apple and someone gives me another apple, how many apples do I have? That's right, two apples. So applying that logic to numbers, 1 plus 1 should equal 2.\n\nI don't think there's any trick here since the question is straightforward. It's not like adding negative numbers or decimals where the rules change. So yeah, the answer should be 2."
+            },
+            "finish_reason": "stop"
+        }
+    ],
+    "usage": {
+        "prompt_tokens": 58,
+        "completion_tokens": 208,
+        "total_tokens": 266,
+        "completion_tokens_details": {
+            "reasoning_tokens": 194
+        }
+    },
+    "system_fingerprint": ""
+}

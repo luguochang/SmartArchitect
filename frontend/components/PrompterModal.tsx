@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { X, Wand2, Sparkles, Shield, Brush, Loader2 } from "lucide-react";
 import { useArchitectStore } from "@/lib/store/useArchitectStore";
-import toast from "react-hot-toast";
+import { toast } from "sonner";
 
 interface PrompterModalProps {
   isOpen: boolean;

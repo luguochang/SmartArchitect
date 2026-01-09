@@ -10,6 +10,9 @@ from app.models.schemas import (
     NodeData,
 )
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -41,8 +44,18 @@ def parse_mermaid_to_graph(mermaid_code: str) -> tuple[list[Node], list[Edge]]:
                 node_type = "database"
             elif "[[" in line:
                 node_type = "service"
-            elif any(keyword in label_content.lower() for keyword in ["api", "gateway"]):
+            elif any(keyword in label_content.lower() for keyword in ["api"]):
                 node_type = "api"
+            elif any(keyword in label_content.lower() for keyword in ["gateway", "load balancer", "lb"]):
+                node_type = "gateway"
+            elif any(keyword in label_content.lower() for keyword in ["cache", "redis", "memcached"]):
+                node_type = "cache"
+            elif any(keyword in label_content.lower() for keyword in ["queue", "kafka", "rabbitmq", "mq"]):
+                node_type = "queue"
+            elif any(keyword in label_content.lower() for keyword in ["storage", "s3", "cdn"]):
+                node_type = "storage"
+            elif any(keyword in label_content.lower() for keyword in ["client", "frontend", "mobile", "web"]):
+                node_type = "client"
 
             if node_id not in node_map:
                 node = Node(
@@ -89,6 +102,7 @@ def graph_to_mermaid(nodes: list[Node], edges: list[Edge]) -> str:
         elif node_type == "service":
             mermaid_lines.append(f'    {node_id}[["{label}"]]')
         else:
+            # api, gateway, cache, queue, storage, client 都使用标准方框
             mermaid_lines.append(f'    {node_id}["{label}"]')
 
     # 添加边定义

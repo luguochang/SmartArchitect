@@ -35,7 +35,9 @@ async def get_prompt_scenarios():
 async def execute_prompt(
     request: PromptExecutionRequest,
     provider: Optional[str] = Form("gemini"),
-    api_key: Optional[str] = Form(None)
+    api_key: Optional[str] = Form(None),
+    base_url: Optional[str] = Form(None),
+    model_name: Optional[str] = Form(None)
 ):
     """执行 Prompter 场景，对当前架构应用 AI 转换
 
@@ -43,6 +45,8 @@ async def execute_prompt(
         request: 包含场景 ID、节点、边和可选用户输入的请求
         provider: AI 提供商 (gemini, openai, claude, custom)
         api_key: API 密钥（可选，如果已在环境中配置）
+        base_url: API 基础 URL（所有 provider 都可传入）
+        model_name: 模型名称（所有 provider 都可传入）
 
     Returns:
         PromptExecutionResponse: 转换后的架构（节点、边、Mermaid 代码）
@@ -55,7 +59,9 @@ async def execute_prompt(
         result = await service.execute_prompt(
             request=request,
             provider=provider,
-            api_key=api_key
+            api_key=api_key,
+            base_url=base_url,
+            model_name=model_name
         )
 
         if not result.success:

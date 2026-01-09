@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Download, FileText, Presentation, Mic, ChevronDown, Loader2 } from "lucide-react";
 import { useArchitectStore } from "@/lib/store/useArchitectStore";
-import toast from "react-hot-toast";
+import { toast } from "sonner";
 
 export default function ExportMenu() {
   const { nodes, edges, mermaidCode, modelConfig } = useArchitectStore();

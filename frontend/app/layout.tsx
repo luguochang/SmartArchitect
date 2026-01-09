@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import { Toaster } from "react-hot-toast";
+import { Toaster } from "sonner";
 import { ThemeProvider } from "@/lib/themes/ThemeContext";
 import "./globals.css";
 
@@ -21,7 +21,7 @@ export default function RootLayout({
       <body className={inter.className}>
         <ThemeProvider>
           {children}
-          <Toaster position="top-right" />
+          <Toaster position="top-right" richColors theme="light" />
         </ThemeProvider>
       </body>
     </html>
