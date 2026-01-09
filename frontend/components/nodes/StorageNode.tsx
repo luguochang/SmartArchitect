@@ -2,10 +2,10 @@
 
 import { memo, useState, useCallback } from "react";
 import { Handle, Position, NodeProps } from "reactflow";
-import { Box } from "lucide-react";
+import { HardDrive } from "lucide-react";
 import { useArchitectStore } from "@/lib/store/useArchitectStore";
 
-export const ServiceNode = memo(({ id, data }: NodeProps) => {
+export const StorageNode = memo(({ id, data }: NodeProps) => {
   const [isEditing, setIsEditing] = useState(false);
   const [label, setLabel] = useState(data.label);
   const updateNodeLabel = useArchitectStore((state) => state.updateNodeLabel);
@@ -37,26 +37,27 @@ export const ServiceNode = memo(({ id, data }: NodeProps) => {
     <div
       className="glass-node relative rounded-xl border-2 px-4 py-3 shadow-lg"
       style={{
-        borderColor: "var(--service-border)",
-        background: `linear-gradient(135deg, ${"var(--service-background)"} 0%, rgba(255,255,255,0.9) 100%)`,
-        boxShadow: "var(--service-shadow, 0 14px 30px -14px rgba(0,0,0,0.25))",
+        borderColor: "var(--storage-border)",
+        backgroundColor: "var(--storage-background)",
+        boxShadow: "var(--storage-shadow, 0 10px 15px -3px rgba(0,0,0,0.1))",
       }}
     >
       <Handle
         type="target"
         position={Position.Top}
-        style={{ backgroundColor: "var(--service-border)" }}
+        style={{ backgroundColor: "var(--storage-border)" }}
       />
 
       <span
         className="absolute left-2 top-2 h-[calc(100%-16px)] w-[5px] rounded-full opacity-80"
-        style={{ backgroundColor: "var(--service-border)" }}
+        style={{ backgroundColor: "var(--storage-border)" }}
       />
+
       <div className="flex items-center gap-3">
         <div className="rounded-lg bg-white/80 px-2 py-1 text-[11px] font-semibold text-slate-600 shadow-sm dark:bg-slate-800/80 dark:text-slate-200">
-          SVC
+          STORAGE
         </div>
-        <Box className="h-5 w-5 transition-transform duration-200 hover:scale-110" style={{ color: "var(--service-icon)" }} />
+        <HardDrive className="h-5 w-5 transition-transform duration-200 hover:scale-110" style={{ color: "var(--storage-icon)" }} />
         <div className="flex-1">
           {isEditing ? (
             <input
@@ -68,8 +69,8 @@ export const ServiceNode = memo(({ id, data }: NodeProps) => {
               autoFocus
               className="nodrag font-semibold bg-transparent border-b-2 outline-none"
               style={{
-                color: "var(--service-text)",
-                borderColor: "var(--service-border)",
+                color: "var(--storage-text)",
+                borderColor: "var(--storage-border)",
                 fontSize: "var(--font-size-node)",
                 fontWeight: "var(--font-weight-bold)",
                 width: `${Math.max(label.length, 8)}ch`,
@@ -80,7 +81,7 @@ export const ServiceNode = memo(({ id, data }: NodeProps) => {
               onDoubleClick={handleDoubleClick}
               className="font-semibold cursor-text"
               style={{
-                color: "var(--service-text)",
+                color: "var(--storage-text)",
                 fontSize: "var(--font-size-node)",
                 fontWeight: "var(--font-weight-bold)",
               }}
@@ -91,12 +92,12 @@ export const ServiceNode = memo(({ id, data }: NodeProps) => {
           <div
             className="text-xs"
             style={{
-              color: "var(--service-text)",
+              color: "var(--storage-text)",
               opacity: 0.7,
               fontSize: "var(--font-size-label)",
             }}
           >
-            Service
+            Storage
           </div>
         </div>
       </div>
@@ -104,10 +105,10 @@ export const ServiceNode = memo(({ id, data }: NodeProps) => {
       <Handle
         type="source"
         position={Position.Bottom}
-        style={{ backgroundColor: "var(--service-border)" }}
+        style={{ backgroundColor: "var(--storage-border)" }}
       />
     </div>
   );
 });
 
-ServiceNode.displayName = "ServiceNode";
+StorageNode.displayName = "StorageNode";
