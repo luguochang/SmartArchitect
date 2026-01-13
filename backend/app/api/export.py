@@ -101,7 +101,7 @@ async def generate_script(
 
     Args:
         request: Script generation request with nodes, edges, duration
-        provider: AI provider (gemini, openai, claude, custom)
+        provider: AI provider (gemini, openai, claude, siliconflow, custom)
         api_key: API key for the provider
 
     Returns:

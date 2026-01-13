@@ -8,6 +8,9 @@ from app.models.schemas import (
     ChatGenerationResponse
 )
 from app.services.chat_generator import create_chat_generator_service
+from fastapi.responses import StreamingResponse
+import json
+from app.services.ai_vision import create_vision_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -70,3 +73,89 @@ async def generate_flowchart(request: ChatGenerationRequest):
             status_code=500,
             detail=f"Generation error: {str(e)}"
         )
+
+
+@router.post("/chat-generator/generate-stream")
+async def generate_flowchart_stream(request: ChatGenerationRequest):
+    """Streaming version of flowchart generation (SSE-like text/event-stream)."""
+
+    async def event_stream():
+        try:
+            service = create_chat_generator_service()
+            selected_provider = request.provider or "gemini"
+            prompt = service._build_generation_prompt(request)
+
+            yield "data: [START] building prompt\n\n"
+            yield "data: [CALL] contacting provider...\n\n"
+
+            # Prefer true stream for OpenAI-compatible providers
+            if selected_provider in ["siliconflow", "openai", "custom"]:
+                vision_service = create_vision_service(
+                    provider=selected_provider,
+                    api_key=request.api_key,
+                    base_url=request.base_url,
+                    model_name=request.model_name
+                )
+
+                # Stream tokens
+                accumulated = ""
+                stream = vision_service.client.chat.completions.create(
+                    model=vision_service.model_name,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=4096,
+                    temperature=0.2,
+                    stream=True,
+                )
+                for chunk in stream:
+                    delta = chunk.choices[0].delta.content
+                    if not delta:
+                        continue
+                    text = "".join(delta)
+                    accumulated += text
+                    yield f"data: [TOKEN] {text}\n\n"
+
+                # Parse final JSON and normalize; if parse fails, fall back to non-stream path
+                try:
+                    if not accumulated.strip():
+                        raise ValueError("Empty stream output")
+                    ai_data = service._safe_json(accumulated)
+                    nodes, edges, mermaid_code = service._normalize_ai_graph(ai_data)
+                    payload = ChatGenerationResponse(
+                        nodes=nodes,
+                        edges=edges,
+                        mermaid_code=mermaid_code,
+                        success=True,
+                        message=f"Generated via {selected_provider} (stream)",
+                    ).model_dump()
+                    yield f"data: [RESULT] nodes={len(nodes)}, edges={len(edges)}\n\n"
+                    yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                    yield "data: [END] done\n\n"
+                    return
+                except Exception as parse_err:
+                    logger.warning(f"Stream JSON parse failed; falling back to non-stream: {parse_err}")
+                    # explicitly fall through to non-stream path
+
+            # Fallback: call existing generator (non-stream) but send staged events
+            result = await service.generate_flowchart(
+                request=request,
+                provider=selected_provider,
+                api_key=request.api_key,
+                base_url=request.base_url,
+                model_name=request.model_name
+            )
+            yield f"data: [RESULT] nodes={len(result.nodes)}, edges={len(result.edges)}\n\n"
+            payload = result.model_dump()
+            yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+            yield "data: [END] done\n\n"
+        except Exception as e:
+            logger.error(f"Stream generation failed: {e}", exc_info=True)
+            yield f"data: [ERROR] {str(e)}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )

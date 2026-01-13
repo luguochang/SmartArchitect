@@ -285,7 +285,7 @@ export const DefaultNode = memo(({ id, data }: NodeProps) => {
         {renderCircularHandles(borderColor)}
 
         <div className="flex flex-col items-center justify-center text-center px-2">
-          <IconComponent className="h-5 w-5 mb-1 transition-transform duration-200 hover:scale-110" style={{ color: iconColor }} />
+          {renderIcon(20)}
           {isEditing ? (
             <input
               type="text"
@@ -335,7 +335,7 @@ export const DefaultNode = memo(({ id, data }: NodeProps) => {
       <Handle type="target" position={Position.Left} style={{ backgroundColor: borderColor }} />
 
       <div className="flex items-center gap-2">
-        <IconComponent className="h-5 w-5 transition-transform duration-200 hover:scale-110" style={{ color: iconColor }} />
+        {renderIcon(20)}
         <div>
           {isEditing ? (
             <input

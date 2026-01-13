@@ -119,20 +119,23 @@ export default function PrompterModal({ isOpen, onClose }: PrompterModalProps) {
                     `}
                   >
                     <div className="flex items-start gap-3">
-                      <div
-                        className={`p-2 rounded-lg ${
-                          CATEGORY_COLORS[scenario.category]
-                        }`}
-                      >
+                      <div className={`p-2 rounded-lg ${CATEGORY_COLORS[scenario.category]}`}>
                         <Icon className="w-5 h-5" />
                       </div>
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-gray-900 mb-1">
-                          {scenario.name}
-                        </h3>
-                        <p className="text-sm text-gray-600">
-                          {scenario.description}
-                        </p>
+                      <div className="flex-1 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-semibold text-gray-900">{scenario.name}</h3>
+                          <span className="text-[11px] rounded-full bg-gray-100 px-2 py-1 text-gray-700">
+                            {scenario.category}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-600">{scenario.description}</p>
+                        {(scenario as any).style_hint && (
+                          <div className="text-xs text-purple-600">Style: {(scenario as any).style_hint}</div>
+                        )}
+                        {(scenario as any).recommended_theme && (
+                          <div className="text-xs text-emerald-600">Theme: {(scenario as any).recommended_theme}</div>
+                        )}
                       </div>
                     </div>
                     {isSelected && (

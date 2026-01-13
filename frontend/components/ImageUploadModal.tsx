@@ -119,6 +119,7 @@ export function ImageUploadModal({ isOpen, onClose }: ImageUploadModalProps) {
                   {modelConfig.provider === "gemini" && "Google Gemini"}
                   {modelConfig.provider === "openai" && "OpenAI GPT-4 Vision"}
                   {modelConfig.provider === "claude" && "Anthropic Claude"}
+                  {modelConfig.provider === "siliconflow" && "SiliconFlow"}
                   {modelConfig.provider === "custom" && "Custom Model"}
                 </span>
               </p>

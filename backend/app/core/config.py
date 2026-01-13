@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
+    SILICONFLOW_API_KEY: str = "sk-labtoeibcevkdzanpprwezzivdokslxnspigjnapxyogvpgp"
+    SILICONFLOW_BASE_URL: str = "https://api.siliconflow.cn/v1"
 
     class Config:
         env_file = ".env"

@@ -28,6 +28,7 @@ export function ModelConfigModal({ isOpen, onClose }: ModelConfigModalProps) {
     { value: "gemini", label: "Google Gemini", defaultModel: "gemini-2.5-flash" },
     { value: "openai", label: "OpenAI", defaultModel: "gpt-4-turbo" },
     { value: "claude", label: "Anthropic Claude", defaultModel: "claude-3-5-sonnet-20241022" },
+    { value: "siliconflow", label: "SiliconFlow", defaultModel: "Pro/Qwen/Qwen2.5-7B-Instruct" },
     { value: "custom", label: "Custom API", defaultModel: "custom-model" },
   ];
 

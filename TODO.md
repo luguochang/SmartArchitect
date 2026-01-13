@@ -380,6 +380,22 @@ root.style.setProperty("--cache-shadow", colors.cacheNode.shadow || "none");
 
 ---
 
+## 🧾 Latest Integration (2026-01-13)
+- ✅ SiliconFlow text provider wired end-to-end (default model `Pro/Qwen/Qwen2.5-7B-Instruct`; vision rejected by design).
+- ✅ Chat Flowchart uses SSE streaming with token-level logging, chat bubbles (user/assistant), and animated drawing of nodes/edges; falls back to non-stream if stream is empty.
+- ✅ Prompter hits real `/api/prompter/execute`; scenarios fetched from backend; results applied to canvas and chat log. New scenarios added: `beautify-bpmn`, `cyberpunk-visual`, `handdrawn-sketch`, `swimlane-layout` (existing scenarios renamed/cleaned).
+- ✅ Frontend UI: chat transcript embedded in flowchart card; Prompter modal shows style/theme hints; generation logs remain as secondary trace.
+- ⚠️ SiliconFlow API key currently hardcoded for this phase—remove/replace before production.
+
+### Open Follow-ups
+1) Prompter UX: add diff/preview before apply; support undo/version snapshots when applying model output.
+2) Layout/theme: integrate auto-layout (dagre/elkjs) and themed nodes/edges to avoid flat horizontal layouts.
+3) Streaming polish: pace token emission, inline error surfacing; optionally stream Prompter output too.
+4) RAG deps remain commented out; decide whether to restore/install.
+5) Run full test sweep: `backend/venv/Scripts/python -m pytest`.
+
+---
+
 ## 📞 Contact & Resources
 
 - GitHub Issues: Track bugs and feature requests

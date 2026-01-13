@@ -198,6 +198,8 @@ Do NOT include any explanatory text outside the JSON. The response must be parse
             response = await vision_service._analyze_with_openai_text(prompt)
         elif provider == "claude":
             response = await vision_service._analyze_with_claude_text(prompt)
+        elif provider == "siliconflow":
+            response = await vision_service._analyze_with_siliconflow_text(prompt)
         else:
             response = await vision_service._analyze_with_custom_text(prompt)
 

@@ -129,6 +129,63 @@ def test_models_save_config():
     assert "message" in data
 
 
+def test_models_save_siliconflow_config():
+    """Ensure SiliconFlow provider config is accepted"""
+    response = client.post(
+        "/api/models/config",
+        json={
+            "provider": "siliconflow",
+            "api_key": "test_key",
+            "model_name": "Pro/Qwen/Qwen2.5-7B-Instruct",
+            "base_url": "https://api.siliconflow.cn/v1"
+        }
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+
+
+# ============================================================
+# Chat Generator API Tests
+# ============================================================
+
+
+def test_chat_generator_calls_ai_and_normalizes(monkeypatch):
+    """Chat generator should call AI path and normalize graph."""
+    from app.services import chat_generator as cg
+
+    sample_graph = {
+        "nodes": [
+            {"id": "start", "type": "default", "data": {"label": "Start"}},
+            {"id": "step", "type": "service", "data": {"label": "Check"}},
+        ],
+        "edges": [{"id": "e1", "source": "start", "target": "step", "label": "next"}],
+        "mermaid_code": "graph TD\nstart[Start]-->step[Check]",
+    }
+
+    async def fake_call(self, vision_service, prompt, provider):
+        return sample_graph
+
+    def fake_vision_service(*args, **kwargs):
+        class Dummy:
+            pass
+        return Dummy()
+
+    monkeypatch.setattr(cg.ChatGeneratorService, "_call_ai_text_generation", fake_call, raising=True)
+    monkeypatch.setattr(cg, "create_vision_service", fake_vision_service, raising=True)
+
+    response = client.post(
+        "/api/chat-generator/generate",
+        json={"user_input": "generate something", "provider": "siliconflow", "api_key": "invalid"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert len(data["nodes"]) >= 2
+    assert data["nodes"][0]["position"]["x"] is not None
+    assert len(data["edges"]) >= 1
+
+
 # ============================================================
 # Prompter API Tests
 # ============================================================
@@ -238,6 +295,20 @@ def test_export_script_no_api_key():
     )
     # Should handle gracefully (may fail or return error)
     assert response.status_code in [200, 400, 422, 500]
+
+
+def test_vision_rejects_siliconflow_image():
+    """SiliconFlow is text-only; image analysis should be rejected"""
+    fake_image = io.BytesIO(b"fake")
+    files = {"file": ("test.png", fake_image, "image/png")}
+    response = client.post(
+        "/api/vision/analyze",
+        params={"provider": "siliconflow"},
+        files=files
+    )
+    assert response.status_code == 400
+    data = response.json()
+    assert "text-only" in data["detail"]
 
 
 # ============================================================

@@ -58,7 +58,7 @@ class GraphToMermaidResponse(BaseModel):
 
 # AI 模型配置
 class ModelConfig(BaseModel):
-    provider: Literal["gemini", "openai", "claude", "custom"]
+    provider: Literal["gemini", "openai", "claude", "siliconflow", "custom"]
     api_key: str
     model_name: str
     base_url: Optional[str] = None
@@ -253,7 +253,7 @@ class FlowTemplateList(BaseModel):
 class ChatGenerationRequest(BaseModel):
     user_input: str
     template_id: Optional[str] = None
-    provider: Optional[str] = "gemini"
+    provider: Optional[Literal["gemini", "openai", "claude", "siliconflow", "custom"]] = "gemini"
     api_key: Optional[str] = None
     base_url: Optional[str] = None
     model_name: Optional[str] = None

@@ -94,6 +94,9 @@ function ArchitectCanvasInner() {
         onConnect={onConnect}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
+        connectOnClick
+        connectionRadius={32}
+        connectionMode="loose"
         defaultEdgeOptions={{
           type: "glow",
           markerEnd: { type: MarkerType.ArrowClosed, width: 18, height: 18 },

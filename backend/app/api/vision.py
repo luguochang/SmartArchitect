@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Form
+from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Query
 from typing import Optional
 import logging
 
@@ -23,7 +23,8 @@ MAX_FILE_SIZE = 10 * 1024 * 1024
 @router.post("/vision/analyze", response_model=ImageAnalysisResponse)
 async def analyze_architecture_image(
     file: UploadFile = File(..., description="Architecture diagram image"),
-    provider: str = Form("gemini", description="AI provider (gemini, openai, claude, custom)"),
+    provider_form: Optional[str] = Form(None, description="AI provider (gemini, openai, claude, siliconflow, custom)"),
+    provider_query: Optional[str] = Query(None, alias="provider", description="AI provider (gemini, openai, claude, siliconflow, custom)"),
     analyze_bottlenecks: bool = Form(True, description="Analyze architecture bottlenecks"),
     api_key: Optional[str] = Form(None, description="API key for custom provider"),
     base_url: Optional[str] = Form(None, description="Base URL for custom provider"),
@@ -33,7 +34,7 @@ async def analyze_architecture_image(
     Analyze architecture diagram image using AI vision models.
 
     - **file**: Image file (PNG, JPG, JPEG, WEBP, max 10MB)
-    - **provider**: AI provider (gemini, openai, claude, custom)
+    - **provider**: AI provider (gemini, openai, claude, siliconflow, custom)
     - **analyze_bottlenecks**: Whether to analyze architecture bottlenecks
     - **api_key**: API key (required for custom provider)
     - **base_url**: Base URL (required for custom provider)
@@ -79,12 +80,21 @@ async def analyze_architecture_image(
             detail="Empty file uploaded"
         )
 
+    # 决定 provider（优先表单，其次 query，默认 gemini）
+    provider = provider_form or provider_query or "gemini"
+
     # 验证 provider
-    if provider not in ["gemini", "openai", "claude", "custom"]:
+    if provider not in ["gemini", "openai", "claude", "siliconflow", "custom"]:
         raise HTTPException(
             status_code=400,
             detail=f"Unsupported provider: {provider}. "
-                   f"Allowed: gemini, openai, claude, custom"
+                   f"Allowed: gemini, openai, claude, siliconflow, custom"
+        )
+
+    if provider == "siliconflow":
+        raise HTTPException(
+            status_code=400,
+            detail="SiliconFlow is currently supported for text-only. Choose gemini/openai/claude/custom for image analysis."
         )
 
     # 验证自定义 provider 的必需参数
@@ -149,7 +159,8 @@ async def vision_health_check():
     return {
         "status": "healthy",
         "service": "vision",
-        "supported_providers": ["gemini", "openai", "claude", "custom"],
+        "supported_providers": ["gemini", "openai", "claude", "custom", "siliconflow"],
+        "notes": {"siliconflow": "text-only in current release"},
         "max_file_size_mb": MAX_FILE_SIZE / 1024 / 1024,
         "allowed_formats": ALLOWED_CONTENT_TYPES
     }

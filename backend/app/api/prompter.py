@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Form
+from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
 import logging
 
@@ -34,16 +34,16 @@ async def get_prompt_scenarios():
 @router.post("/prompter/execute", response_model=PromptExecutionResponse)
 async def execute_prompt(
     request: PromptExecutionRequest,
-    provider: Optional[str] = Form("gemini"),
-    api_key: Optional[str] = Form(None),
-    base_url: Optional[str] = Form(None),
-    model_name: Optional[str] = Form(None)
+    provider: Optional[str] = Query("gemini"),
+    api_key: Optional[str] = Query(None),
+    base_url: Optional[str] = Query(None),
+    model_name: Optional[str] = Query(None)
 ):
     """执行 Prompter 场景，对当前架构应用 AI 转换
 
     Args:
         request: 包含场景 ID、节点、边和可选用户输入的请求
-        provider: AI 提供商 (gemini, openai, claude, custom)
+        provider: AI 提供商 (gemini, openai, claude, siliconflow, custom)
         api_key: API 密钥（可选，如果已在环境中配置）
         base_url: API 基础 URL（所有 provider 都可传入）
         model_name: 模型名称（所有 provider 都可传入）

@@ -36,6 +36,8 @@ export function AiControlPanel() {
     // Flowchat generator
     flowTemplates,
     isGeneratingFlowchart,
+    generationLogs,
+    chatHistory,
     loadFlowTemplates,
     generateFlowchart,
     // Prompter
@@ -127,7 +129,7 @@ export function AiControlPanel() {
       <div className="flex-1 space-y-4 overflow-y-auto pr-1">
         <SelectedDetailsPanel />
         {/* Chat Flowchart */}
-        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 min-h-[220px] space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <MessageSquare className="h-5 w-5 text-emerald-600 dark:text-emerald-300" />
@@ -181,10 +183,51 @@ export function AiControlPanel() {
               </button>
             </div>
           </div>
+
+          {/* Chat transcript fixed area */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-900/60 max-h-52 overflow-y-auto space-y-2">
+            {chatHistory.length === 0 && (
+              <div className="text-xs text-slate-500 dark:text-slate-400">
+                Conversation history will appear here during streaming.
+              </div>
+            )}
+            {chatHistory.map((msg, idx) => (
+              <div
+                key={idx}
+                className={`flex ${msg.role === "assistant" ? "justify-start" : "justify-end"}`}
+              >
+                <div
+                  className={`max-w-[90%] rounded-lg px-3 py-2 text-xs leading-relaxed ${
+                    msg.role === "assistant"
+                      ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-50"
+                      : "bg-slate-200 text-slate-900 dark:bg-slate-700 dark:text-white"
+                  }`}
+                >
+                  {msg.content}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {generationLogs.length > 0 && (
+            <div className="rounded-xl border border-dashed border-emerald-200 bg-emerald-50/70 p-3 text-xs text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-100 max-h-48 overflow-y-auto">
+              <div className="mb-2 flex items-center gap-2 font-semibold">
+                <Sparkles className="h-4 w-4" />
+                Streaming progress
+              </div>
+              <div className="space-y-1">
+                {generationLogs.map((log, idx) => (
+                  <div key={idx} className="whitespace-pre-wrap">
+                    {log}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
 
         {/* Prompter */}
-        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 max-h-[320px] overflow-y-auto">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Wand2 className="h-5 w-5 text-indigo-600 dark:text-indigo-300" />

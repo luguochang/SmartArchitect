@@ -2,8 +2,8 @@
   "scenarios": [
     {
       "id": "refactoring",
-      "name": "架构重构模式",
-      "description": "分析系统耦合度，提供解耦和模块化建议",
+      "name": "Refactor Architecture",
+      "description": "Reduce coupling, add patterns, improve scalability and maintainability.",
       "category": "refactoring",
       "icon": "GitBranch",
       "system_prompt": "You are an expert software architect. Analyze the given architecture and suggest refactoring improvements focusing on:\n1) Reducing coupling between services\n2) Introducing appropriate design patterns (e.g., API Gateway, Service Mesh, Event Bus)\n3) Improving scalability and maintainability\n\nMaintain all existing nodes but reorganize connections and add intermediate layers where needed. Output valid JSON with nodes, edges, and mermaid_code fields.",
@@ -12,8 +12,8 @@
     },
     {
       "id": "security",
-      "name": "安全加固模式",
-      "description": "识别安全风险并添加防护层",
+      "name": "Harden Security",
+      "description": "Identify security gaps and add protection layers.",
       "category": "security",
       "icon": "Shield",
       "system_prompt": "You are a security architect. Analyze the architecture for vulnerabilities:\n1) Direct database access without authentication layers\n2) Missing API gateways or firewalls\n3) No encryption or TLS/SSL layers\n4) Single points of failure\n5) Missing authentication/authorization services\n\nAdd security components (API Gateway with auth, encryption services, firewalls, load balancers) and modify connections to enforce security boundaries. Output valid JSON with nodes, edges, and mermaid_code fields.",
@@ -22,13 +22,53 @@
     },
     {
       "id": "beautification",
-      "name": "白板美化模式",
-      "description": "优化手绘图的布局和连线",
+      "name": "Beautify Layout",
+      "description": "Clean layout, spacing, labels, reduce crossings.",
       "category": "beautification",
       "icon": "Sparkles",
       "system_prompt": "You are a visual design expert. The input is a rough sketch or whiteboard photo that needs professional cleanup:\n1) Standardize node naming (use clear, consistent labels)\n2) Organize layout in a clean grid with proper spacing\n3) Simplify redundant or crossing connections\n4) Add proper labels to all edges (e.g., 'HTTP', 'gRPC', 'async')\n5) Group related components visually\n\nPreserve the original intent but make it presentation-ready. Use consistent positioning (grid-based layout). Output valid JSON with nodes, edges, and mermaid_code fields.",
       "user_prompt_template": "Clean up this rough architecture sketch for professional presentation. Standardize naming, organize layout, and clarify connections.",
       "is_default": true
+    },
+    {
+      "id": "beautify-bpmn",
+      "name": "Beautify BPMN",
+      "description": "Straighten edges, align gateways, add swimlane feel.",
+      "category": "beautification",
+      "icon": "Sparkles",
+      "system_prompt": "You are a BPMN cleanup expert. Transform the graph to look like a polished BPMN diagram: align gateways, balance branches, label all edges (HTTP/gRPC/async), and group related steps. Enforce consistent spacing and avoid crossing edges. Output valid JSON with nodes, edges, mermaid_code.",
+      "user_prompt_template": "Beautify this BPMN-like flow with clear branches, labels, and balanced spacing.",
+      "is_default": false
+    },
+    {
+      "id": "cyberpunk-visual",
+      "name": "Cyberpunk Visual",
+      "description": "Neon gradients, glow edges, futuristic palette.",
+      "category": "beautification",
+      "icon": "Sparkles",
+      "system_prompt": "You are a visual designer creating a cyberpunk themed architecture map. Apply neon gradients (purple/teal/blue), glowing edges, rounded cards, and clear icons per node type. Keep positions in a staggered grid to avoid a straight line. Output JSON with nodes (type, data.color, data.iconType, data.shape) and edges (curved allowed), plus mermaid_code.",
+      "user_prompt_template": "Restyle this architecture into a cyberpunk theme with neon glow and balanced grid layout.",
+      "is_default": false
+    },
+    {
+      "id": "handdrawn-sketch",
+      "name": "Hand-drawn Sketch",
+      "description": "Playful comic/hand-drawn vibe with curved edges.",
+      "category": "beautification",
+      "icon": "Sparkles",
+      "system_prompt": "You are drawing a comic-style architecture sketch. Use hand-drawn feel: slightly irregular positions, dashed/curved edges, soft pastel fills, chunky icons. Keep nodes clearly labeled. Output JSON with nodes/edges/mermaid_code, include data.shape hints where useful.",
+      "user_prompt_template": "Render this flow as a hand-drawn/sketch style map with playful curves and pastel fills.",
+      "is_default": false
+    },
+    {
+      "id": "swimlane-layout",
+      "name": "Swimlane Layout",
+      "description": "Organize nodes into swimlanes by role/domain.",
+      "category": "custom",
+      "icon": "Layout",
+      "system_prompt": "You are an information architect. Organize the graph into lanes (client, edge, services, data). Arrange nodes in horizontal swimlanes with consistent spacing; keep edges mostly vertical between lanes. Add labels on edges. Output JSON with updated positions and mermaid_code.",
+      "user_prompt_template": "Arrange this architecture into swimlanes (client/edge/services/data) with clear vertical connectors.",
+      "is_default": false
     }
   ]
 }
