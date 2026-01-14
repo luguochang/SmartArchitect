@@ -48,7 +48,7 @@ class ChatGeneratorService:
         return None
 
     def _build_generation_prompt(self, request: ChatGenerationRequest) -> str:
-        """Build generation prompt (kept for future real AI call)."""
+        """Build generation prompt for flow or architecture diagrams."""
         template_context = ""
         if request.template_id:
             template = self.get_template(request.template_id)
@@ -57,9 +57,28 @@ class ChatGeneratorService:
 Reference Template: {template.name}
 Template Description: {template.description}
 Example Input: "{template.example_input}"
-Expected Flow Style: {template.category}
+Expected Style/Category: {template.category}
 
 Please generate a similar flowchart following this template's style.
+"""
+
+        if request.diagram_type == "architecture":
+            return f"""You are a professional systems architect. Generate a layered architecture map (no edges needed).
+
+Requirements:
+- Output JSON with "layers": [
+    {{"name": "infrastructure", "items": []}},
+    {{"name": "middleware", "items": []}},
+    {{"name": "backend", "items": []}},
+    {{"name": "frontend", "items": []}},
+    {{"name": "data", "items": []}}
+  ]
+- Each item: {{"label": "...", "tech_stack": ["..."], "note": "...", "iconType": "box"}}
+- Do NOT return edges. Focus on listing components per layer.
+- Keep counts reasonable (3-8 items per layer). Include empty list if not applicable.
+- Return ONLY JSON, no prose.
+{template_context}
+User Request: "{request.user_input}"
 """
 
         system_prompt = f"""You are a professional system architecture and flowchart generation expert. Your task is to convert user descriptions into detailed diagrams.
@@ -116,6 +135,78 @@ Return ONLY raw JSON with nodes/edges/mermaid_code."""
         if hasattr(payload, "model_dump"):  # pydantic models
             return payload.model_dump()
         return json.loads(json.dumps(payload, default=str))
+
+    def _normalize_architecture_graph(self, ai_data: dict):
+        """Normalize architecture JSON (layers/items) into nodes; edges stay empty."""
+        layers = (
+            ai_data.get("layers")
+            or ai_data.get("sections")
+            or ai_data.get("architecture")
+            or []
+        )
+        nodes = []
+        edges = []
+        layer_colors = {
+            "infrastructure": "#0ea5e9",
+            "middleware": "#6366f1",
+            "backend": "#22c55e",
+            "frontend": "#f59e0b",
+            "data": "#a855f7",
+            "observability": "#14b8a6",
+        }
+
+        def add_node(layer_idx: int, item_idx: int, label: str, layer_name: str, note: str = "", icon: str = "box"):
+            x = 120 + item_idx * 240
+            y = 120 + layer_idx * 180
+            color = layer_colors.get(layer_name.lower(), "#64748b")
+            nodes.append(
+                {
+                    "id": f"{layer_name}-{item_idx}",
+                    "type": "frame",
+                    "position": {"x": x, "y": y},
+                    "data": {
+                        "label": label,
+                        "shape": "task",
+                        "iconType": icon,
+                        "color": color,
+                        "layer": layer_name,
+                        "note": note,
+                        "layerColor": color,
+                    },
+                }
+            )
+
+        if isinstance(layers, dict):
+            layers = [{"name": k, "items": v} for k, v in layers.items()]
+
+        for layer_idx, layer in enumerate(layers):
+            name = layer.get("name") if isinstance(layer, dict) else f"layer-{layer_idx}"
+            items = layer.get("items", []) if isinstance(layer, dict) else []
+            for item_idx, item in enumerate(items):
+                if isinstance(item, dict):
+                    label = item.get("label") or item.get("name") or f"{name}-{item_idx}"
+                    note = item.get("note") or ", ".join(item.get("tech_stack", []) or [])
+                    icon = item.get("iconType") or "box"
+                else:
+                    label = str(item)
+                    note = ""
+                    icon = "box"
+                add_node(layer_idx, item_idx, label, name or f"layer-{layer_idx}", note, icon)
+
+        mermaid_lines = ["# Architecture Overview"]
+        for layer in layers:
+            lname = layer.get("name") if isinstance(layer, dict) else str(layer)
+            mermaid_lines.append(f"- {lname}:")
+            items = layer.get("items", []) if isinstance(layer, dict) else []
+            for item in items:
+                if isinstance(item, dict):
+                    label = item.get("label") or item.get("name") or "component"
+                    note = item.get("note") or ", ".join(item.get("tech_stack", []) or [])
+                    mermaid_lines.append(f"  - {label} ({note})")
+                else:
+                    mermaid_lines.append(f"  - {item}")
+        mermaid_code = "\n".join(mermaid_lines)
+        return nodes, edges, mermaid_code
 
     def _ensure_positions(self, nodes: List[dict]) -> List[dict]:
         """Guarantee each node has position/data/type for React Flow."""
@@ -400,8 +491,68 @@ Return ONLY raw JSON with nodes/edges/mermaid_code."""
     decision-2 -->|否| step-leak-no
     step-leak-yes --> end-1
     step-leak-no --> end-1
-    step-threads --> step-leak-no"""
+        step-threads --> step-leak-no"""
         return {"nodes": nodes, "edges": edges, "mermaid_code": mermaid_code}
+
+    def _mock_architecture_overview(self):
+        """Mock layered architecture map with no edges."""
+        layers = [
+            ("infrastructure", ["VPC/Subnet", "Load Balancer", "Object Storage", "Monitoring"]),
+            ("middleware", ["API Gateway", "Kafka", "Redis", "Config Center"]),
+            ("backend", ["User Service", "Order Service", "Payment Worker"]),
+            ("frontend", ["Web SPA", "Mobile App", "BFF"]),
+            ("data", ["MySQL", "ClickHouse", "Data Lake"]),
+        ]
+        colors = {
+            "infrastructure": "#0ea5e9",
+            "middleware": "#6366f1",
+            "backend": "#22c55e",
+            "frontend": "#f59e0b",
+            "data": "#a855f7",
+        }
+        nodes = []
+        frame_width = 1100
+        frame_height = 180
+        for li, (layer, items) in enumerate(layers):
+            nodes.append(
+                {
+                    "id": f"{layer}-frame",
+                    "type": "layerFrame",
+                    "position": {"x": 60, "y": 100 + li * (frame_height + 20)},
+                    "data": {
+                        "label": layer.capitalize(),
+                        "color": colors.get(layer, "#64748b"),
+                        "width": frame_width,
+                        "height": frame_height,
+                    },
+                    "draggable": False,
+                }
+            )
+            for idx, label in enumerate(items):
+                layer_tag = layer.capitalize()
+                display_label = f"[{layer_tag}] {label}"
+                nodes.append(
+                    {
+                        "id": f"{layer}-{idx}",
+                        "type": "frame",
+                        "position": {"x": 120 + idx * 240, "y": 140 + li * (frame_height + 20)},
+                        "data": {
+                            "label": display_label,
+                            "shape": "task",
+                            "iconType": "box",
+                            "color": colors.get(layer, "#64748b"),
+                            "layer": layer,
+                            "note": layer_tag,
+                            "layerColor": colors.get(layer, "#64748b"),
+                        },
+                    }
+                )
+        mermaid_lines = ["# Architecture Overview (mock)"]
+        for layer, items in layers:
+            mermaid_lines.append(f"- {layer}:")
+            for label in items:
+                mermaid_lines.append(f"  - {label}")
+        return {"nodes": nodes, "edges": [], "mermaid_code": "\n".join(mermaid_lines)}
 
     async def generate_flowchart(
         self,
@@ -418,6 +569,24 @@ Return ONLY raw JSON with nodes/edges/mermaid_code."""
 
         try:
             selected_provider = provider or request.provider or "gemini"
+            # auto-detect architecture mode by template category if diagram_type not explicitly set
+            effective_diagram_type = request.diagram_type or "flow"
+            if request.template_id:
+                tpl = self.get_template(request.template_id)
+                if tpl and tpl.category == "architecture":
+                    effective_diagram_type = "architecture"
+
+            # Architecture preview: return mock immediately to show layered boxes without waiting for AI
+            if effective_diagram_type == "architecture":
+                mock_result = self._mock_architecture_overview()
+                return ChatGenerationResponse(
+                    nodes=mock_result["nodes"],
+                    edges=[],  # ensure no edges for architecture view
+                    mermaid_code=mock_result["mermaid_code"],
+                    success=True,
+                    message="Architecture mock (no AI call)",
+                )
+
             vision_service = create_vision_service(
                 provider=selected_provider,
                 api_key=api_key or request.api_key,
@@ -425,10 +594,16 @@ Return ONLY raw JSON with nodes/edges/mermaid_code."""
                 model_name=model_name or request.model_name,
             )
 
-            prompt = self._build_generation_prompt(request)
+            prompt_request = request.model_copy(update={"diagram_type": effective_diagram_type})
+            prompt = self._build_generation_prompt(prompt_request)
             ai_raw = await self._call_ai_text_generation(vision_service, prompt, selected_provider)
             ai_data = self._safe_json(ai_raw)
-            nodes, edges, mermaid_code = self._normalize_ai_graph(ai_data)
+            if effective_diagram_type == "architecture":
+                nodes, edges, mermaid_code = self._normalize_architecture_graph(ai_data)
+                # 强制架构图不返回连线
+                edges = []
+            else:
+                nodes, edges, mermaid_code = self._normalize_ai_graph(ai_data)
 
             if not nodes:
                 logger.warning(
@@ -438,7 +613,7 @@ Return ONLY raw JSON with nodes/edges/mermaid_code."""
                 raise ValueError("AI response missing nodes; please retry with clearer input.")
 
             # If AI result is too small to render a usable flow, enrich with template mock
-            if len(nodes) < 3 or len(edges) < 1:
+            if effective_diagram_type == "flow" and (len(nodes) < 3 or len(edges) < 1):
                 logger.warning(
                     "[CHAT-GEN] AI graph too small (nodes=%s, edges=%s); enriching with template fallback",
                     len(nodes),
@@ -474,7 +649,9 @@ Return ONLY raw JSON with nodes/edges/mermaid_code."""
         except Exception as e:
             logger.error(f"Flowchart generation failed, falling back to mock: {e}", exc_info=True)
 
-            if request.template_id == "microservice-architecture":
+            if effective_diagram_type == "architecture":
+                mock_result = self._mock_architecture_overview()
+            elif request.template_id == "microservice-architecture":
                 mock_result = self._mock_microservice_architecture()
             elif request.template_id == "high-concurrency-system":
                 mock_result = self._mock_high_concurrency()

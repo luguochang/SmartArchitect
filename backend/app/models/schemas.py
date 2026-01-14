@@ -254,6 +254,7 @@ class ChatGenerationRequest(BaseModel):
     user_input: str
     template_id: Optional[str] = None
     provider: Optional[Literal["gemini", "openai", "claude", "siliconflow", "custom"]] = "gemini"
+    diagram_type: Literal["flow", "architecture"] = "flow"
     api_key: Optional[str] = None
     base_url: Optional[str] = None
     model_name: Optional[str] = None
@@ -264,5 +265,33 @@ class ChatGenerationResponse(BaseModel):
     nodes: List[Node]
     edges: List[Edge]
     mermaid_code: str
+    success: bool = True
+    message: Optional[str] = None
+
+
+# ============================================================
+# Excalidraw Generation
+# ============================================================
+
+
+class ExcalidrawGenerateRequest(BaseModel):
+    prompt: str
+    style: Optional[str] = None
+    width: Optional[int] = 1200
+    height: Optional[int] = 800
+    provider: Optional[Literal["gemini", "openai", "claude", "siliconflow", "custom"]] = "siliconflow"
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+    model_name: Optional[str] = None
+
+
+class ExcalidrawScene(BaseModel):
+    elements: List[dict]
+    appState: dict = Field(default_factory=dict)
+    files: dict = Field(default_factory=dict)
+
+
+class ExcalidrawGenerateResponse(BaseModel):
+    scene: ExcalidrawScene
     success: bool = True
     message: Optional[str] = None

@@ -63,6 +63,22 @@
       "category": "architecture",
       "example_input": "生成秒杀系统架构：客户端 → API网关（限流）→ Redis缓存（库存预扣）→ Kafka队列（削峰）→ 订单服务 → MySQL数据库 → 对象存储",
       "icon": "Zap"
+    },
+    {
+      "id": "architecture-overview",
+      "name": "技术架构总览",
+      "description": "列出基础设施、中间件、后端、前端、数据层组件的清单式结构",
+      "category": "architecture",
+      "example_input": "描述电商系统的技术架构，包括云基础、网络、中间件、后端微服务、前端 SPA/APP、数据库和数据流",
+      "icon": "Layers"
+    },
+    {
+      "id": "observability-stack",
+      "name": "可观测性架构",
+      "description": "打包日志、链路、监控、告警等组件的完整方案",
+      "category": "architecture",
+      "example_input": "编写一套域名与常用服务的可观测性清单，包括 OpenTelemetry agent, Kafka 转换，ClickHouse 存储，Grafana 展示，Alertmanager 告警",
+      "icon": "Activity"
     }
   ]
 }

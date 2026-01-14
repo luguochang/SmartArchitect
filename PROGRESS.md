@@ -390,13 +390,24 @@ backend/
 **下次继续点**：测试 BPMN 节点 → 更新 Mock 数据 → Group B 节点重构
 ---
 
-## ����ʵ�֣�2026-01-xx��
-- BPMN �ڵ��Ӿ����룺�¼�/���������ͼ����У�ȱʡ iconType ���� iconLabel/����ĸ��
-- AI Actions (Prompter)���� API Key ʱִ���߱��� mock�����������ˡ�
-- Chat Generator mock��ʹ�� BPMN ��״��start-event/end-event/task�������� iconType/color��
-- ����/����ʽ��glow edges + ��ͷ��������񡢲����ڵ㡣
 
-## ��һ���ƻ�
-- ����ϵͳ��չ���� rontend/lib/themes/types.ts/presets.ts/ThemeContext.tsx Ϊ cache/queue/storage/client ���ɫ���� CSS ������
-- BPMN �ڵ���֤��ˢ�� Sidebar�����ӽڵ㡢�����л����༭/���ߵ��ֶ����򲹳���ԡ�
-- ��ѡ�������ߣ�Phase 6 �ݰ�������� BPMN �ڵ㣨����/�������صȣ���
+
+## 当前可继续的计划（已写入“下一步计划”）：
+
+  1. 主题系统扩展：为 cache/queue/storage/client 在 frontend/lib/themes/types.ts / frontend/lib/themes/presets.ts / frontend/lib/themes/
+     ThemeContext.tsx 补充色板和 CSS 变量。
+  2. BPMN 节点验证：Sidebar 添加、形状/颜色/主题切换、编辑/连线等手动检查或测试。
+  3. 可选：条件边（Phase 6 草案）与更多 BPMN 节点（并行/包容网关等）
+# 最新进展快照（2026-01-14 17:00）
+
+- 新增 Excalidraw 生成接口 `/api/excalidraw/generate`，前端支持 Flow / Excalidraw 切换，Excalidraw 模式隐藏 Sidebar。
+- 新增 Frame/Layer 框节点，可双击改名，用于分层包裹。
+- 问题：SiliconFlow 默认 `Qwen3-VL` 返回非标准 JSON（缺逗号/冒号）导致 500 并回落 mock；尝试自动退回 `Qwen2.5-14B` 更稳定但尚未完整验证。
+- 问题：流式体验未打通，React Flow / Excalidraw 的 SSE 状态与聊天框未统一，Excalidraw 模式切换时 UI 有错位/丢失。
+- 已提高后端超时至 180s，并对 SiliconFlow 使用 `response_format=json_object`，但仍需更强 JSON 清洗/兜底。
+
+### 下次优先事项
+1) 先用 `Qwen/Qwen2.5-14B-Instruct` 自测 `/api/excalidraw/generate` 确保不回落 mock，并记录日志。
+2) 前端明确传递 canvasMode/model，后端识别模式；补充 loading/error 提示，修复 Excalidraw 模式布局/聊天框缺失。
+3) 对 SiliconFlow 响应增加健壮清洗（去尾逗号、补键）或加强提示词，必要时后处理修复 JSON。
+4) 补最小化集成测试（脚本或单测）覆盖 Excalidraw 生成成功路径。

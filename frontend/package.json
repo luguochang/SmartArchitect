@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@excalidraw/excalidraw": "^0.18.0",
     "@monaco-editor/react": "^4.6.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

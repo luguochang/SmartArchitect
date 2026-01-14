@@ -23,9 +23,12 @@ import { QueueNode } from "./nodes/QueueNode";
 import { StorageNode } from "./nodes/StorageNode";
 import { ClientNode } from "./nodes/ClientNode";
 import { DefaultNode } from "./nodes/DefaultNode";
+import { FrameNode } from "./nodes/FrameNode";
+import { LayerFrameNode } from "./nodes/LayerFrameNode";
 import { GlowEdge } from "./edges/GlowEdge";
 import ExportMenu from "./ExportMenu";
 import { Network, Sparkles } from "lucide-react";
+import ExcalidrawBoard from "./ExcalidrawBoard";
 
 function ArchitectCanvasInner() {
   const { nodes, edges, onNodesChange, onEdgesChange, setEdges } = useArchitectStore();
@@ -43,6 +46,8 @@ function ArchitectCanvasInner() {
       queue: QueueNode,
       storage: StorageNode,
       client: ClientNode,
+      frame: FrameNode,
+      layerFrame: LayerFrameNode,
     }),
     []
   );
@@ -144,6 +149,16 @@ function ArchitectCanvasInner() {
 
 // 导出包装后的组件
 export function ArchitectCanvas() {
+  const { canvasMode } = useArchitectStore();
+
+  if (canvasMode === "excalidraw") {
+    return (
+      <div className="h-full w-full bg-slate-50 dark:bg-slate-900">
+        <ExcalidrawBoard />
+      </div>
+    );
+  }
+
   return (
     <ReactFlowProvider>
       <ArchitectCanvasInner />

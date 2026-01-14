@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { X, MessageSquare, Loader2, Send } from "lucide-react";
-import { useArchitectStore } from "@/lib/store/useArchitectStore";
+import { useArchitectStore, DiagramType } from "@/lib/store/useArchitectStore";
 import { toast } from "sonner";
 
 interface ChatGeneratorModalProps {
@@ -34,10 +34,14 @@ export default function ChatGeneratorModal({ isOpen, onClose }: ChatGeneratorMod
     isGeneratingFlowchart,
     flowTemplates,
     loadFlowTemplates,
+    canvasMode,
+    setCanvasMode,
+    generateExcalidrawScene,
   } = useArchitectStore();
 
   const [userInput, setUserInput] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
+  const [diagramType, setDiagramType] = useState<DiagramType>("flow");
 
   useEffect(() => {
     if (isOpen && flowTemplates.length === 0) {
@@ -48,6 +52,7 @@ export default function ChatGeneratorModal({ isOpen, onClose }: ChatGeneratorMod
   const handleTemplateSelect = (template: FlowTemplate) => {
     setSelectedTemplate(template.id);
     setUserInput(template.example_input);
+    setDiagramType(template.category === "architecture" ? "architecture" : "flow");
   };
 
   const handleGenerate = async () => {
@@ -62,13 +67,18 @@ export default function ChatGeneratorModal({ isOpen, onClose }: ChatGeneratorMod
     }
 
     try {
-      await generateFlowchart(userInput, selectedTemplate || undefined);
-      toast.success("Flowchart generated successfully!");
+      if (canvasMode === "excalidraw") {
+        await generateExcalidrawScene(userInput);
+        toast.success("Excalidraw scene generated");
+      } else {
+        await generateFlowchart(userInput, selectedTemplate || undefined, diagramType);
+        toast.success("Flowchart generated successfully!");
+      }
       onClose();
       setUserInput("");
       setSelectedTemplate(null);
     } catch (error) {
-      toast.error("Failed to generate flowchart");
+      toast.error("Failed to generate");
     }
   };
 
@@ -92,13 +102,29 @@ export default function ChatGeneratorModal({ isOpen, onClose }: ChatGeneratorMod
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
-            disabled={isGeneratingFlowchart}
-          >
-            <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
-          </button>
+          <div className="flex items-center gap-3">
+            <div className="flex rounded-full border border-gray-200 bg-white text-xs dark:border-slate-700 dark:bg-slate-800">
+              <button
+                onClick={() => setCanvasMode("reactflow")}
+                className={`px-3 py-1 rounded-l-full ${canvasMode === "reactflow" ? "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-200" : "text-gray-600 dark:text-gray-300"}`}
+              >
+                Flow Canvas
+              </button>
+              <button
+                onClick={() => setCanvasMode("excalidraw")}
+                className={`px-3 py-1 rounded-r-full ${canvasMode === "excalidraw" ? "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-200" : "text-gray-600 dark:text-gray-300"}`}
+              >
+                Excalidraw
+              </button>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+              disabled={isGeneratingFlowchart}
+            >
+              <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
@@ -161,9 +187,11 @@ export default function ChatGeneratorModal({ isOpen, onClose }: ChatGeneratorMod
         {/* Footer */}
         <div className="flex items-center justify-between p-6 border-t border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900">
           <div className="text-sm text-gray-500 dark:text-gray-400">
-            {userInput.trim()
-              ? "Click Generate to create flowchart"
-              : "Select a template or describe your own process"}
+            {canvasMode === "excalidraw"
+              ? "Generate directly to Excalidraw canvas"
+              : userInput.trim()
+                ? "Click Generate to create flowchart"
+                : "Select a template or describe your own process"}
           </div>
           <div className="flex gap-3">
             <button

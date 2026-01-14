@@ -54,7 +54,7 @@ class AIVisionService:
         default_model = (
             "claude-3-5-sonnet-20241022"
             if provider == "claude"
-            else "Pro/Qwen/Qwen2.5-7B-Instruct"
+            else "Qwen/Qwen3-VL-32B-Instruct"
             if provider == "siliconflow"
             else "gpt-4o-mini"
         )
@@ -477,30 +477,44 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
             raise
 
     def _extract_json_from_response(self, text: str) -> Dict[str, Any]:
-        """从 AI 响应中提取 JSON（处理 markdown 代码块）"""
+        """?AI?????JSON???markdown????"""
+
+        def _sanitize_json(raw: str) -> str:
+            cleaned = re.sub(r"```(?:json)?", "", raw)
+            start = cleaned.find("{")
+            end = cleaned.rfind("}")
+            if start != -1 and end != -1 and end > start:
+                cleaned = cleaned[start:end + 1]
+            cleaned = re.sub(r",\s*([}\]])", r"\1", cleaned)
+            return cleaned
+
         try:
-            # 方法 1: 尝试提取 JSON 代码块
+            # ?? 1: ???? JSON ???
             json_match = re.search(r'```json\s*(\{.*?\})\s*```', text, re.DOTALL)
             if json_match:
                 return json.loads(json_match.group(1))
 
-            # 方法 2: 尝试提取普通代码块
+            # ?? 2: ?????????
             code_match = re.search(r'```\s*(\{.*?\})\s*```', text, re.DOTALL)
             if code_match:
                 return json.loads(code_match.group(1))
 
-            # 方法 3: 直接查找 JSON 对象
+            # ?? 3: ???? JSON ??
             json_match = re.search(r'\{.*\}', text, re.DOTALL)
             if json_match:
                 return json.loads(json_match.group(0))
 
-            # 方法 4: 直接解析（假设整个文本就是 JSON）
+            # ?? 4: ?????????????JSON?
             return json.loads(text)
 
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse JSON: {e}")
-            logger.error(f"Raw response: {text[:500]}")
-            raise ValueError(f"Invalid JSON response from AI: {str(e)}")
+            try:
+                sanitized = _sanitize_json(text)
+                return json.loads(sanitized)
+            except Exception:
+                logger.error(f"Failed to parse JSON: {e}")
+                logger.error(f"Raw response: {text[:500]}")
+                raise ValueError(f"Invalid JSON response from AI: {str(e)}")
 
     def _build_response(self, result_json: Dict[str, Any]) -> ImageAnalysisResponse:
         """构建响应对象"""
@@ -639,22 +653,69 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
         try:
             logger.info("[SILICONFLOW TEXT] Starting text-only analysis")
 
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=4096,
-                temperature=0.2
+            # SiliconFlow SDK 调用是同步的，包一层线程 + 超时，避免请求长时间挂起
+            response = await asyncio.wait_for(
+                asyncio.to_thread(
+                    self.client.chat.completions.create,
+                    model=self.model_name,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=1000,
+                    temperature=0.3,
+                    top_p=0.7,
+                    frequency_penalty=0.5,
+                    stream=False,
+                    # 强制返回纯 JSON 对象，避免模型输出额外说明文字
+                    response_format={"type": "json_object"},
+                ),
+                timeout=self.request_timeout,
             )
 
-            result_json = self._extract_json_from_response(
-                response.choices[0].message.content
-            )
+            # 当 response_format 为 json_object 时，content 应已是 JSON 对象
+            content = response.choices[0].message.content
+            if isinstance(content, dict):
+                result_json = content
+            else:
+                result_json = self._extract_json_from_response(content)
 
             logger.info("[SILICONFLOW TEXT] JSON extracted successfully")
             return result_json
 
         except Exception as e:
             logger.error(f"SiliconFlow text analysis failed: {e}", exc_info=True)
+            raise
+
+    async def _analyze_with_siliconflow_text_stream(self, prompt: str) -> str:
+        """SiliconFlow streaming text -> concatenated text output."""
+        try:
+            logger.info("[SILICONFLOW STREAM] Starting text stream")
+
+            def _stream():
+                stream = self.client.chat.completions.create(
+                    model=self.model_name,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=1200,
+                    temperature=0.3,
+                    top_p=0.7,
+                    frequency_penalty=0.5,
+                    stream=True,
+                    response_format={"type": "text"},
+                )
+                text_acc = []
+                for chunk in stream:
+                    delta = chunk.choices[0].delta.content
+                    if not delta:
+                        continue
+                    piece = "".join(delta)
+                    text_acc.append(piece)
+                return "".join(text_acc)
+
+            full_text = await asyncio.wait_for(asyncio.to_thread(_stream), timeout=self.request_timeout)
+            logger.info("[SILICONFLOW STREAM] Collected length=%s", len(full_text))
+            if not full_text.strip():
+                raise ValueError("Empty stream output")
+            return full_text
+        except Exception as e:
+            logger.error(f"SiliconFlow streaming failed: {e}", exc_info=True)
             raise
 
     async def _analyze_with_custom_text(self, prompt: str) -> dict:

@@ -5,8 +5,11 @@ import { AiControlPanel } from "@/components/AiControlPanel";
 import { Sidebar } from "@/components/Sidebar";
 import ThemeSwitcher from "@/components/ThemeSwitcher";
 import { Sparkles } from "lucide-react";
+import { useArchitectStore } from "@/lib/store/useArchitectStore";
 
 export default function Home() {
+  const { canvasMode, setCanvasMode } = useArchitectStore();
+
   return (
     <div className="flex h-screen w-screen flex-col bg-slate-50 dark:bg-slate-950">
       {/* 顶部导航栏 */}
@@ -16,15 +19,28 @@ export default function Home() {
           <h1 className="text-xl font-bold text-slate-900 dark:text-white">SmartArchitect AI</h1>
         </div>
         <div className="flex items-center gap-4">
-          <span className="text-sm text-slate-500">Phase 5: BPMN + AI Actions</span>
+          <div className="flex rounded-full border border-slate-200 bg-white text-xs dark:border-slate-800 dark:bg-slate-800">
+            <button
+              onClick={() => setCanvasMode("reactflow")}
+              className={`px-3 py-1 rounded-l-full ${canvasMode === "reactflow" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200" : "text-slate-600 dark:text-slate-300"}`}
+            >
+              Flow Canvas
+            </button>
+            <button
+              onClick={() => setCanvasMode("excalidraw")}
+              className={`px-3 py-1 rounded-r-full ${canvasMode === "excalidraw" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200" : "text-slate-600 dark:text-slate-300"}`}
+            >
+              Excalidraw
+            </button>
+          </div>
           <ThemeSwitcher />
         </div>
       </header>
 
       {/* 主内容区域 */}
       <div className="flex flex-1 overflow-hidden">
-        {/* 左侧工具栏 */}
-        <Sidebar />
+        {/* 左侧工具栏 - Excalidraw 模式隐藏 */}
+        {canvasMode === "reactflow" ? <Sidebar /> : <div className="w-[72px] md:w-[120px]" />}
 
         {/* 中间画布 */}
         <div className="flex flex-1 flex-col">

@@ -64,6 +64,13 @@
 
 ## 🔴 HIGH PRIORITY - Immediate Tasks
 
+### A. Excalidraw + Streaming Stabilization (NEW)
+- [ ] Fix Excalidraw LLM generation 500s: SiliconFlow responses often invalid JSON; default to `Qwen/Qwen2.5-14B-Instruct` or other stable model and harden JSON sanitization.
+- [ ] Verify `/api/excalidraw/generate` end-to-end (no mock fallback) with real key/model; add unit-style smoke test.
+- [ ] Wire React Flow / Excalidraw streaming consistently (SSE) so both modes show live tokens/status without UI regressions.
+- [ ] Frontend: ensure model/mode flags are sent so backend knows Flow vs Excalidraw; add loading/error surface instead of silent mock.
+- [ ] Update prompts/docs to point to the prompt location for Excalidraw generation and streaming usage.
+
 ### 1. Test BPMN Nodes (JUST IMPLEMENTED)
 - [ ] Refresh browser and verify BPMN category visible
 - [ ] Add Start Event (green, thin border circle, 50x50px)
