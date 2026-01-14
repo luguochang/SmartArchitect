@@ -37,6 +37,7 @@ export default function ChatGeneratorModal({ isOpen, onClose }: ChatGeneratorMod
     canvasMode,
     setCanvasMode,
     generateExcalidrawScene,
+    generateExcalidrawSceneStream,
   } = useArchitectStore();
 
   const [userInput, setUserInput] = useState("");
@@ -68,7 +69,7 @@ export default function ChatGeneratorModal({ isOpen, onClose }: ChatGeneratorMod
 
     try {
       if (canvasMode === "excalidraw") {
-        await generateExcalidrawScene(userInput);
+        await generateExcalidrawSceneStream(userInput);
         toast.success("Excalidraw scene generated");
       } else {
         await generateFlowchart(userInput, selectedTemplate || undefined, diagramType);

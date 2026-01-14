@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useArchitectStore } from "@/lib/store/useArchitectStore";
 import { NodeShape, SHAPE_CONFIG } from "@/lib/utils/nodeShapes";
+import { SvgShape } from "./SvgShapes";
 
 const ICON_MAP: Record<string, any> = {
   "play-circle": PlayCircle,
@@ -87,21 +88,25 @@ export const DefaultNode = memo(({ id, data }: NodeProps) => {
   const renderCircularHandles = (color: string) => (
     <>
       <Handle
-        type="target"
+        id="top"
+        type="source"
         position={Position.Top}
         style={{ backgroundColor: color, top: 0, left: "50%", transform: "translate(-50%, -50%)" }}
       />
       <Handle
+        id="right"
         type="source"
         position={Position.Right}
         style={{ backgroundColor: color, top: "50%", right: 0, transform: "translate(50%, -50%)" }}
       />
       <Handle
+        id="bottom"
         type="source"
         position={Position.Bottom}
         style={{ backgroundColor: color, bottom: 0, left: "50%", transform: "translate(-50%, 50%)" }}
       />
       <Handle
+        id="left"
         type="source"
         position={Position.Left}
         style={{ backgroundColor: color, top: "50%", left: 0, transform: "translate(-50%, -50%)" }}
@@ -201,8 +206,10 @@ export const DefaultNode = memo(({ id, data }: NodeProps) => {
           padding: "12px 16px 12px 22px",
         }}
       >
-        <Handle type="target" position={Position.Left} style={{ backgroundColor: borderColor }} />
-        <Handle type="source" position={Position.Right} style={{ backgroundColor: borderColor }} />
+        <Handle id="top" type="source" position={Position.Top} style={{ backgroundColor: borderColor }} />
+        <Handle id="left" type="source" position={Position.Left} style={{ backgroundColor: borderColor }} />
+        <Handle id="right" type="source" position={Position.Right} style={{ backgroundColor: borderColor }} />
+        <Handle id="bottom" type="source" position={Position.Bottom} style={{ backgroundColor: borderColor }} />
 
         <span
           className="absolute left-3 top-1/2 -translate-y-1/2 h-10 w-[6px] rounded-full"
@@ -270,7 +277,7 @@ export const DefaultNode = memo(({ id, data }: NodeProps) => {
   if (shape === "circle") {
     return (
       <div
-        className={`${shapeConfig.className} border-2 shadow-lg`}
+        className={`${shapeConfig.className} shadow-lg`}
         style={{
           width: shapeConfig.width,
           height: shapeConfig.height,
@@ -278,6 +285,8 @@ export const DefaultNode = memo(({ id, data }: NodeProps) => {
           alignItems: "center",
           justifyContent: "center",
           borderColor: borderColor,
+          borderWidth: shapeConfig.borderWidth || "2px",
+          borderStyle: "solid",
           backgroundColor: "var(--default-background, #ffffff)",
           boxShadow: SHADOW_SOFT,
         }}
@@ -322,17 +331,150 @@ export const DefaultNode = memo(({ id, data }: NodeProps) => {
     );
   }
 
-  // Rectangle fallback
+  // Fallback rendering with SVG support
+  const width = parseInt(shapeConfig.width || "140px");
+  const height = parseInt(shapeConfig.height || "80px");
+
+  // SVG-based shapes (diamond, hexagon, star, etc.)
+  if (shapeConfig.renderMethod === "svg") {
+    return (
+      <div
+        className="svg-shape-node"
+        style={{
+          position: "relative",
+          width: shapeConfig.width,
+          height: shapeConfig.height,
+          backgroundColor: "transparent",
+          border: "none",
+          padding: 0,
+          overflow: "visible",
+        }}
+      >
+        {/* SVG shape background */}
+        <SvgShape
+          shape={shape}
+          width={width}
+          height={height}
+          borderColor={borderColor}
+          backgroundColor="var(--default-background, #ffffff)"
+          strokeWidth={2}
+        />
+
+        {/* Handles - 四个方向都可以连接 */}
+        <Handle
+          id="top"
+          type="source"
+          position={Position.Top}
+          style={{
+            backgroundColor: borderColor,
+            top: 0,
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+          }}
+        />
+        <Handle
+          id="left"
+          type="source"
+          position={Position.Left}
+          style={{
+            backgroundColor: borderColor,
+            top: "50%",
+            left: 0,
+            transform: "translate(-50%, -50%)",
+          }}
+        />
+        <Handle
+          id="right"
+          type="source"
+          position={Position.Right}
+          style={{
+            backgroundColor: borderColor,
+            top: "50%",
+            right: 0,
+            transform: "translate(50%, -50%)",
+          }}
+        />
+        <Handle
+          id="bottom"
+          type="source"
+          position={Position.Bottom}
+          style={{
+            backgroundColor: borderColor,
+            bottom: 0,
+            left: "50%",
+            transform: "translate(-50%, 50%)",
+          }}
+        />
+
+        {/* Content overlay */}
+        <div
+          className="flex flex-col items-center justify-center text-center px-2"
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            pointerEvents: "auto",
+          }}
+        >
+          {renderIcon(20)}
+          {isEditing ? (
+            <input
+              type="text"
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              onBlur={handleBlur}
+              onKeyDown={handleKeyDown}
+              autoFocus
+              className="nodrag font-semibold bg-transparent border-b outline-none text-center mt-1"
+              style={{
+                color: "var(--default-text)",
+                borderColor: "var(--default-border)",
+                fontSize: "11px",
+                fontWeight: "var(--font-weight-bold)",
+                width: `${Math.min(width - 20, 100)}px`,
+              }}
+            />
+          ) : (
+            <div
+              onDoubleClick={handleDoubleClick}
+              className="font-semibold cursor-text mt-1"
+              style={{
+                color: "var(--default-text)",
+                fontSize: "11px",
+                fontWeight: "var(--font-weight-bold)",
+                lineHeight: "1.2",
+                maxWidth: `${width - 20}px`,
+                wordBreak: "break-word",
+              }}
+            >
+              {data.label}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // CSS-based shapes (rectangle, circle, rounded rectangle, etc.)
   return (
     <div
-      className={`${shapeConfig.className} border-2 ${shapeConfig.padding} shadow-lg`}
+      className={`${shapeConfig.className} ${shapeConfig.padding || "px-4 py-3"} shadow-lg`}
       style={{
         borderColor: borderColor,
+        borderWidth: shapeConfig.borderWidth || "2px",
+        borderStyle: "solid",
         backgroundColor: "var(--default-background, #ffffff)",
         boxShadow: SHADOW_SOFT,
+        width: shapeConfig.width,
+        height: shapeConfig.height,
       }}
     >
-      <Handle type="target" position={Position.Left} style={{ backgroundColor: borderColor }} />
+      <Handle id="top" type="source" position={Position.Top} style={{ backgroundColor: borderColor }} />
+      <Handle id="left" type="source" position={Position.Left} style={{ backgroundColor: borderColor }} />
+      <Handle id="right" type="source" position={Position.Right} style={{ backgroundColor: borderColor }} />
+      <Handle id="bottom" type="source" position={Position.Bottom} style={{ backgroundColor: borderColor }} />
 
       <div className="flex items-center gap-2">
         {renderIcon(20)}
@@ -375,12 +517,10 @@ export const DefaultNode = memo(({ id, data }: NodeProps) => {
               fontSize: "var(--font-size-label)",
             }}
           >
-            Step
+            {shape}
           </div>
         </div>
       </div>
-
-      <Handle type="source" position={Position.Right} style={{ backgroundColor: borderColor }} />
     </div>
   );
 });

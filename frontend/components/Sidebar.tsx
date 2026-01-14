@@ -22,6 +22,29 @@ import {
   StopCircle,
   AlertCircle,
   CheckCircle,
+  Circle,
+  Square,
+  Diamond,
+  Hexagon,
+  Triangle,
+  Star,
+  Cloud,
+  FileCode,
+  Octagon,
+  Pentagon,
+  User,
+  Users,
+  Smartphone,
+  Server,
+  Network,
+  Container,
+  Folder,
+  FolderOpen,
+  Package,
+  Cpu,
+  Activity,
+  Wifi,
+  Lock,
 } from "lucide-react";
 import { useArchitectStore } from "@/lib/store/useArchitectStore";
 import { ModelConfigModal } from "./ModelConfigModal";
@@ -37,7 +60,8 @@ interface NodeType {
   iconType?: string;  // Icon identifier for canvas rendering
   label: string;
   color: string;
-  shape?: "rectangle" | "circle" | "diamond" | "start-event" | "end-event" | "intermediate-event" | "task";
+  shape?: string;
+  description?: string;
 }
 
 interface NodeCategory {
@@ -55,38 +79,109 @@ export function Sidebar() {
   const [isChatGeneratorOpen, setIsChatGeneratorOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
-    new Set(["architecture"])
+    new Set(["basic", "flowchart"])
   );
 
   const { nodes, setNodes } = useArchitectStore();
 
-  // 节点分类配置
+  // 节点分类配置 - 参考 draw.io 的节点库
   const nodeCategories: NodeCategory[] = [
     {
-      id: "architecture",
-      name: "架构节点",
+      id: "basic",
+      name: "基础图形",
       defaultExpanded: true,
       nodes: [
-        { type: "client", icon: Monitor, label: "Client", color: "text-cyan-600" },
-        { type: "gateway", icon: Shield, label: "Gateway", color: "text-orange-600" },
-        { type: "api", icon: Globe, label: "API", color: "text-blue-600" },
-        { type: "service", icon: Box, label: "Service", color: "text-purple-600" },
-        { type: "cache", icon: Zap, label: "Cache", color: "text-yellow-600" },
-        { type: "queue", icon: Layers, label: "Queue", color: "text-indigo-600" },
-        { type: "database", icon: Database, label: "Database", color: "text-green-600" },
-        { type: "storage", icon: HardDrive, label: "Storage", color: "text-gray-600" },
+        { type: "rectangle", icon: Square, label: "矩形", color: "text-blue-600", shape: "rectangle", description: "基础矩形" },
+        { type: "rounded-rectangle", icon: Box, label: "圆角矩形", color: "text-blue-500", shape: "rounded-rectangle", description: "圆角矩形" },
+        { type: "circle", icon: Circle, label: "圆形", color: "text-green-600", shape: "circle", description: "圆形/椭圆" },
+        { type: "diamond", icon: Diamond, label: "菱形", color: "text-yellow-600", shape: "diamond", description: "决策/判断" },
+        { type: "hexagon", icon: Hexagon, label: "六边形", color: "text-purple-600", shape: "hexagon", description: "六边形" },
+        { type: "triangle", icon: Triangle, label: "三角形", color: "text-orange-600", shape: "triangle", description: "三角形" },
+        { type: "parallelogram", icon: Square, label: "平行四边形", color: "text-cyan-600", shape: "parallelogram", description: "数据/输入输出" },
+        { type: "trapezoid", icon: Square, label: "梯形", color: "text-indigo-600", shape: "trapezoid", description: "手动操作" },
+        { type: "star", icon: Star, label: "星形", color: "text-yellow-500", shape: "star", description: "星形" },
+        { type: "cloud", icon: Cloud, label: "云形", color: "text-sky-600", shape: "cloud", description: "云/注释" },
+        { type: "cylinder", icon: Database, label: "圆柱", color: "text-teal-600", shape: "cylinder", description: "数据库/存储" },
+        { type: "document", icon: FileText, label: "文档", color: "text-slate-600", shape: "document", description: "文档/报告" },
+      ],
+    },
+    {
+      id: "flowchart",
+      name: "流程图",
+      defaultExpanded: true,
+      nodes: [
+        { type: "start", icon: PlayCircle, label: "开始", color: "text-green-600", shape: "start", description: "流程开始" },
+        { type: "end", icon: StopCircle, label: "结束", color: "text-red-600", shape: "end", description: "流程结束" },
+        { type: "process", icon: Box, label: "过程", color: "text-blue-600", shape: "process", description: "处理步骤" },
+        { type: "decision", icon: Diamond, label: "判断", color: "text-yellow-600", shape: "decision", description: "条件判断" },
+        { type: "data", icon: Square, label: "数据", color: "text-cyan-600", shape: "data", description: "数据/IO" },
+        { type: "subprocess", icon: Box, label: "子流程", color: "text-purple-600", shape: "subprocess", description: "预定义过程" },
+        { type: "delay", icon: AlertCircle, label: "延迟", color: "text-orange-600", shape: "delay", description: "延迟/等待" },
+        { type: "merge", icon: Layers, label: "合并", color: "text-indigo-600", shape: "merge", description: "合并" },
+        { type: "manual-input", icon: Square, label: "手动输入", color: "text-slate-600", shape: "manual-input", description: "手动输入" },
+        { type: "manual-operation", icon: Square, label: "手动操作", color: "text-slate-700", shape: "manual-operation", description: "手动操作" },
+        { type: "preparation", icon: Hexagon, label: "准备", color: "text-teal-600", shape: "preparation", description: "准备/初始化" },
+        { type: "or-gate", icon: Octagon, label: "或", color: "text-amber-600", shape: "or", description: "逻辑或" },
+      ],
+    },
+    {
+      id: "container",
+      name: "容器/分组",
+      defaultExpanded: false,
+      nodes: [
+        { type: "container", icon: Container, label: "容器", color: "text-slate-600", shape: "container", description: "容器/组" },
+        { type: "frame", icon: Square, label: "框架", color: "text-gray-600", shape: "frame", description: "分组框架" },
+        { type: "swimlane-h", icon: Layers, label: "泳道(横)", color: "text-blue-500", shape: "swimlane-horizontal", description: "水平泳道" },
+        { type: "swimlane-v", icon: Layers, label: "泳道(竖)", color: "text-blue-600", shape: "swimlane-vertical", description: "垂直泳道" },
+        { type: "note", icon: FileText, label: "注释", color: "text-yellow-500", shape: "note", description: "注释框" },
+        { type: "folder", icon: Folder, label: "文件夹", color: "text-amber-600", shape: "folder", description: "文件夹" },
+        { type: "package", icon: Package, label: "包", color: "text-purple-500", shape: "package", description: "包/模块" },
+      ],
+    },
+    {
+      id: "architecture",
+      name: "架构组件",
+      defaultExpanded: false,
+      nodes: [
+        { type: "client", icon: Monitor, label: "客户端", color: "text-cyan-600", description: "客户端" },
+        { type: "server", icon: Server, label: "服务器", color: "text-indigo-600", description: "服务器" },
+        { type: "gateway", icon: Shield, label: "网关", color: "text-orange-600", description: "API网关" },
+        { type: "api", icon: Globe, label: "API", color: "text-blue-600", description: "API服务" },
+        { type: "service", icon: Box, label: "服务", color: "text-purple-600", description: "微服务" },
+        { type: "database", icon: Database, label: "数据库", color: "text-green-600", description: "数据库" },
+        { type: "cache", icon: Zap, label: "缓存", color: "text-yellow-600", description: "缓存" },
+        { type: "queue", icon: Layers, label: "队列", color: "text-indigo-600", description: "消息队列" },
+        { type: "storage", icon: HardDrive, label: "存储", color: "text-gray-600", description: "文件存储" },
+        { type: "load-balancer", icon: Activity, label: "负载均衡", color: "text-emerald-600", description: "负载均衡器" },
+        { type: "firewall", icon: Lock, label: "防火墙", color: "text-red-600", description: "防火墙" },
+        { type: "cdn", icon: Network, label: "CDN", color: "text-sky-600", description: "CDN" },
+      ],
+    },
+    {
+      id: "user-device",
+      name: "用户/设备",
+      defaultExpanded: false,
+      nodes: [
+        { type: "user", icon: User, label: "用户", color: "text-blue-600", shape: "user", description: "单个用户" },
+        { type: "users", icon: Users, label: "用户组", color: "text-blue-700", shape: "users", description: "用户组" },
+        { type: "mobile", icon: Smartphone, label: "手机", color: "text-purple-600", shape: "mobile", description: "移动设备" },
+        { type: "desktop", icon: Monitor, label: "桌面", color: "text-slate-600", shape: "desktop", description: "桌面设备" },
+        { type: "tablet", icon: Monitor, label: "平板", color: "text-indigo-600", shape: "tablet", description: "平板设备" },
+        { type: "iot", icon: Cpu, label: "IoT", color: "text-green-600", shape: "iot", description: "物联网设备" },
+        { type: "network-device", icon: Wifi, label: "网络设备", color: "text-cyan-600", shape: "network", description: "网络设备" },
       ],
     },
     {
       id: "bpmn",
-      name: "BPMN 节点",
+      name: "BPMN",
       defaultExpanded: false,
       nodes: [
-        { type: "default", icon: PlayCircle, iconType: "play-circle", label: "Start", color: "text-green-600", shape: "start-event" },
-        { type: "default", icon: StopCircle, iconType: "stop-circle", label: "End", color: "text-red-600", shape: "end-event" },
-        { type: "default", icon: Box, iconType: "box", label: "Task", color: "text-blue-600", shape: "task" },
-        { type: "gateway", icon: Shield, label: "Gateway", color: "text-orange-600", shape: "diamond" },
-        { type: "default", icon: AlertCircle, iconType: "alert-circle", label: "Event", color: "text-yellow-600", shape: "intermediate-event" },
+        { type: "bpmn-start", icon: PlayCircle, label: "开始事件", color: "text-green-600", shape: "bpmn-start-event", description: "BPMN开始" },
+        { type: "bpmn-end", icon: StopCircle, label: "结束事件", color: "text-red-600", shape: "bpmn-end-event", description: "BPMN结束" },
+        { type: "bpmn-task", icon: Box, label: "任务", color: "text-blue-600", shape: "bpmn-task", description: "BPMN任务" },
+        { type: "bpmn-gateway", icon: Diamond, label: "网关", color: "text-orange-600", shape: "bpmn-gateway", description: "BPMN网关" },
+        { type: "bpmn-event", icon: AlertCircle, label: "中间事件", color: "text-yellow-600", shape: "bpmn-intermediate-event", description: "BPMN中间事件" },
+        { type: "bpmn-subprocess", icon: Box, label: "子流程", color: "text-purple-600", shape: "bpmn-subprocess", description: "BPMN子流程" },
       ],
     },
   ];
@@ -110,7 +205,7 @@ export function Sidebar() {
 
   const handleAddNode = (
     type: string,
-    shape?: "rectangle" | "circle" | "diamond" | "start-event" | "end-event" | "intermediate-event" | "task",
+    shape?: string,
     iconType?: string,
     color?: string
   ) => {
@@ -120,16 +215,26 @@ export function Sidebar() {
       "text-red-600": "#dc2626",
       "text-orange-600": "#ea580c",
       "text-blue-600": "#2563eb",
+      "text-blue-500": "#3b82f6",
+      "text-blue-700": "#1d4ed8",
       "text-yellow-600": "#ca8a04",
+      "text-yellow-500": "#eab308",
       "text-cyan-600": "#0891b2",
       "text-purple-600": "#9333ea",
+      "text-purple-500": "#a855f7",
       "text-indigo-600": "#4f46e5",
       "text-gray-600": "#4b5563",
+      "text-slate-600": "#475569",
+      "text-slate-700": "#334155",
+      "text-teal-600": "#0d9488",
+      "text-sky-600": "#0284c7",
+      "text-amber-600": "#d97706",
+      "text-emerald-600": "#059669",
     };
 
     const newNode = {
       id: `node-${Date.now()}`,
-      type,
+      type: type === "default" ? "default" : type,
       position: { x: Math.random() * 400 + 100, y: Math.random() * 400 + 100 },
       data: {
         label: `New ${type}`,
@@ -214,7 +319,7 @@ export function Sidebar() {
                 {/* 节点网格 */}
                 {isExpanded && !isEmpty && (
                   <div className="mt-2 grid grid-cols-3 gap-2">
-                    {category.nodes.map(({ type, icon: Icon, iconType, label, color, shape }) => (
+                    {category.nodes.map(({ type, icon: Icon, iconType, label, color, shape, description }) => (
                       <button
                         key={`${type}-${shape || 'default'}-${label}`}
                         onClick={() => handleAddNode(type, shape, iconType, color)}
@@ -222,10 +327,10 @@ export function Sidebar() {
                                  border-2 border-slate-200 bg-white p-3 transition-all
                                  hover:border-blue-400 hover:shadow-md
                                  dark:border-slate-700 dark:bg-slate-800 dark:hover:border-blue-500"
-                        title={`Add ${label}`}
+                        title={description || `添加 ${label}`}
                       >
                         <Icon className={`h-6 w-6 ${color} mb-1`} />
-                        <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                        <span className="text-xs font-medium text-slate-700 dark:text-slate-300 text-center">
                           {label}
                         </span>
                       </button>

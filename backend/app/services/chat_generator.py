@@ -3,6 +3,7 @@ import logging
 from pathlib import Path
 from typing import List, Optional, Tuple, Any
 
+from fastapi import HTTPException
 from app.api.mermaid import parse_mermaid_to_graph, graph_to_mermaid
 from app.models.schemas import (
     FlowTemplate,
@@ -81,25 +82,63 @@ Requirements:
 User Request: "{request.user_input}"
 """
 
-        system_prompt = f"""You are a professional system architecture and flowchart generation expert. Your task is to convert user descriptions into detailed diagrams.
+        system_prompt = f"""You are a professional flowchart generation expert. Convert user descriptions into clear, simple flowcharts.
 
-**AVAILABLE NODE TYPES (USE ALL WHEN APPROPRIATE):**
-- client, gateway, api, service, cache, queue, database, storage, default
+**AVAILABLE NODE TYPES (choose appropriate for the scenario):**
+For general processes:
+- start: Start point (圆形/circle, use for beginning)
+- end: End point (圆形/circle, use for termination)
+- process: Process step (矩形/rectangle, use for actions/tasks)
+- decision: Decision point (菱形/diamond, use for yes/no choices)
+- data: Data/Input/Output (平行四边形/parallelogram)
+- document: Document/Report (文档形状)
+- subprocess: Sub-process (圆角矩形/rounded rectangle)
 
-**LAYOUT STRATEGY:**
-- Left-to-right (LR) for architecture; start at x=100, y=200; spacing: x+300, y+200
-  - Stagger rows/columns (no single straight line)
+For technical systems (ONLY if user explicitly requests technical architecture):
+- api: API Gateway
+- service: Microservice
+- database: Database
+- cache: Cache
+- queue: Message Queue
+- storage: File Storage
 
-**COMPLEXITY REQUIREMENT (MANDATORY):**
-- At least 12 nodes and 14 edges
-- Include at least 2 decision branches (gateways), 1 async queue, and 1 cache
-- Include start/end semantics (start-event, end-event, or descriptive labels)
-- Prefer branching (success/failure) and error/rollback paths for troubleshooting
+**LAYOUT RULES:**
+- Top-to-bottom flow (start at x=250, y=100)
+- Vertical spacing: 150-200px between levels
+- Horizontal spacing: 200-250px for parallel branches
+- Keep it simple and clean
+
+**GENERATION RULES:**
+1. Analyze user input to determine if it's a general process or technical system
+2. For general processes (like "约会流程", "做饭流程", "购物流程"):
+   - Use ONLY basic nodes: start, process, decision, end
+   - Generate 5-10 nodes (keep it simple)
+   - Clear sequential flow
+3. For technical systems (like "微服务架构", "API设计"):
+   - Use technical nodes: api, service, database, etc.
+   - Can be more complex (10-15 nodes)
+
+**OUTPUT FORMAT:**
+{{
+  "nodes": [
+    {{"id": "start", "type": "start", "position": {{"x": 250, "y": 100}}, "data": {{"label": "开始"}}}},
+    {{"id": "step1", "type": "process", "position": {{"x": 250, "y": 250}}, "data": {{"label": "步骤1"}}}},
+    {{"id": "decision1", "type": "decision", "position": {{"x": 250, "y": 400}}, "data": {{"label": "判断条件?"}}}},
+    {{"id": "end", "type": "end", "position": {{"x": 250, "y": 650}}, "data": {{"label": "结束"}}}}
+  ],
+  "edges": [
+    {{"id": "e1", "source": "start", "target": "step1"}},
+    {{"id": "e2", "source": "step1", "target": "decision1"}},
+    {{"id": "e3", "source": "decision1", "target": "end", "label": "是"}}
+  ],
+  "mermaid_code": "graph TB\\n  start[开始]-->step1[步骤1]-->decision1{{判断条件?}}-->end[结束]"
+}}
 
 {template_context}
 
 **User Request:** "{request.user_input}"
-Return ONLY raw JSON with nodes/edges/mermaid_code."""
+
+Analyze the request and generate an appropriate flowchart. Return ONLY valid JSON, no markdown blocks or prose."""
         return system_prompt
 
     async def _call_ai_text_generation(self, vision_service, prompt: str, provider: str) -> dict:
@@ -131,7 +170,18 @@ Return ONLY raw JSON with nodes/edges/mermaid_code."""
         if isinstance(payload, dict):
             return payload
         if isinstance(payload, str):
-            return json.loads(payload)
+            # Clean markdown code blocks (```json ... ``` or ``` ... ```)
+            cleaned = payload.strip()
+            if cleaned.startswith("```"):
+                # Remove opening ```json or ```
+                lines = cleaned.split("\n")
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                # Remove closing ```
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                cleaned = "\n".join(lines)
+            return json.loads(cleaned)
         if hasattr(payload, "model_dump"):  # pydantic models
             return payload.model_dump()
         return json.loads(json.dumps(payload, default=str))
@@ -562,13 +612,18 @@ Return ONLY raw JSON with nodes/edges/mermaid_code."""
         base_url: Optional[str] = None,
         model_name: Optional[str] = None,
     ) -> ChatGenerationResponse:
-        """Generate flowchart (mock-first)."""
+        """Generate flowchart or architecture diagram via AI."""
 
         logger.info(f"Generating flowchart for input: {request.user_input[:50]}...")
         logger.info(f"Template ID: {request.template_id}")
 
         try:
             selected_provider = provider or request.provider or "gemini"
+            logger.info(f"[CHAT-GEN] === START generate_flowchart ===")
+            logger.info(f"[CHAT-GEN] user_input: {request.user_input[:100] if request.user_input else 'None'}...")
+            logger.info(f"[CHAT-GEN] template_id: {request.template_id}")
+            logger.info(f"[CHAT-GEN] diagram_type from request: {request.diagram_type}")
+
             # auto-detect architecture mode by template category if diagram_type not explicitly set
             effective_diagram_type = request.diagram_type or "flow"
             if request.template_id:
@@ -576,16 +631,7 @@ Return ONLY raw JSON with nodes/edges/mermaid_code."""
                 if tpl and tpl.category == "architecture":
                     effective_diagram_type = "architecture"
 
-            # Architecture preview: return mock immediately to show layered boxes without waiting for AI
-            if effective_diagram_type == "architecture":
-                mock_result = self._mock_architecture_overview()
-                return ChatGenerationResponse(
-                    nodes=mock_result["nodes"],
-                    edges=[],  # ensure no edges for architecture view
-                    mermaid_code=mock_result["mermaid_code"],
-                    success=True,
-                    message="Architecture mock (no AI call)",
-                )
+            logger.info(f"[CHAT-GEN] Effective diagram type: {effective_diagram_type}")
 
             vision_service = create_vision_service(
                 provider=selected_provider,
@@ -596,14 +642,22 @@ Return ONLY raw JSON with nodes/edges/mermaid_code."""
 
             prompt_request = request.model_copy(update={"diagram_type": effective_diagram_type})
             prompt = self._build_generation_prompt(prompt_request)
+
+            logger.info(f"[CHAT-GEN] Calling AI with provider: {selected_provider}")
+            logger.info(f"[CHAT-GEN] Prompt (first 200 chars): {prompt[:200]}...")
             ai_raw = await self._call_ai_text_generation(vision_service, prompt, selected_provider)
+            logger.info(f"[CHAT-GEN] AI raw response (first 500 chars): {ai_raw[:500]}...")
             ai_data = self._safe_json(ai_raw)
+            logger.info(f"[CHAT-GEN] Parsed AI data keys: {list(ai_data.keys())}")
+
             if effective_diagram_type == "architecture":
                 nodes, edges, mermaid_code = self._normalize_architecture_graph(ai_data)
-                # 强制架构图不返回连线
+                # Architecture diagrams don't show edges
                 edges = []
             else:
                 nodes, edges, mermaid_code = self._normalize_ai_graph(ai_data)
+
+            logger.info(f"[CHAT-GEN] After normalization: {len(nodes)} nodes, {len(edges)} edges")
 
             if not nodes:
                 logger.warning(
@@ -612,12 +666,17 @@ Return ONLY raw JSON with nodes/edges/mermaid_code."""
                 )
                 raise ValueError("AI response missing nodes; please retry with clearer input.")
 
-            # If AI result is too small to render a usable flow, enrich with template mock
-            if effective_diagram_type == "flow" and (len(nodes) < 3 or len(edges) < 1):
+            # If AI result is completely empty, use template mock as last resort
+            # Changed from < 3 nodes to == 0 nodes to be less aggressive
+            should_use_fallback = (
+                effective_diagram_type == "flow"
+                and len(nodes) == 0
+                and request.template_id  # Only use template mock if a template was selected
+            )
+
+            if should_use_fallback:
                 logger.warning(
-                    "[CHAT-GEN] AI graph too small (nodes=%s, edges=%s); enriching with template fallback",
-                    len(nodes),
-                    len(edges),
+                    "[CHAT-GEN] AI returned NO nodes; using template fallback"
                 )
                 if request.template_id == "microservice-architecture":
                     mock_result = self._mock_microservice_architecture()
@@ -629,11 +688,11 @@ Return ONLY raw JSON with nodes/edges/mermaid_code."""
                 edges = mock_result["edges"]
                 mermaid_code = mock_result["mermaid_code"]
                 message = (
-                    f"AI returned minimal graph (nodes={len(ai_data.get('nodes', []))}, "
-                    f"edges={len(ai_data.get('edges', []))}); enriched with template mock."
+                    f"AI returned no nodes; using template mock"
                 )
             else:
                 message = f"Generated via {selected_provider}"
+                logger.info(f"[CHAT-GEN] Using AI result (not falling back to mock)")
 
             logger.info(
                 f"[CHAT-GEN] Generated via {selected_provider}: {len(nodes)} nodes, {len(edges)} edges"
@@ -647,23 +706,11 @@ Return ONLY raw JSON with nodes/edges/mermaid_code."""
             )
 
         except Exception as e:
-            logger.error(f"Flowchart generation failed, falling back to mock: {e}", exc_info=True)
-
-            if effective_diagram_type == "architecture":
-                mock_result = self._mock_architecture_overview()
-            elif request.template_id == "microservice-architecture":
-                mock_result = self._mock_microservice_architecture()
-            elif request.template_id == "high-concurrency-system":
-                mock_result = self._mock_high_concurrency()
-            else:
-                mock_result = self._mock_oom_investigation()
-
-            return ChatGenerationResponse(
-                nodes=mock_result["nodes"],
-                edges=mock_result["edges"],
-                mermaid_code=mock_result["mermaid_code"],
-                success=True,
-                message=f"AI call failed: {e}. Returned mock result for preview.",
+            logger.error(f"Flowchart generation failed: {e}", exc_info=True)
+            # DO NOT return mock data - let the error propagate to the client
+            raise HTTPException(
+                status_code=500,
+                detail=f"AI generation failed: {str(e)}. Please check your API key and try again."
             )
 
 

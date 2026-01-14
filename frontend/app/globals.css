@@ -81,13 +81,64 @@
 .react-flow__node {
   @apply rounded-lg shadow-md;
   transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out, border-color 0.2s ease-in-out;
-  border: 1px solid rgba(255, 255, 255, 0.24);
+  /* 移除默认边框，让每个节点自己控制 */
+  border: none !important;
+}
+
+/* 覆盖 React Flow 默认节点类型的边框 */
+.react-flow__node-default,
+.react-flow__node-input,
+.react-flow__node-output,
+.react-flow__node-group {
+  border: none !important;
+  border-width: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+}
+
+/* SVG 节点不需要边框 - 使用 :has() 选择器匹配包含 svg-shape-node 的节点 */
+.react-flow__node:has(.svg-shape-node),
+.react-flow__node-default:has(.svg-shape-node) {
+  border: none !important;
+  border-width: 0 !important;
+  border-style: none !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  width: auto !important;
+}
+
+/* CSS 节点（glass-node）也不需要外层边框 - 让内部元素自己控制边框 */
+.react-flow__node:has(.glass-node),
+.react-flow__node-default:has(.glass-node) {
+  border: none !important;
+  border-width: 0 !important;
+  border-style: none !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  padding: 0 !important;
+  /* 保留 box-shadow 和 border-radius，因为 glass-node 需要这些效果 */
 }
 
 .react-flow__node:hover {
   transform: translateY(-2px);
   box-shadow: 0 16px 40px -18px rgba(15, 23, 42, 0.3),
               0 8px 18px -10px rgba(15, 23, 42, 0.18) !important;
+}
+
+/* SVG 节点 hover 时只抬升，不要阴影 */
+.react-flow__node:has(.svg-shape-node):hover,
+.react-flow__node-default:has(.svg-shape-node):hover {
+  transform: translateY(-2px);
+  box-shadow: none !important;
+}
+
+/* CSS 节点（glass-node）hover 时抬升并保持阴影效果 */
+.react-flow__node:has(.glass-node):hover,
+.react-flow__node-default:has(.glass-node):hover {
+  transform: translateY(-2px);
 }
 
 .react-flow__node:active {
@@ -99,16 +150,32 @@
 }
 
 .react-flow__handle {
-  @apply w-3 h-3;
+  @apply w-4 h-4;
   border: 2px solid rgba(255,255,255,0.9);
   box-shadow: 0 6px 12px -6px rgba(15, 23, 42, 0.4);
   background: linear-gradient(135deg, #ffffff, #e2e8f0);
   border-radius: 9999px;
   transition: transform 0.2s ease-in-out, opacity 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+  opacity: 1 !important;
+  cursor: crosshair;
+  z-index: 10;
+}
+
+/* 增加更大的点击热区 */
+.react-flow__handle::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: transparent;
 }
 
 .react-flow__handle:hover {
-  transform: scale(1.5);
+  transform: scale(1.6);
   opacity: 1 !important;
   box-shadow: 0 10px 18px -10px rgba(15, 23, 42, 0.5);
 }
@@ -124,11 +191,11 @@
   background: radial-gradient(circle at 20% 20%, rgba(255,255,255,0.9), rgba(255,255,255,0.65))
               , linear-gradient(135deg, rgba(255,255,255,0.3), rgba(255,255,255,0));
   backdrop-filter: blur(8px);
-  border: 1px solid rgba(255,255,255,0.5);
+  /* 移除默认边框，让节点自己控制边框 */
 }
 
 .dark .glass-node {
   background: radial-gradient(circle at 20% 20%, rgba(30,41,59,0.9), rgba(15,23,42,0.7))
               , linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0));
-  border: 1px solid rgba(255,255,255,0.08);
+  /* 移除默认边框，让节点自己控制边框 */
 }

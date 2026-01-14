@@ -83,7 +83,18 @@ async def generate_flowchart_stream(request: ChatGenerationRequest):
         try:
             service = create_chat_generator_service()
             selected_provider = request.provider or "gemini"
-            prompt = service._build_generation_prompt(request)
+
+            # Determine effective diagram type
+            effective_diagram_type = request.diagram_type or "flow"
+            if request.template_id:
+                tpl = service.get_template(request.template_id)
+                if tpl and tpl.category == "architecture":
+                    effective_diagram_type = "architecture"
+
+            logger.info(f"Stream generation: diagram_type={effective_diagram_type}, provider={selected_provider}")
+
+            prompt_request = request.model_copy(update={"diagram_type": effective_diagram_type})
+            prompt = service._build_generation_prompt(prompt_request)
 
             yield "data: [START] building prompt\n\n"
             yield "data: [CALL] contacting provider...\n\n"
@@ -118,8 +129,22 @@ async def generate_flowchart_stream(request: ChatGenerationRequest):
                 try:
                     if not accumulated.strip():
                         raise ValueError("Empty stream output")
+
+                    logger.info(f"[STREAM] Accumulated response length: {len(accumulated)}")
+                    logger.info(f"[STREAM] First 500 chars: {accumulated[:500]}")
                     ai_data = service._safe_json(accumulated)
-                    nodes, edges, mermaid_code = service._normalize_ai_graph(ai_data)
+                    logger.info(f"[STREAM] Parsed AI data keys: {list(ai_data.keys())}")
+
+                    # Use correct normalization based on diagram type
+                    if effective_diagram_type == "architecture":
+                        nodes, edges, mermaid_code = service._normalize_architecture_graph(ai_data)
+                        edges = []  # Architecture diagrams don't show edges
+                    else:
+                        nodes, edges, mermaid_code = service._normalize_ai_graph(ai_data)
+
+                    logger.info(f"[STREAM] After normalization: {len(nodes)} nodes, {len(edges)} edges")
+
+                    # Don't replace AI result with mock - return what AI generated
                     payload = ChatGenerationResponse(
                         nodes=nodes,
                         edges=edges,
@@ -132,12 +157,14 @@ async def generate_flowchart_stream(request: ChatGenerationRequest):
                     yield "data: [END] done\n\n"
                     return
                 except Exception as parse_err:
-                    logger.warning(f"Stream JSON parse failed; falling back to non-stream: {parse_err}")
+                    logger.warning(f"[STREAM] JSON parse failed; falling back to non-stream: {parse_err}")
+                    logger.exception(parse_err)
                     # explicitly fall through to non-stream path
 
             # Fallback: call existing generator (non-stream) but send staged events
+            logger.info(f"[STREAM] Falling back to non-stream generate_flowchart()")
             result = await service.generate_flowchart(
-                request=request,
+                request=prompt_request,
                 provider=selected_provider,
                 api_key=request.api_key,
                 base_url=request.base_url,
@@ -155,7 +182,10 @@ async def generate_flowchart_stream(request: ChatGenerationRequest):
         event_stream(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+            "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
+            "Content-Encoding": "none",
+            "Transfer-Encoding": "chunked",
         },
     )

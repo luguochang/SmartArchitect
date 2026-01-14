@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import {
   MessageSquare,
   Send,
@@ -11,6 +11,8 @@ import {
   Loader2,
   Sparkles as SparklesIcon,
   AlertCircle,
+  Palette,
+  Grid3x3,
 } from "lucide-react";
 import { useArchitectStore, PromptScenario, DiagramType } from "@/lib/store/useArchitectStore";
 import { toast } from "sonner";
@@ -41,6 +43,7 @@ export function AiControlPanel() {
     loadFlowTemplates,
     generateFlowchart,
     generateExcalidrawScene,
+    generateExcalidrawSceneStream,
     canvasMode,
     // Prompter
     promptScenarios,
@@ -59,6 +62,8 @@ export function AiControlPanel() {
   const [diagramType, setDiagramType] = useState<DiagramType>("flow");
   const [templateFilter, setTemplateFilter] = useState<"flow" | "architecture">("flow");
 
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     if (flowTemplates.length === 0) {
       loadFlowTemplates();
@@ -67,6 +72,13 @@ export function AiControlPanel() {
       loadPromptScenarios();
     }
   }, [flowTemplates.length, promptScenarios.length, loadFlowTemplates, loadPromptScenarios]);
+
+  // Auto-scroll to bottom when messages update
+  useEffect(() => {
+    if (generationLogs.length > 0 || chatHistory.length > 0) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [generationLogs, chatHistory]);
 
   const apiReady = useMemo(() => Boolean(modelConfig.apiKey && modelConfig.apiKey.trim()), [modelConfig.apiKey]);
 
@@ -92,7 +104,7 @@ export function AiControlPanel() {
     }
     try {
       if (canvasMode === "excalidraw") {
-        await generateExcalidrawScene(flowInput);
+        await generateExcalidrawSceneStream(flowInput);
         toast.success("Excalidraw scene generated");
       } else {
         await generateFlowchart(flowInput, selectedTemplate || undefined, diagramType);
@@ -116,295 +128,297 @@ export function AiControlPanel() {
     }
     try {
       await executePromptScenario(selectedScenario, scenarioInput || undefined);
-      toast.success("Architecture updated");
+      toast.success("Prompt executed successfully");
     } catch (error) {
-      // fallback to mock if backend fails
-      applyMockScenario(selectedScenario);
-      toast.error(promptError || "Backend unavailable, applied mock changes locally");
+      toast.error(promptError || "Failed to execute prompt");
     }
   };
 
   return (
-    <div className="flex h-full flex-col bg-white/90 px-4 py-5 backdrop-blur dark:bg-slate-900/90">
-      <div className="mb-4 flex items-center justify-between rounded-xl border border-slate-200 bg-gradient-to-r from-indigo-50 via-white to-emerald-50 px-4 py-3 shadow-sm dark:border-slate-800 dark:from-slate-800 dark:via-slate-900 dark:to-emerald-900/20">
-        <div className="flex items-center gap-3">
-          <SparklesIcon className="h-5 w-5 text-indigo-600 dark:text-indigo-300" />
+    <aside className="flex h-full w-96 flex-col gap-4 border-l border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100/50 p-4 dark:border-slate-800 dark:from-slate-900 dark:to-slate-900/50">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 p-2 shadow-sm">
+            {canvasMode === "excalidraw" ? (
+              <Palette className="h-5 w-5 text-white" />
+            ) : (
+              <MessageSquare className="h-5 w-5 text-white" />
+            )}
+          </div>
           <div>
-            <p className="text-sm font-semibold text-slate-900 dark:text-white">AI Controls</p>
-            <p className="text-xs text-slate-500 dark:text-slate-400">Generate or refactor directly from here</p>
+            <h2 className="text-sm font-bold text-slate-900 dark:text-white">
+              {canvasMode === "excalidraw" ? "AI Drawing" : "AI Generator"}
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {canvasMode === "excalidraw" ? "Generate hand-drawn diagrams" : "Generate flowcharts & architectures"}
+            </p>
           </div>
         </div>
+
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowPrompter((prev) => !prev)}
-            className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            className="rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
           >
-            {showPrompter ? "Hide Prompter" : "Show Prompter"}
+            {showPrompter ? "Hide" : "Show"} Prompter
           </button>
           {!apiReady && (
-            <div className="flex items-center gap-2 rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
-              <AlertCircle className="h-4 w-4" />
-              API key needed
+            <div className="flex items-center gap-1.5 rounded-lg bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
+              <AlertCircle className="h-3.5 w-3.5" />
+              No API key
             </div>
           )}
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 space-y-4 overflow-hidden">
-        <SelectedDetailsPanel />
+      <SelectedDetailsPanel />
 
-        {/* Chat Flowchart takes the full rail */}
-        <section className="flex min-h-0 flex-1 flex-col gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <MessageSquare className="h-5 w-5 text-emerald-600 dark:text-emerald-300" />
-              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Chat Flowchart</h3>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="flex rounded-full border border-slate-200 bg-white text-xs dark:border-slate-700 dark:bg-slate-800">
-                <button
-                  onClick={() => {
-                    setTemplateFilter("flow");
-                    setDiagramType("flow");
-                  }}
-                  className={`px-3 py-1 rounded-l-full ${templateFilter === "flow" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200" : "text-slate-600 dark:text-slate-300"}`}
-                >
-                  Flow
-                </button>
-                <button
-                  onClick={() => {
-                    setTemplateFilter("architecture");
-                    setDiagramType("architecture");
-                  }}
-                  className={`px-3 py-1 rounded-r-full ${templateFilter === "architecture" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200" : "text-slate-600 dark:text-slate-300"}`}
-                >
-                  Architecture
-                </button>
-              </div>
-              <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200">
-                Natural language to Graph
-              </span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            {(templateFilter === "flow"
-              ? flowTemplates.filter((tpl) => tpl.category !== "architecture")
-              : flowTemplates.filter((tpl) => tpl.category === "architecture")
-            ).map((tpl) => (
-              <button
-                key={tpl.id}
-                onClick={() => handleTemplatePick(tpl.id, tpl.example_input)}
-                disabled={isGeneratingFlowchart}
-                className={`rounded-lg border px-3 py-2 text-left text-xs transition-all ${
-                  selectedTemplate === tpl.id
-                    ? "border-emerald-500 bg-emerald-50 shadow-sm dark:border-emerald-400 dark:bg-emerald-500/10"
-                    : "border-slate-200 hover:border-emerald-300 dark:border-slate-700 dark:hover:border-emerald-400"
-                } ${isGeneratingFlowchart ? "opacity-50 cursor-not-allowed" : ""}`}
-              >
-                <p className="font-medium text-slate-900 dark:text-white">{tpl.name}</p>
-                <p className="mt-1 line-clamp-2 text-slate-500 dark:text-slate-400">{tpl.description}</p>
-              </button>
-            ))}
-          </div>
-
-          <div className="flex flex-col gap-3 overflow-y-auto pr-1">
-            <div>
-              <label className="mb-2 block text-xs font-semibold text-slate-600 dark:text-slate-300">Describe the flow</label>
-              <textarea
-                value={flowInput}
-                onChange={(e) => setFlowInput(e.target.value)}
-                placeholder="e.g. Incident response with detection, triage, rollback, and RCA steps..."
-                rows={5}
-                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:focus:border-emerald-300 dark:focus:ring-emerald-500/30"
-                disabled={isGeneratingFlowchart}
-              />
-            </div>
-
-            <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-              <span>Tip: Include branches and end states for better BPMN mapping.</span>
-              <button
-                onClick={handleGenerateFlow}
-                disabled={isGeneratingFlowchart}
-                className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isGeneratingFlowchart ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                {isGeneratingFlowchart ? "Generating..." : "Generate"}
-              </button>
-            </div>
-
-            <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-900/60 max-h-52 overflow-y-auto space-y-2">
-              {chatHistory.length === 0 && (
-                <div className="text-xs text-slate-500 dark:text-slate-400">
-                  Conversation history will appear here during streaming.
-                </div>
-              )}
-              {chatHistory.map((msg, idx) => (
-                <div
-                  key={idx}
-                  className={`flex ${msg.role === "assistant" ? "justify-start" : "justify-end"}`}
-                >
-                  <div
-                    className={`max-w-[90%] rounded-lg px-3 py-2 text-xs leading-relaxed ${
-                      msg.role === "assistant"
-                        ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-50"
-                        : "bg-slate-200 text-slate-900 dark:bg-slate-700 dark:text-white"
+      {/* Main Content - Full Height */}
+      <div className="flex min-h-0 flex-1 flex-col gap-4">
+        {/* Generator Section */}
+        <section className="flex min-h-0 flex-1 flex-col rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          {/* Templates (only for ReactFlow mode) */}
+          {canvasMode !== "excalidraw" && (
+            <div className="border-b border-slate-200 p-4 dark:border-slate-800">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Templates</h3>
+                <div className="flex rounded-lg border border-slate-200 bg-slate-50 text-xs dark:border-slate-700 dark:bg-slate-800">
+                  <button
+                    onClick={() => {
+                      setTemplateFilter("flow");
+                      setDiagramType("flow");
+                    }}
+                    className={`px-3 py-1 rounded-l-lg transition ${
+                      templateFilter === "flow"
+                        ? "bg-emerald-500 text-white shadow-sm"
+                        : "text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white"
                     }`}
                   >
-                    {msg.content}
-                  </div>
+                    Flow
+                  </button>
+                  <button
+                    onClick={() => {
+                      setTemplateFilter("architecture");
+                      setDiagramType("architecture");
+                    }}
+                    className={`px-3 py-1 rounded-r-lg transition ${
+                      templateFilter === "architecture"
+                        ? "bg-emerald-500 text-white shadow-sm"
+                        : "text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white"
+                    }`}
+                  >
+                    Architecture
+                  </button>
                 </div>
-              ))}
-            </div>
+              </div>
 
-            {generationLogs.length > 0 && (
-              <div className="rounded-xl border border-dashed border-emerald-200 bg-emerald-50/70 p-3 text-xs text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-100 max-h-48 overflow-y-auto">
-                <div className="mb-2 flex items-center gap-2 font-semibold">
-                  <Sparkles className="h-4 w-4" />
-                  Streaming progress
-                </div>
-                <div className="space-y-1">
-                  {generationLogs.map((log, idx) => (
-                    <div key={idx} className="whitespace-pre-wrap">
-                      {log}
+              <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto pr-1">
+                {(templateFilter === "flow"
+                  ? flowTemplates.filter((tpl) => tpl.category !== "architecture")
+                  : flowTemplates.filter((tpl) => tpl.category === "architecture")
+                ).map((tpl) => (
+                  <button
+                    key={tpl.id}
+                    onClick={() => handleTemplatePick(tpl.id, tpl.example_input)}
+                    disabled={isGeneratingFlowchart}
+                    className={`rounded-lg border px-2.5 py-2 text-left text-xs transition-all ${
+                      selectedTemplate === tpl.id
+                        ? "border-emerald-500 bg-emerald-50 shadow-sm dark:border-emerald-400 dark:bg-emerald-500/10"
+                        : "border-slate-200 hover:border-emerald-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:border-emerald-400 dark:hover:bg-slate-800"
+                    } ${isGeneratingFlowchart ? "opacity-50 cursor-not-allowed" : ""}`}
+                  >
+                    <p className="font-medium text-slate-900 dark:text-white truncate">{tpl.name}</p>
+                    <p className="mt-0.5 line-clamp-1 text-slate-500 dark:text-slate-400">{tpl.description}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Messages Area - Unified */}
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
+            {/* Chat History */}
+            {chatHistory.length > 0 && (
+              <>
+                {chatHistory.map((msg, idx) => (
+                  <div
+                    key={`chat-${idx}`}
+                    className={`flex ${msg.role === "assistant" ? "justify-start" : "justify-end"}`}
+                  >
+                    <div
+                      className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
+                        msg.role === "assistant"
+                          ? "bg-gradient-to-br from-emerald-50 to-teal-50 text-emerald-900 dark:from-emerald-900/30 dark:to-teal-900/30 dark:text-emerald-50"
+                          : "bg-slate-200 text-slate-900 dark:bg-slate-700 dark:text-white"
+                      }`}
+                    >
+                      {msg.content}
                     </div>
-                  ))}
+                  </div>
+                ))}
+              </>
+            )}
+
+            {/* Generation Logs */}
+            {generationLogs.length > 0 && (
+              <div className="space-y-2">
+                {generationLogs.map((log, idx) => (
+                  <div
+                    key={`log-${idx}`}
+                    className={`rounded-lg bg-gradient-to-br from-emerald-50 to-teal-50 px-3 py-2 text-xs font-mono text-emerald-900 dark:from-emerald-900/30 dark:to-teal-900/30 dark:text-emerald-50 ${
+                      log.startsWith("[生成中]")
+                        ? "overflow-x-auto whitespace-nowrap max-w-full"
+                        : "whitespace-pre-wrap break-words"
+                    }`}
+                  >
+                    {log}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Empty State */}
+            {chatHistory.length === 0 && generationLogs.length === 0 && (
+              <div className="flex h-full items-center justify-center text-center">
+                <div className="max-w-xs space-y-2">
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-emerald-100 to-teal-100 dark:from-emerald-900/30 dark:to-teal-900/30">
+                    <SparklesIcon className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+                  </div>
+                  <p className="text-sm font-medium text-slate-900 dark:text-white">
+                    {canvasMode === "excalidraw" ? "Ready to draw!" : "Ready to generate"}
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {canvasMode === "excalidraw"
+                      ? "Describe what you want to draw, and AI will create a hand-drawn diagram for you."
+                      : "Enter a description below and AI will generate a flowchart or architecture diagram."}
+                  </p>
                 </div>
               </div>
             )}
+
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Input Area - Fixed at Bottom */}
+          <div className="border-t border-slate-200 p-4 dark:border-slate-800">
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">
+                  {canvasMode === "excalidraw" ? "Describe your drawing" : "Describe the flow"}
+                </label>
+                <textarea
+                  value={flowInput}
+                  onChange={(e) => setFlowInput(e.target.value)}
+                  placeholder={
+                    canvasMode === "excalidraw"
+                      ? "e.g. A colorful robot with glowing eyes..."
+                      : "e.g. User authentication flow with login, verification, and error handling..."
+                  }
+                  rows={3}
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:focus:border-emerald-300 dark:focus:ring-emerald-500/30"
+                  disabled={isGeneratingFlowchart}
+                />
+              </div>
+
+              <button
+                onClick={handleGenerateFlow}
+                disabled={isGeneratingFlowchart || !apiReady}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:from-emerald-700 hover:to-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isGeneratingFlowchart ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Send className="h-4 w-4" />
+                    Generate
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </section>
 
-        {/* Prompter (aux panel) */}
+        {/* Prompter (Collapsible) */}
         {showPrompter && (
-          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 max-h-[340px] overflow-y-auto">
-            <div className="flex items-center justify-between">
+          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 max-h-80 overflow-y-auto">
+            <div className="mb-3 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Wand2 className="h-5 w-5 text-indigo-600 dark:text-indigo-300" />
-                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">AI Actions (Prompter)</h3>
+                <Wand2 className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">AI Prompter</h3>
               </div>
-              <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-200">
+              <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-200">
                 Refactor & optimize
               </span>
             </div>
 
-            <div className="mt-4 space-y-3">
-              <div className="grid grid-cols-1 gap-3">
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 gap-2">
                 {(promptScenarios.length > 0
                   ? promptScenarios
-                  : ([
-                      {
-                        id: "beautify-bpmn",
-                        name: "Beautify BPMN Layout",
-                        description: "Improve spacing, align gateways, harmonize task colors, and add consistent labels.",
-                        category: "beautification",
-                        style_hint: "Glass + pastel gradients",
-                        impact: "medium",
-                        recommended_theme: "pastel",
-                      },
-                      {
-                        id: "secure-apis",
-                        name: "Harden External APIs",
-                        description: "Mark API boundaries, annotate auth flows, and highlight ingress/egress nodes.",
-                        category: "security",
-                        style_hint: "High-contrast edges + badges",
-                        impact: "high",
-                        recommended_theme: "high-contrast",
-                      },
-                      {
-                        id: "refactor-services",
-                        name: "Refactor Services",
-                        description: "Group related services, rename ambiguous nodes, and balance fan-in/out.",
-                        category: "refactoring",
-                        style_hint: "Professional gradients",
-                        impact: "medium",
-                        recommended_theme: "corporate-professional",
-                      },
-                    ] as PromptScenario[])).map((scenario) => {
-                  const Icon = CATEGORY_ICONS[scenario.category];
-                  const isSelected = selectedScenario === scenario.id;
+                  : []
+                ).map((scenario) => {
+                  const Icon = CATEGORY_ICONS[scenario.category as keyof typeof CATEGORY_ICONS] || Wand2;
+                  const colorClass = CATEGORY_COLORS[scenario.category as keyof typeof CATEGORY_COLORS] || CATEGORY_COLORS.custom;
                   return (
                     <button
                       key={scenario.id}
                       onClick={() => setSelectedScenario(scenario.id)}
                       disabled={isExecutingPrompt}
-                      className={`flex w-full items-start gap-3 rounded-lg border px-3 py-3 text-left transition ${
-                        isSelected
+                      className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 text-left text-xs transition-all ${
+                        selectedScenario === scenario.id
                           ? "border-indigo-500 bg-indigo-50 shadow-sm dark:border-indigo-400 dark:bg-indigo-500/10"
-                          : "border-slate-200 hover:border-indigo-300 dark:border-slate-700 dark:hover:border-indigo-400"
+                          : "border-slate-200 hover:border-indigo-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:border-indigo-400 dark:hover:bg-slate-800"
                       } ${isExecutingPrompt ? "opacity-50 cursor-not-allowed" : ""}`}
                     >
-                      <span className={`mt-0.5 rounded-lg p-2 ${CATEGORY_COLORS[scenario.category]}`}>
-                        <Icon className="h-4 w-4" />
-                      </span>
-                      <div className="flex-1">
-                        <p className="text-sm font-semibold text-slate-900 dark:text-white">{scenario.name}</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">{scenario.description}</p>
-                        <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
-                          <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                            Status: {isExecutingPrompt && isSelected ? "Running..." : "Ready"}
-                          </span>
-                          {scenario.style_hint && (
-                            <span className="rounded-full bg-indigo-50 px-2 py-1 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-200">
-                              Style: {scenario.style_hint}
-                            </span>
-                          )}
-                          {scenario.recommended_theme && (
-                            <span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200">
-                              Theme: {scenario.recommended_theme}
-                            </span>
-                          )}
-                          <span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200">
-                            Preview: Structural & text changes
-                          </span>
-                          {scenario.impact && (
-                            <span className="rounded-full bg-amber-50 px-2 py-1 text-amber-700 dark:bg-amber-500/10 dark:text-amber-200">
-                              Impact: {scenario.impact}
-                            </span>
-                          )}
-                        </div>
+                      <div className={`mt-0.5 rounded-md p-1.5 ${colorClass}`}>
+                        <Icon className="h-3.5 w-3.5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-slate-900 dark:text-white">{scenario.name}</p>
+                        <p className="mt-0.5 text-slate-500 dark:text-slate-400 line-clamp-2">{scenario.description}</p>
                       </div>
                     </button>
                   );
                 })}
               </div>
 
-              <div>
-                <label className="mb-2 block text-xs font-semibold text-slate-600 dark:text-slate-300">
-                  Additional context (optional)
-                </label>
-                <textarea
-                  value={scenarioInput}
-                  onChange={(e) => setScenarioInput(e.target.value)}
-                  placeholder="Extra constraints, tech stack, SLAs..."
-                  rows={3}
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:focus:border-indigo-300 dark:focus:ring-indigo-500/30"
-                  disabled={isExecutingPrompt}
-                />
-              </div>
-
-              <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-300">
-                <div className="font-semibold text-slate-800 dark:text-white">Preview (static)</div>
-                <p className="mt-1">
-                  We'll apply the selected scenario to your current graph. Once backend returns diff, we can show a delta view here.
-                </p>
-              </div>
-
-              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                <span>{selectedScenario ? "Execute to apply changes to the canvas." : "Select a scenario to start."}</span>
-                <button
-                  onClick={handleExecutePrompt}
-                  disabled={!selectedScenario || isExecutingPrompt}
-                  className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isExecutingPrompt ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-                  {isExecutingPrompt ? "Running..." : "Execute"}
-                </button>
-              </div>
+              {selectedScenario && (
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    value={scenarioInput}
+                    onChange={(e) => setScenarioInput(e.target.value)}
+                    placeholder="Additional instructions (optional)"
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:focus:border-indigo-300 dark:focus:ring-indigo-500/30"
+                    disabled={isExecutingPrompt}
+                  />
+                  <button
+                    onClick={handleExecutePrompt}
+                    disabled={isExecutingPrompt}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:from-indigo-700 hover:to-purple-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isExecutingPrompt ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Executing...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-4 w-4" />
+                        Execute Prompt
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
           </section>
         )}
       </div>
-    </div>
+    </aside>
   );
 }
