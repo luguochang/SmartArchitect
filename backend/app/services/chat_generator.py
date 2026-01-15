@@ -188,12 +188,16 @@ Analyze the request and generate an appropriate flowchart. Return ONLY valid JSO
 
     def _normalize_architecture_graph(self, ai_data: dict):
         """Normalize architecture JSON (layers/items) into nodes; edges stay empty."""
-        layers = (
-            ai_data.get("layers")
-            or ai_data.get("sections")
-            or ai_data.get("architecture")
-            or []
-        )
+        try:
+            layers = (
+                ai_data.get("layers")
+                or ai_data.get("sections")
+                or ai_data.get("architecture")
+                or ai_data.get("groups")
+                or []
+            )
+        except Exception:
+            return [], [], ""
         nodes = []
         edges = []
         layer_colors = {
@@ -228,6 +232,8 @@ Analyze the request and generate an appropriate flowchart. Return ONLY valid JSO
 
         if isinstance(layers, dict):
             layers = [{"name": k, "items": v} for k, v in layers.items()]
+        elif not isinstance(layers, list):
+            return [], [], ""
 
         for layer_idx, layer in enumerate(layers):
             name = layer.get("name") if isinstance(layer, dict) else f"layer-{layer_idx}"

@@ -143,6 +143,7 @@ export function Sidebar() {
       name: "架构组件",
       defaultExpanded: false,
       nodes: [
+        { type: "layerFrame", icon: Layers, label: "Layer Frame", color: "text-emerald-600", description: "层容器，可包裹多节点" },
         { type: "client", icon: Monitor, label: "客户端", color: "text-cyan-600", description: "客户端" },
         { type: "server", icon: Server, label: "服务器", color: "text-indigo-600", description: "服务器" },
         { type: "gateway", icon: Shield, label: "网关", color: "text-orange-600", description: "API网关" },
@@ -232,15 +233,36 @@ export function Sidebar() {
       "text-emerald-600": "#059669",
     };
 
+    const registeredTypes = new Set([
+      "default",
+      "api",
+      "service",
+      "database",
+      "gateway",
+      "cache",
+      "queue",
+      "storage",
+      "client",
+      "frame",
+      "layerFrame",
+    ]);
+
+    const typeForCanvas = registeredTypes.has(type) ? type : "default";
+    const normalizedShape =
+      shape && shape.startsWith("bpmn-")
+        ? shape.replace("bpmn-", "")
+        : shape;
+
     const newNode = {
       id: `node-${Date.now()}`,
-      type: type === "default" ? "default" : type,
+      type: typeForCanvas,
       position: { x: Math.random() * 400 + 100, y: Math.random() * 400 + 100 },
       data: {
         label: `New ${type}`,
-        ...(shape && { shape }),
+        ...(normalizedShape && { shape: normalizedShape }),
         ...(iconType && { iconType }),
         ...(color && { color: colorMap[color] || color }),
+        ...(!iconType && type && { iconType: type }),
       },
     };
     setNodes([...nodes, newNode]);

@@ -34,6 +34,11 @@ interface ArchitectState {
   mermaidCode: string;
   generationLogs: string[];
   chatHistory: { role: "user" | "assistant"; content: string }[];
+  diagramType: DiagramType;
+  uploadedImage: File | null;
+  imagePreviewUrl: string | null;
+  isAnalyzing: boolean;
+  analysisError?: string;
 
   // Canvas mode
   canvasMode: CanvasMode;
@@ -48,7 +53,11 @@ interface ArchitectState {
   setEdges: (edges: Edge[]) => void;
   onNodesChange: (changes: NodeChange[]) => void;
   onEdgesChange: (changes: EdgeChange[]) => void;
+  updateNodeData: (id: string, data: Partial<Node["data"]>) => void;
   updateNodeLabel: (id: string, label: string) => void;
+  uploadImage: (file: File) => void;
+  clearImage: () => void;
+  analyzeImage: () => Promise<void>;
 
   // Mermaid 代码操作
   setMermaidCode: (code: string) => void;
@@ -139,6 +148,59 @@ const DEFAULT_PROMPT_SCENARIOS: PromptScenario[] = [
     impact: "high",
   },
 ];
+
+// Auto-wrap architecture nodes into layer frames when model output lacks them
+const LAYER_BUCKETS: { name: string; types: Set<string>; color: string }[] = [
+  { name: "Client Layer", types: new Set(["client", "user", "users", "mobile", "desktop", "tablet"]), color: "#06b6d4" },
+  { name: "Edge Layer", types: new Set(["gateway", "load-balancer", "firewall", "cdn", "api"]), color: "#f97316" },
+  { name: "Service Layer", types: new Set(["service", "cache", "queue"]), color: "#6366f1" },
+  { name: "Data Layer", types: new Set(["database", "storage"]), color: "#22c55e" },
+];
+
+function addLayerFrames(nodes: Node[], diagramType?: DiagramType): Node[] {
+  if (diagramType !== "architecture") return nodes;
+  if (nodes.some((n) => n.type === "layerFrame")) return nodes;
+
+  const padding = 60;
+  const frames: Node[] = [];
+
+  const getSize = (node: Node) => {
+    const data = (node.data || {}) as any;
+    return { width: data.width ?? 180, height: data.height ?? 90 };
+  };
+
+  for (const bucket of LAYER_BUCKETS) {
+    const bucketNodes = nodes.filter((n) => bucket.types.has(n.type || ""));
+    if (bucketNodes.length === 0) continue;
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    bucketNodes.forEach((node) => {
+      const { width, height } = getSize(node);
+      minX = Math.min(minX, node.position.x);
+      minY = Math.min(minY, node.position.y);
+      maxX = Math.max(maxX, node.position.x + width);
+      maxY = Math.max(maxY, node.position.y + height);
+    });
+
+    const frameWidth = Math.max(300, maxX - minX + padding * 2);
+    const frameHeight = Math.max(180, maxY - minY + padding * 2);
+
+    frames.push({
+      id: `layer-${bucket.name.toLowerCase().replace(/\s+/g, "-")}-${Math.random().toString(36).slice(2, 7)}`,
+      type: "layerFrame",
+      position: { x: minX - padding, y: minY - padding },
+      data: {
+        label: bucket.name,
+        color: bucket.color,
+        width: frameWidth,
+        height: frameHeight,
+      },
+    });
+  }
+
+  if (frames.length === 0) return nodes;
+  return [...frames, ...nodes];
+}
 
 // 将 React Flow 节点和边转换为 Mermaid 代码
 function canvasToMermaid(nodes: Node[], edges: Edge[]): string {
@@ -253,12 +315,17 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
     { id: "e1-2", source: "1", target: "2", label: "auth" },
     { id: "e2-3", source: "2", target: "3", label: "query" },
   ],
+  diagramType: "flow",
   mermaidCode: `graph TD
     1["API Gateway"]
     2[["Auth Service"]]
     3[("PostgreSQL")]
     1 -->|auth| 2
     2 -->|query| 3`,
+  uploadedImage: null,
+  imagePreviewUrl: null,
+  isAnalyzing: false,
+  analysisError: undefined,
 
   canvasMode: "reactflow",
   excalidrawScene: null,
@@ -272,9 +339,10 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
   promptError: undefined,
 
   modelConfig: {
-    provider: "siliconflow",
-    apiKey: "sk-labtoeibcevkdzanpprwezzivdokslxnspigjnapxyogvpgp",
-    modelName: "Pro/Qwen/Qwen2.5-7B-Instruct",
+    provider: "custom",
+    apiKey: "sk-7oflvgMRXPZe0skck0qIqsFuDSvOBKiMqqGiC0Sx9gzAsALh",
+    modelName: "claude-sonnet-4-5-20250929",
+    baseUrl: "https://www.linkflow.run/v1",
   },
 
   setCanvasMode: (mode) => set({ canvasMode: mode }),
@@ -283,12 +351,45 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
   setNodes: (nodes) => set({ nodes }),
   setEdges: (edges) => set({ edges }),
 
-  updateNodeLabel: (id, label) =>
+  updateNodeData: (id, data) => {
     set((state) => ({
       nodes: state.nodes.map((node) =>
-        node.id === id ? { ...node, data: { ...(node.data as any), label } } : node
+        node.id === id ? { ...node, data: { ...(node.data as any), ...data } } : node
       ),
-    })),
+    }));
+    get().updateFromCanvas();
+  },
+
+  updateNodeLabel: (id, label) => {
+    get().updateNodeData(id, { label });
+  },
+
+  uploadImage: (file: File) => {
+    const previewUrl = URL.createObjectURL(file);
+    set({ uploadedImage: file, imagePreviewUrl: previewUrl, analysisError: undefined });
+  },
+
+  clearImage: () => {
+    set((state) => {
+      if (state.imagePreviewUrl) {
+        URL.revokeObjectURL(state.imagePreviewUrl);
+      }
+      return { uploadedImage: null, imagePreviewUrl: null, analysisError: undefined };
+    });
+  },
+
+  analyzeImage: async () => {
+    set({ isAnalyzing: true, analysisError: undefined });
+    try {
+      // TODO: implement real vision analysis; placeholder resolves immediately
+      await Promise.resolve();
+    } catch (error: any) {
+      set({ analysisError: error?.message || "Analyze failed" });
+      throw error;
+    } finally {
+      set({ isAnalyzing: false });
+    }
+  },
 
   onNodesChange: (changes) => {
     set({
@@ -342,7 +443,7 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
   },
 
   generateFlowchart: async (input, templateId, diagramType) => {
-    set({ isGeneratingFlowchart: true });
+    set({ isGeneratingFlowchart: true, diagramType: diagramType || "flow" });
     try {
       const { modelConfig } = get();
       set((state) => ({
@@ -475,7 +576,7 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
             try {
               const data = JSON.parse(content);
               if (data?.nodes && data?.edges) {
-                const nodes = data.nodes as Node[];
+                const nodes = addLayerFrames(data.nodes as Node[], get().diagramType);
                 const edges = data.edges as Edge[];
                 const mermaidCode = data.mermaid_code || get().mermaidCode;
                 // 立即添加所有节点和边，不使用动画避免阻塞流读取
@@ -500,7 +601,11 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
         });
         const data = await retry.json();
         if (data?.nodes && data?.edges) {
-          set({ nodes: data.nodes as Node[], edges: data.edges as Edge[], mermaidCode: data.mermaid_code });
+          set({
+            nodes: addLayerFrames(data.nodes as Node[], get().diagramType),
+            edges: data.edges as Edge[],
+            mermaidCode: data.mermaid_code,
+          });
         } else {
           throw new Error(data?.message || "Generation failed");
         }
@@ -714,7 +819,7 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
         throw new Error(data?.message || "Prompter failed");
       }
 
-      const updatedNodes = data.nodes as Node[];
+      const updatedNodes = addLayerFrames(data.nodes as Node[], get().diagramType);
       const updatedEdges = data.edges as Edge[];
       const updatedMermaid = data.mermaid_code || get().mermaidCode;
 

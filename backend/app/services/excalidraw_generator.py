@@ -339,7 +339,7 @@ Return ONLY the JSON object."""
         base_url: Optional[str] = None,
         model_name: Optional[str] = None,
     ) -> ExcalidrawScene:
-        """Generate scene via LLM with fallback to mock."""
+        """Generate scene via LLM with fallback to mock (no upstream stack for callers)."""
         try:
             vision_service = create_vision_service(
                 provider=provider,
@@ -347,10 +347,9 @@ Return ONLY the JSON object."""
                 base_url=base_url,
                 model_name=model_name,
             )
-            # Excalidraw scenes may need more time; bump timeout to 45s if lower
+            # Excalidraw scenes may need more time; bump timeout to 180s
             try:
                 if hasattr(vision_service, "request_timeout"):
-                    # SiliconFlow + large vision models can take longer; allow up to 120s
                     vision_service.request_timeout = max(
                         getattr(vision_service, "request_timeout", 8.0),
                         180.0,
@@ -378,6 +377,7 @@ Return ONLY the JSON object."""
                     ai_raw = await vision_service._analyze_with_siliconflow_text(system_prompt)
             else:
                 ai_raw = await vision_service._analyze_with_custom_text(system_prompt)
+
             ai_data = self._safe_json(ai_raw)
             scene = self._validate_scene(ai_data, width, height)
             scene.appState["message"] = f"Generated via {provider}"
@@ -386,12 +386,10 @@ Return ONLY the JSON object."""
             return scene
         except Exception as e:
             logger.error(f"Excalidraw generation failed: {e}", exc_info=True)
-            # DO NOT return mock data - let the error propagate
-            from fastapi import HTTPException
-            raise HTTPException(
-                status_code=500,
-                detail=f"Excalidraw generation failed: {str(e)}. Please check your API key and try again."
-            )
+            # Return mock scene with error message instead of propagating stack
+            mock_scene = self._mock_scene()
+            mock_scene.appState["message"] = f"Fallback mock: {str(e)[:120]}"
+            return mock_scene
 
 
 def create_excalidraw_service() -> ExcalidrawGeneratorService:

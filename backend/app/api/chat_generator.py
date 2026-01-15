@@ -118,7 +118,10 @@ async def generate_flowchart_stream(request: ChatGenerationRequest):
                     stream=True,
                 )
                 for chunk in stream:
-                    delta = chunk.choices[0].delta.content
+                    # Some providers may emit empty heartbeats; guard against missing choices
+                    if not getattr(chunk, "choices", None):
+                        continue
+                    delta = chunk.choices[0].delta.content if chunk.choices[0].delta else None
                     if not delta:
                         continue
                     text = "".join(delta)

@@ -411,3 +411,5 @@ backend/
 2) 前端明确传递 canvasMode/model，后端识别模式；补充 loading/error 提示，修复 Excalidraw 模式布局/聊天框缺失。
 3) 对 SiliconFlow 响应增加健壮清洗（去尾逗号、补键）或加强提示词，必要时后处理修复 JSON。
 4) 补最小化集成测试（脚本或单测）覆盖 Excalidraw 生成成功路径。
+
+- [ ] Excalidraw ����ż��ʧ�ܣ����� Claude ���� upstream_error (500)����ǰ����Ѹ�Ϊ���� mock scene ������������������ȶ�ģ�ͻ���� Excalidraw prompt/��ʽ�ݴ���

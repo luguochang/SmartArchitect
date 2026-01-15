@@ -10,10 +10,45 @@ import {
   CheckCircle,
   XCircle,
   PauseCircle,
+  Square,
+  Circle as CircleIcon,
+  Diamond as DiamondIcon,
+  Hexagon as HexagonIcon,
+  Triangle as TriangleIcon,
+  Star as StarIcon,
+  Cloud as CloudIcon,
+  Octagon,
+  Database,
+  FileText,
+  Layers,
+  Shield,
+  Globe,
+  Monitor,
+  Server,
+  Network,
+  Container as ContainerIcon,
+  Folder,
+  Package,
+  Cpu,
+  Activity,
+  Wifi,
+  Lock,
+  User,
+  Users,
+  Smartphone,
 } from "lucide-react";
 import { useArchitectStore } from "@/lib/store/useArchitectStore";
 import { NodeShape, SHAPE_CONFIG } from "@/lib/utils/nodeShapes";
 import { SvgShape } from "./SvgShapes";
+
+const DEFAULT_SHAPE_CONFIG = {
+  width: "140px",
+  height: "80px",
+  padding: "px-4 py-3",
+  className: "glass-node rounded-lg bg-white",
+  borderWidth: "2px",
+  renderMethod: "css" as const,
+};
 
 const ICON_MAP: Record<string, any> = {
   "play-circle": PlayCircle,
@@ -22,6 +57,56 @@ const ICON_MAP: Record<string, any> = {
   "check-circle": CheckCircle,
   "x-circle": XCircle,
   "pause-circle": PauseCircle,
+  square: Square,
+  circle: CircleIcon,
+  diamond: DiamondIcon,
+  hexagon: HexagonIcon,
+  triangle: TriangleIcon,
+  star: StarIcon,
+  cloud: CloudIcon,
+  rectangle: Square,
+  "rounded-rectangle": Box,
+  process: Box,
+  decision: DiamondIcon,
+  data: Square,
+  subprocess: Box,
+  delay: AlertCircle,
+  merge: Layers,
+  "manual-input": Square,
+  "manual-operation": Square,
+  preparation: HexagonIcon,
+  or: Octagon,
+  container: ContainerIcon,
+  frame: Square,
+  "swimlane-horizontal": Layers,
+  "swimlane-vertical": Layers,
+  note: FileText,
+  folder: Folder,
+  package: Package,
+  user: User,
+  users: Users,
+  mobile: Smartphone,
+  desktop: Monitor,
+  tablet: Monitor,
+  iot: Cpu,
+  network: Network,
+  "load-balancer": Activity,
+  firewall: Lock,
+  cdn: Network,
+  database: Database,
+  "file-text": FileText,
+  layers: Layers,
+  shield: Shield,
+  globe: Globe,
+  monitor: Monitor,
+  server: Server,
+  network: Network,
+  folder: Folder,
+  package: Package,
+  cpu: Cpu,
+  activity: Activity,
+  wifi: Wifi,
+  lock: Lock,
   box: Box,
 };
 
@@ -38,7 +123,7 @@ export const DefaultNode = memo(({ id, data }: NodeProps) => {
   const updateNodeLabel = useArchitectStore((state) => state.updateNodeLabel);
 
   const shape: NodeShape = (data.shape as NodeShape) || "rectangle";
-  const shapeConfig = SHAPE_CONFIG[shape];
+  const shapeConfig = SHAPE_CONFIG[shape] || DEFAULT_SHAPE_CONFIG;
 
   const IconComponent = data.iconType && ICON_MAP[data.iconType] ? ICON_MAP[data.iconType] : null;
   const iconColor = data.color || "var(--default-icon)";
@@ -85,34 +170,63 @@ export const DefaultNode = memo(({ id, data }: NodeProps) => {
     [data.label]
   );
 
-  const renderCircularHandles = (color: string) => (
+  const renderOrthogonalHandles = (color: string) => (
     <>
       <Handle
-        id="top"
-        type="source"
+        id="target-top"
+        type="target"
         position={Position.Top}
         style={{ backgroundColor: color, top: 0, left: "50%", transform: "translate(-50%, -50%)" }}
       />
       <Handle
-        id="right"
+        id="target-left"
+        type="target"
+        position={Position.Left}
+        style={{ backgroundColor: color, top: "50%", left: 0, transform: "translate(-50%, -50%)" }}
+      />
+      <Handle
+        id="source-right"
         type="source"
         position={Position.Right}
         style={{ backgroundColor: color, top: "50%", right: 0, transform: "translate(50%, -50%)" }}
       />
       <Handle
-        id="bottom"
+        id="source-bottom"
         type="source"
         position={Position.Bottom}
         style={{ backgroundColor: color, bottom: 0, left: "50%", transform: "translate(-50%, 50%)" }}
       />
-      <Handle
-        id="left"
-        type="source"
-        position={Position.Left}
-        style={{ backgroundColor: color, top: "50%", left: 0, transform: "translate(-50%, -50%)" }}
-      />
     </>
   );
+
+const renderCircularHandles = (color: string) => (
+  <>
+    <Handle
+      id="target-top"
+      type="target"
+      position={Position.Top}
+      style={{ backgroundColor: color, top: 0, left: "50%", transform: "translate(-50%, -50%)" }}
+    />
+    <Handle
+      id="source-right"
+      type="source"
+      position={Position.Right}
+      style={{ backgroundColor: color, top: "50%", right: 0, transform: "translate(50%, -50%)" }}
+    />
+    <Handle
+      id="target-bottom"
+      type="target"
+      position={Position.Bottom}
+      style={{ backgroundColor: color, bottom: 0, left: "50%", transform: "translate(-50%, 50%)" }}
+    />
+    <Handle
+      id="source-left"
+      type="source"
+      position={Position.Left}
+      style={{ backgroundColor: color, top: "50%", left: 0, transform: "translate(-50%, -50%)" }}
+    />
+  </>
+);
 
   // Start Event – thin ring
   if (shape === "start-event") {
@@ -206,10 +320,7 @@ export const DefaultNode = memo(({ id, data }: NodeProps) => {
           padding: "12px 16px 12px 22px",
         }}
       >
-        <Handle id="top" type="source" position={Position.Top} style={{ backgroundColor: borderColor }} />
-        <Handle id="left" type="source" position={Position.Left} style={{ backgroundColor: borderColor }} />
-        <Handle id="right" type="source" position={Position.Right} style={{ backgroundColor: borderColor }} />
-        <Handle id="bottom" type="source" position={Position.Bottom} style={{ backgroundColor: borderColor }} />
+        {renderOrthogonalHandles(borderColor)}
 
         <span
           className="absolute left-3 top-1/2 -translate-y-1/2 h-10 w-[6px] rounded-full"
@@ -359,52 +470,8 @@ export const DefaultNode = memo(({ id, data }: NodeProps) => {
           backgroundColor="var(--default-background, #ffffff)"
           strokeWidth={2}
         />
-
-        {/* Handles - 四个方向都可以连接 */}
-        <Handle
-          id="top"
-          type="source"
-          position={Position.Top}
-          style={{
-            backgroundColor: borderColor,
-            top: 0,
-            left: "50%",
-            transform: "translate(-50%, -50%)",
-          }}
-        />
-        <Handle
-          id="left"
-          type="source"
-          position={Position.Left}
-          style={{
-            backgroundColor: borderColor,
-            top: "50%",
-            left: 0,
-            transform: "translate(-50%, -50%)",
-          }}
-        />
-        <Handle
-          id="right"
-          type="source"
-          position={Position.Right}
-          style={{
-            backgroundColor: borderColor,
-            top: "50%",
-            right: 0,
-            transform: "translate(50%, -50%)",
-          }}
-        />
-        <Handle
-          id="bottom"
-          type="source"
-          position={Position.Bottom}
-          style={{
-            backgroundColor: borderColor,
-            bottom: 0,
-            left: "50%",
-            transform: "translate(-50%, 50%)",
-          }}
-        />
+        {/* Handles - separate in/out anchors */}
+        {renderOrthogonalHandles(borderColor)}
 
         {/* Content overlay */}
         <div
@@ -470,11 +537,8 @@ export const DefaultNode = memo(({ id, data }: NodeProps) => {
         width: shapeConfig.width,
         height: shapeConfig.height,
       }}
-    >
-      <Handle id="top" type="source" position={Position.Top} style={{ backgroundColor: borderColor }} />
-      <Handle id="left" type="source" position={Position.Left} style={{ backgroundColor: borderColor }} />
-      <Handle id="right" type="source" position={Position.Right} style={{ backgroundColor: borderColor }} />
-      <Handle id="bottom" type="source" position={Position.Bottom} style={{ backgroundColor: borderColor }} />
+      >
+      {renderOrthogonalHandles(borderColor)}
 
       <div className="flex items-center gap-2">
         {renderIcon(20)}
