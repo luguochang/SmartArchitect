@@ -279,7 +279,7 @@ class ExcalidrawGenerateRequest(BaseModel):
     style: Optional[str] = None
     width: Optional[int] = 1200
     height: Optional[int] = 800
-    provider: Optional[Literal["gemini", "openai", "claude", "siliconflow", "custom"]] = "siliconflow"
+    provider: Optional[Literal["gemini", "openai", "claude", "siliconflow", "custom"]] = "custom"
     api_key: Optional[str] = None
     base_url: Optional[str] = None
     model_name: Optional[str] = None

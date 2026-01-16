@@ -85,7 +85,11 @@ class AIVisionService:
                 api_key = self.custom_api_key or settings.OPENAI_API_KEY
                 if not api_key:
                     raise ValueError("OPENAI_API_KEY not configured. Please set in UI or .env file")
-                self.client = OpenAI(api_key=api_key)
+                self.client = OpenAI(
+                    api_key=api_key,
+                    timeout=120.0,  # 2 minutes timeout
+                    max_retries=2   # Limit retries
+                )
                 logger.info("OpenAI client initialized")
 
             elif self.provider == "claude":
@@ -105,7 +109,12 @@ class AIVisionService:
                 if not api_key:
                     raise ValueError("SILICONFLOW_API_KEY not configured. Please set in UI or .env file")
                 base_url = self.custom_base_url or settings.SILICONFLOW_BASE_URL
-                self.client = OpenAI(api_key=api_key, base_url=base_url)
+                self.client = OpenAI(
+                    api_key=api_key,
+                    base_url=base_url,
+                    timeout=120.0,  # 2 minutes timeout for streaming
+                    max_retries=2   # Limit retries to prevent infinite loops
+                )
                 logger.info(f"SiliconFlow client initialized with base_url: {base_url}")
 
             elif self.provider == "custom":
@@ -119,7 +128,9 @@ class AIVisionService:
 
                 self.client = OpenAI(
                     api_key=self.custom_api_key,
-                    base_url=self.custom_base_url
+                    base_url=self.custom_base_url,
+                    timeout=120.0,  # 2 minutes timeout for streaming responses
+                    max_retries=2   # Limit retries to fail fast on errors
                 )
                 logger.info(f"Custom provider initialized with base_url: {self.custom_base_url}")
 
@@ -696,9 +707,15 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
                             max_tokens=4096,
                         )
                         for chunk in stream:
-                            delta = chunk.choices[0].delta.content
-                            if delta:
-                                q.put(("data", delta))
+                            # Some providers emit empty heartbeat chunks - guard against missing choices
+                            if not getattr(chunk, "choices", None):
+                                continue
+                            if not chunk.choices:
+                                continue
+                            delta = chunk.choices[0].delta.content if chunk.choices[0].delta else None
+                            if not delta:
+                                continue
+                            q.put(("data", delta))
                         q.put(("done", None))
                     except Exception as e:
                         q.put(("error", e))
@@ -725,12 +742,19 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
                             model=self.custom_model_name or "gpt-3.5-turbo",
                             messages=[{"role": "user", "content": prompt}],
                             stream=True,
+                            max_tokens=4096,
                             temperature=0.2,
                         )
                         for chunk in stream:
-                            delta = chunk.choices[0].delta.content
-                            if delta:
-                                q.put(("data", delta))
+                            # Some providers emit empty heartbeat chunks - guard against missing choices
+                            if not getattr(chunk, "choices", None):
+                                continue
+                            if not chunk.choices:
+                                continue
+                            delta = chunk.choices[0].delta.content if chunk.choices[0].delta else None
+                            if not delta:
+                                continue
+                            q.put(("data", delta))
                         q.put(("done", None))
                     except Exception as e:
                         q.put(("error", e))

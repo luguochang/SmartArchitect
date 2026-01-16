@@ -622,7 +622,7 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
 
       const body = {
         prompt,
-        style: "neon cyber cat with glowing eyes, bold strokes, 8-color palette",
+        style: "balanced",  // Use FlowPilot-compatible style system
         width: 1200,
         height: 800,
         provider: modelConfig.provider,
@@ -671,7 +671,7 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
 
       const body = {
         prompt,
-        style: "neon cyber cat with glowing eyes, bold strokes, 8-color palette",
+        style: "balanced",  // Use FlowPilot-compatible style system
         width: 1200,
         height: 800,
         provider: modelConfig.provider,
@@ -713,15 +713,53 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
             const token = content.replace("[TOKEN]", "").trimStart();
             accumulatedJson += token;
 
+            // Try to parse and render partial JSON in real-time
+            try {
+              // Import safeParsePartialJson dynamically
+              const { safeParsePartialJson, sanitizeExcalidrawData } = await import("@/lib/excalidrawUtils");
+
+              // Extract JSON from accumulated content (may have ```json fence)
+              let jsonContent = accumulatedJson.trim();
+              const codeBlockMatch = jsonContent.match(/```(?:json)?\s*\n?([^`]*?)(?:```|$)/i);
+              if (codeBlockMatch) {
+                jsonContent = codeBlockMatch[1].trim();
+              }
+
+              // DEBUG: Log streaming parse attempts
+              console.log(`[Streaming] Accumulated ${accumulatedJson.length} chars, trying to parse...`);
+
+              // Try to parse partial JSON
+              if (jsonContent.startsWith("{")) {
+                const parsed = safeParsePartialJson(jsonContent);
+                if (parsed && parsed.elements && Array.isArray(parsed.elements) && parsed.elements.length > 0) {
+                  // Sanitize and update scene in real-time
+                  const sanitized = sanitizeExcalidrawData(parsed);
+                  if (sanitized && sanitized.elements.length > 0) {
+                    set({ excalidrawScene: sanitized });
+                    console.log(`[Streaming] ✅ Updated Excalidraw with ${sanitized.elements.length} elements`);
+                  } else {
+                    console.warn(`[Streaming] ⚠️ Sanitization returned empty elements`);
+                  }
+                } else {
+                  console.warn(`[Streaming] ⚠️ Parse failed or no elements: parsed=${!!parsed}, elements=${parsed?.elements?.length}`);
+                }
+              } else {
+                console.warn(`[Streaming] ⚠️ JSON content doesn't start with '{': ${jsonContent.substring(0, 50)}`);
+              }
+            } catch (e) {
+              // Parsing failed, continue accumulating
+              console.warn(`[Streaming] ❌ Parse error: ${e}`);
+            }
+
             // Update the LAST log entry with accumulated JSON (typewriter effect)
             set(state => {
               const logs = [...state.generationLogs];
               if (logs.length > 0 && logs[logs.length - 1].startsWith("🤖")) {
                 // Update existing JSON display
-                logs[logs.length - 1] = `🤖 Generating JSON...\n${accumulatedJson}`;
+                logs[logs.length - 1] = `🤖 Generating...`;
               } else {
                 // Start new JSON display
-                logs.push(`🤖 Generating JSON...\n${accumulatedJson}`);
+                logs.push(`🤖 Generating...`);
               }
               return { generationLogs: logs };
             });
