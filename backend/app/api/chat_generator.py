@@ -81,6 +81,9 @@ async def generate_flowchart_stream(request: ChatGenerationRequest):
 
     async def event_stream():
         try:
+            logger.info(f"[STREAM] Starting stream generation for: {request.user_input[:50]}")
+            logger.info(f"[STREAM] Provider: {request.provider}, Model: {request.model_name}")
+
             service = create_chat_generator_service()
             selected_provider = request.provider or "gemini"
 
@@ -97,36 +100,51 @@ async def generate_flowchart_stream(request: ChatGenerationRequest):
             prompt = service._build_generation_prompt(prompt_request)
 
             yield "data: [START] building prompt\n\n"
+            logger.info("[STREAM] Sent START event")
             yield "data: [CALL] contacting provider...\n\n"
+            logger.info("[STREAM] Sent CALL event")
 
             # Prefer true stream for OpenAI-compatible providers
             if selected_provider in ["siliconflow", "openai", "custom"]:
-                vision_service = create_vision_service(
-                    provider=selected_provider,
-                    api_key=request.api_key,
-                    base_url=request.base_url,
-                    model_name=request.model_name
-                )
+                try:
+                    vision_service = create_vision_service(
+                        provider=selected_provider,
+                        api_key=request.api_key,
+                        base_url=request.base_url,
+                        model_name=request.model_name
+                    )
 
-                # Stream tokens
-                accumulated = ""
-                stream = vision_service.client.chat.completions.create(
-                    model=vision_service.model_name,
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=4096,
-                    temperature=0.2,
-                    stream=True,
-                )
-                for chunk in stream:
-                    # Some providers may emit empty heartbeats; guard against missing choices
-                    if not getattr(chunk, "choices", None):
-                        continue
-                    delta = chunk.choices[0].delta.content if chunk.choices[0].delta else None
-                    if not delta:
-                        continue
-                    text = "".join(delta)
-                    accumulated += text
-                    yield f"data: [TOKEN] {text}\n\n"
+                    # Stream tokens
+                    accumulated = ""
+                    logger.info(f"[STREAM] Creating streaming request to {selected_provider} with model {vision_service.model_name}")
+
+                    stream = vision_service.client.chat.completions.create(
+                        model=vision_service.model_name,
+                        messages=[{"role": "user", "content": prompt}],
+                        max_tokens=4096,
+                        temperature=0.2,
+                        stream=True,
+                    )
+                except Exception as init_error:
+                    logger.error(f"[STREAM] Failed to initialize streaming: {init_error}", exc_info=True)
+                    yield f"data: [ERROR] Failed to initialize AI streaming: {str(init_error)}\n\n"
+                    return
+
+                try:
+                    for chunk in stream:
+                        # Some providers may emit empty heartbeats; guard against missing choices
+                        if not getattr(chunk, "choices", None):
+                            continue
+                        delta = chunk.choices[0].delta.content if chunk.choices[0].delta else None
+                        if not delta:
+                            continue
+                        text = "".join(delta)
+                        accumulated += text
+                        yield f"data: [TOKEN] {text}\n\n"
+                except Exception as stream_error:
+                    logger.error(f"[STREAM] Error during streaming: {stream_error}", exc_info=True)
+                    yield f"data: [ERROR] Streaming interrupted: {str(stream_error)}\n\n"
+                    return
 
                 # Parse final JSON and normalize; if parse fails, fall back to non-stream path
                 try:

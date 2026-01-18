@@ -619,22 +619,27 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
         try:
             if self.provider == "openai":
                 # OpenAI native streaming - use queue for real-time streaming
+                logger.info(f"[STREAM] OpenAI streaming with model: {self.model_name}")
                 q = queue.Queue()
 
                 def _openai_stream():
                     try:
+                        logger.info(f"[STREAM] Initiating OpenAI stream with model={self.model_name}")
                         stream = self.client.chat.completions.create(
                             model=self.model_name,
                             messages=[{"role": "user", "content": prompt}],
                             stream=True,
                             temperature=0.2,
                         )
+                        logger.info("[STREAM] OpenAI stream created, starting iteration")
                         for chunk in stream:
                             delta = chunk.choices[0].delta.content
                             if delta:
                                 q.put(("data", delta))
+                        logger.info("[STREAM] OpenAI stream completed successfully")
                         q.put(("done", None))
                     except Exception as e:
+                        logger.error(f"[STREAM] Exception in _openai_stream: {e}", exc_info=True)
                         q.put(("error", e))
 
                 loop = asyncio.get_event_loop()
@@ -652,10 +657,12 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
 
             elif self.provider == "claude":
                 # Claude streaming with context manager
+                logger.info(f"[STREAM] Claude streaming with model: {self.model_name}")
                 q = queue.Queue()
 
                 def _claude_stream():
                     try:
+                        logger.info(f"[STREAM] Initiating Claude stream with model={self.model_name}")
                         with self.client.messages.stream(
                             model=self.model_name,
                             max_tokens=4096,
@@ -664,8 +671,10 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
                         ) as stream:
                             for text in stream.text_stream:
                                 q.put(("data", text))
+                        logger.info("[STREAM] Claude stream completed successfully")
                         q.put(("done", None))
                     except Exception as e:
+                        logger.error(f"[STREAM] Exception in _claude_stream: {e}", exc_info=True)
                         q.put(("error", e))
 
                 loop = asyncio.get_event_loop()
@@ -693,10 +702,12 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
 
             elif self.provider == "siliconflow":
                 # SiliconFlow (OpenAI-compatible) - use queue for real-time streaming
+                logger.info(f"[STREAM] SiliconFlow streaming with model: {self.model_name}")
                 q = queue.Queue()
 
                 def _siliconflow_stream():
                     try:
+                        logger.info(f"[STREAM] Initiating SiliconFlow stream with model={self.model_name}")
                         stream = self.client.chat.completions.create(
                             model=self.model_name,
                             messages=[{"role": "user", "content": prompt}],
@@ -706,6 +717,7 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
                             frequency_penalty=0.5,
                             max_tokens=4096,
                         )
+                        logger.info("[STREAM] SiliconFlow stream created, starting iteration")
                         for chunk in stream:
                             # Some providers emit empty heartbeat chunks - guard against missing choices
                             if not getattr(chunk, "choices", None):
@@ -716,8 +728,10 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
                             if not delta:
                                 continue
                             q.put(("data", delta))
+                        logger.info("[STREAM] SiliconFlow stream completed successfully")
                         q.put(("done", None))
                     except Exception as e:
+                        logger.error(f"[STREAM] Exception in _siliconflow_stream: {e}", exc_info=True)
                         q.put(("error", e))
 
                 loop = asyncio.get_event_loop()
@@ -734,17 +748,20 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
 
             elif self.provider == "custom":
                 # Custom provider (OpenAI-compatible) - use queue for real-time streaming
+                logger.info(f"[STREAM] Custom provider streaming with model: {self.model_name}")
                 q = queue.Queue()
 
                 def _custom_stream():
                     try:
+                        logger.info(f"[STREAM] Initiating stream with base_url={self.custom_base_url}, model={self.model_name}")
                         stream = self.client.chat.completions.create(
-                            model=self.custom_model_name or "gpt-3.5-turbo",
+                            model=self.model_name,  # ✅ 使用 self.model_name 而非 custom_model_name
                             messages=[{"role": "user", "content": prompt}],
                             stream=True,
-                            max_tokens=4096,
-                            temperature=0.2,
+                            max_tokens=8192,  # ✅ 增加到 8192，确保 JSON 能完整生成
+                            temperature=0.1,  # ✅ 降低温度，更确定性的输出
                         )
+                        logger.info("[STREAM] Stream created successfully, starting to iterate chunks")
                         for chunk in stream:
                             # Some providers emit empty heartbeat chunks - guard against missing choices
                             if not getattr(chunk, "choices", None):
@@ -755,8 +772,10 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
                             if not delta:
                                 continue
                             q.put(("data", delta))
+                        logger.info("[STREAM] Stream iteration completed successfully")
                         q.put(("done", None))
                     except Exception as e:
+                        logger.error(f"[STREAM] Exception in _custom_stream: {e}", exc_info=True)
                         q.put(("error", e))
 
                 loop = asyncio.get_event_loop()

@@ -124,33 +124,52 @@ class ExcalidrawGeneratorService:
 
     def _build_prompt(self, prompt: str, style: Optional[str], width: int, height: int) -> str:
         """
-        Build Excalidraw generation prompt.
-        Simplified approach based on FlowPilot to ensure valid JSON generation.
+        Build Excalidraw generation prompt - balanced between quality and parsability.
         """
         return f"""
-You are an Excalidraw Expert. Output exactly one valid JSON object representing an Excalidraw scene, wrapped in a fenced ```json``` block.
-Do NOT use any tool calls.
+You are an Excalidraw Expert. Generate a hand-drawn style diagram based on the user's request.
 
-Priorities:
-1. Valid JSON syntax (Standard Excalidraw Format).
-2. Clear, hand-drawn style consistency.
-3. Reasonable layout without overlaps.
+CRITICAL OUTPUT FORMAT:
+- Output ONLY valid JSON (no markdown fences, no explanations)
+- Start directly with {{ and end with }}
+- Use proper commas between all array elements and properties
+- NO trailing commas
 
-Important:
-- Use "arrow" type for connections. Use "startBinding" / "endBinding" to attach arrows to shapes.
-- For "line", "arrow", "draw", "freedraw", the "points" array is MANDATORY (e.g. [[0,0], [50,50]]).
-- Ensure all "id"s are unique strings.
-- "groupIds" must be an array of strings if used.
-- Each element must have: id, type, x, y, width, height, angle, strokeColor, backgroundColor, fillStyle, strokeWidth, strokeStyle, roughness, opacity.
-- Text elements must have: text, fontSize, fontFamily, textAlign.
-- Canvas: {width}x{height}px. Place elements within x:[100,{width-100}], y:[100,{height-100}].
-- Create appropriate number of elements to represent the concept clearly (typically 8-15 for simple diagrams, more if needed but keep JSON concise).
-- Do NOT output conversational text before or after the JSON block.
+Required JSON structure:
+{{
+  "elements": [...],
+  "appState": {{"viewBackgroundColor": "#ffffff"}},
+  "files": {{}}
+}}
+
+Element Requirements:
+- Create 8-15 elements for rich diagrams (use rectangles, ellipses, arrows, lines, text)
+- Each element MUST have these fields:
+  id, type, x, y, width, height, angle, strokeColor, backgroundColor,
+  fillStyle, strokeWidth, strokeStyle, roughness, opacity, groupIds,
+  frameId, roundness, seed, version, versionNonce, isDeleted,
+  boundElements, updated, link, locked
+
+- For arrows/lines, add: points, startBinding, endBinding
+- For text elements, add: text, fontSize, fontFamily, textAlign, verticalAlign, baseline, containerId, originalText
+
+Valid types: rectangle, diamond, ellipse, arrow, line, text
+
+Layout:
+- Canvas size: {width}x{height}px
+- Place elements within x:[100,{width-100}], y:[100,{height-100}]
+- Avoid overlaps
+- Use arrows to connect related shapes
+
+Colors (hand-drawn style):
+- strokeColor: "#1e1e1e", "#2563eb", "#dc2626", "#059669"
+- backgroundColor: "#a5d8ff", "#fde68a", "#bbf7d0", "transparent"
+- fillStyle: "hachure" or "solid"
+- roughness: 1 (hand-drawn) or 0 (smooth)
 
 User request: "{prompt}"
 
-Output the JSON wrapped in ```json``` fences.
-"""
+Generate the JSON now (REMEMBER: no markdown fences, just raw JSON):"""
 
     def _safe_json(self, payload):
         """Sanitize AI response into valid JSON dict with aggressive cleaning."""
@@ -201,9 +220,13 @@ Output the JSON wrapped in ```json``` fences.
                 if "Expecting ',' delimiter" in str(e):
                     import re
                     # Fix missing commas between array elements: } { → }, {
-                    text_with_commas = re.sub(r'}\s*{', '}, {', text)
-                    # Fix missing commas between properties: " " → ", "
-                    text_with_commas = re.sub(r'"\s+"', '", "', text_with_commas)
+                    text_with_commas = re.sub(r'}\s+{', '}, {', text)
+                    # Fix missing commas between array items: }\n{ → },\n{
+                    text_with_commas = re.sub(r'}\n\s*{', '},\n{', text_with_commas)
+                    # Fix missing commas between properties: "key": value "key2" → "key": value, "key2"
+                    text_with_commas = re.sub(r'"\s*\n\s*"', '",\n"', text_with_commas)
+                    text_with_commas = re.sub(r'(\d+)\s+(")', r'\1, \2', text_with_commas)
+                    text_with_commas = re.sub(r'(true|false|null)\s+(")', r'\1, \2', text_with_commas)
 
                     try:
                         result = json.loads(text_with_commas)
@@ -278,8 +301,14 @@ Output the JSON wrapped in ```json``` fences.
                 except Exception:
                     pass
 
-                logger.error(f"All JSON repair strategies failed. Raw payload: {payload[:200]}...")
-                return {}
+                # Log full payload for debugging
+                logger.error(f"All JSON repair strategies failed. Payload length: {len(payload)}")
+                logger.error(f"First 500 chars: {payload[:500]}")
+                logger.error(f"Last 500 chars: {payload[-500:]}")
+
+                # Return None to trigger fallback to mock scene
+                # DO NOT return empty dict as it will cause downstream issues
+                return None
 
         # Last resort: convert to JSON string and parse
         try:
@@ -291,7 +320,14 @@ Output the JSON wrapped in ```json``` fences.
         """
         Validate and clean Excalidraw scene data with deep element validation.
         Based on FlowPilot's sanitizeData implementation.
+
+        Returns mock scene if ai_data is None or invalid.
         """
+        # Handle None or invalid input - return mock scene immediately
+        if ai_data is None or not isinstance(ai_data, dict):
+            logger.warning("Invalid ai_data provided to _validate_scene, returning mock scene")
+            return self._mock_scene()
+
         elements = ai_data.get("elements", [])
         if not isinstance(elements, list):
             elements = []
@@ -434,6 +470,13 @@ Output the JSON wrapped in ```json``` fences.
                 base["boundElements"] = []
 
             cleaned.append(base)
+
+        # If no valid elements after cleaning, return mock scene
+        if not cleaned:
+            logger.warning("No valid elements after cleaning, returning mock scene")
+            mock = self._mock_scene()
+            mock.appState["message"] = "AI generated invalid elements, showing fallback scene"
+            return mock
 
         # Validate and clean appState
         app_state = ai_data.get("appState") or {}
@@ -590,9 +633,13 @@ Output the JSON wrapped in ```json``` fences.
 
             ai_data = self._safe_json(ai_raw)
             scene = self._validate_scene(ai_data, width, height)
-            scene.appState["message"] = f"Generated via {provider}"
-            if not scene.elements:
-                raise ValueError("Empty scene generated by AI")
+
+            # Update message based on whether it's a fallback
+            current_message = scene.appState.get("message", "")
+            if "fallback" not in current_message.lower() and "mock" not in current_message.lower():
+                scene.appState["message"] = f"Generated via {provider}"
+
+            # Scene is guaranteed to have elements now (either AI or mock)
             return scene
         except Exception as e:
             logger.error(f"Excalidraw generation failed: {e}", exc_info=True)

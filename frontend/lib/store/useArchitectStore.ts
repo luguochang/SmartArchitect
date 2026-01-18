@@ -665,13 +665,23 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
   },
 
   generateExcalidrawSceneStream: async (prompt) => {
-    set({ isGeneratingFlowchart: true, generationLogs: ["🎨 Starting generation..."], excalidrawScene: null });
+    console.log("[Excalidraw] Starting generation for:", prompt.substring(0, 50));
+    set({ isGeneratingFlowchart: true, generationLogs: [], excalidrawScene: null });
+
     try {
       const { modelConfig } = get();
 
+      // 添加用户消息到聊天历史
+      set((state) => ({
+        chatHistory: [
+          ...state.chatHistory,
+          { role: "user", content: prompt },
+        ],
+      }));
+
       const body = {
         prompt,
-        style: "balanced",  // Use FlowPilot-compatible style system
+        style: "balanced",
         width: 1200,
         height: 800,
         provider: modelConfig.provider,
@@ -687,119 +697,133 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
       });
 
       if (!response.ok) {
-        const detail = await response.text();
-        throw new Error(detail || "Excalidraw streaming failed");
+        throw new Error(`HTTP ${response.status}`);
       }
 
       const reader = response.body!.getReader();
       const decoder = new TextDecoder();
       let buffered = "";
-      let accumulatedJson = "";  // Accumulated JSON text for typewriter effect
+      let tokenCount = 0;
+
+      const logs: string[] = [];
+      const pushLog = (line: string) => {
+        logs.push(line);
+        set({ generationLogs: [...logs] });
+      };
+
+      // Track generation status in chat history (打字机效果)
+      let statusMessage = "🎨 正在生成 Excalidraw 场景...";
+      const updateChatStatus = (message: string) => {
+        statusMessage = message;
+        set((state) => {
+          const newHistory = [...state.chatHistory];
+          const last = newHistory[newHistory.length - 1];
+          if (last && last.role === "assistant") {
+            newHistory[newHistory.length - 1] = { role: "assistant", content: statusMessage };
+          } else {
+            newHistory.push({ role: "assistant", content: statusMessage });
+          }
+          return { chatHistory: newHistory };
+        });
+      };
+
+      // Accumulate JSON tokens for display in logs
+      let jsonBuffer = "";
+      const updateJsonLog = (token: string) => {
+        jsonBuffer += token;
+        const generatingIndex = logs.findIndex(log => log.startsWith("[生成中]"));
+        if (generatingIndex !== -1) {
+          logs[generatingIndex] = `[生成中] ${jsonBuffer}`;
+        } else {
+          logs.push(`[生成中] ${jsonBuffer}`);
+        }
+        set({ generationLogs: [...logs] });
+      };
+
+      // Initialize status message
+      updateChatStatus(statusMessage);
 
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
 
-        buffered += decoder.decode(value, { stream: true });
+        const chunk = decoder.decode(value, { stream: true });
+        console.log("[Excalidraw STREAM DEBUG] Raw chunk:", chunk.substring(0, 200));
+        buffered += chunk;
         const parts = buffered.split("\n\n");
         buffered = parts.pop() || "";
 
+        console.log("[Excalidraw STREAM DEBUG] Parts count:", parts.length);
         for (const part of parts) {
           const content = part.trim().replace(/^data:\s?/, "");
-
+          console.log("[Excalidraw STREAM DEBUG] Processing content:", content.substring(0, 100));
           if (!content) continue;
 
-          if (content.startsWith("[TOKEN]")) {
+          if (content.startsWith("[START]")) {
+            pushLog(content);
+            updateChatStatus("📝 正在构建提示词...");
+          } else if (content.startsWith("[CALL]")) {
+            pushLog(content);
+            updateChatStatus("🤖 AI 正在绘制场景...");
+          } else if (content.startsWith("[TOKEN]")) {
             const token = content.replace("[TOKEN]", "").trimStart();
-            accumulatedJson += token;
+            tokenCount++;
+            updateJsonLog(token);
 
-            // Try to parse and render partial JSON in real-time
+            // 每 50 个 token 更新聊天状态
+            if (tokenCount % 50 === 0) {
+              updateChatStatus(`🤖 AI 正在绘制场景...\n已生成 ${tokenCount} tokens`);
+            }
+          } else if (content.startsWith("[RESULT]")) {
+            // Remove "[生成中]" log
+            const generatingIndex = logs.findIndex(log => log.startsWith("[生成中]"));
+            if (generatingIndex !== -1) {
+              logs.splice(generatingIndex, 1);
+            }
+
+            pushLog(content);
+            const resultContent = content.replace("[RESULT]", "").trim();
+
             try {
-              // Import safeParsePartialJson dynamically
-              const { safeParsePartialJson, sanitizeExcalidrawData } = await import("@/lib/excalidrawUtils");
+              const result = JSON.parse(resultContent);
+              console.log("[Excalidraw] Parsed RESULT:", {
+                hasScene: !!result.scene,
+                elementsCount: result.scene?.elements?.length,
+                success: result.success
+              });
 
-              // Extract JSON from accumulated content (may have ```json fence)
-              let jsonContent = accumulatedJson.trim();
-              const codeBlockMatch = jsonContent.match(/```(?:json)?\s*\n?([^`]*?)(?:```|$)/i);
-              if (codeBlockMatch) {
-                jsonContent = codeBlockMatch[1].trim();
-              }
+              if (result.scene?.elements) {
+                console.log("[Excalidraw] Setting scene with", result.scene.elements.length, "elements");
+                set({ excalidrawScene: result.scene });
 
-              // DEBUG: Log streaming parse attempts
-              console.log(`[Streaming] Accumulated ${accumulatedJson.length} chars, trying to parse...`);
+                const successMsg = result.success
+                  ? `✅ Excalidraw 场景生成完成\n- 元素数量: ${result.scene.elements.length}\n- 生成方式: AI 智能生成`
+                  : `⚠️ 使用备用场景\n- 元素数量: ${result.scene.elements.length}\n- 原因: ${result.message || 'AI 生成失败'}`;
 
-              // Try to parse partial JSON
-              if (jsonContent.startsWith("{")) {
-                const parsed = safeParsePartialJson(jsonContent);
-                if (parsed && parsed.elements && Array.isArray(parsed.elements) && parsed.elements.length > 0) {
-                  // Sanitize and update scene in real-time
-                  const sanitized = sanitizeExcalidrawData(parsed);
-                  if (sanitized && sanitized.elements.length > 0) {
-                    set({ excalidrawScene: sanitized });
-                    console.log(`[Streaming] ✅ Updated Excalidraw with ${sanitized.elements.length} elements`);
-                  } else {
-                    console.warn(`[Streaming] ⚠️ Sanitization returned empty elements`);
-                  }
-                } else {
-                  console.warn(`[Streaming] ⚠️ Parse failed or no elements: parsed=${!!parsed}, elements=${parsed?.elements?.length}`);
-                }
-              } else {
-                console.warn(`[Streaming] ⚠️ JSON content doesn't start with '{': ${jsonContent.substring(0, 50)}`);
+                updateChatStatus(successMsg);
               }
             } catch (e) {
-              // Parsing failed, continue accumulating
-              console.warn(`[Streaming] ❌ Parse error: ${e}`);
+              console.error("[Excalidraw] Failed to parse RESULT:", e);
             }
-
-            // Update the LAST log entry with accumulated JSON (typewriter effect)
-            set(state => {
-              const logs = [...state.generationLogs];
-              if (logs.length > 0 && logs[logs.length - 1].startsWith("🤖")) {
-                // Update existing JSON display
-                logs[logs.length - 1] = `🤖 Generating...`;
-              } else {
-                // Start new JSON display
-                logs.push(`🤖 Generating...`);
-              }
-              return { generationLogs: logs };
-            });
-          } else if (content.startsWith("[RESULT]")) {
-            const resultContent = content.replace("[RESULT]", "").trim();
-            const result = JSON.parse(resultContent);
-
-            if (result.scene) {
-              set({ excalidrawScene: result.scene });
-              console.log("Excalidraw scene saved to store (streaming):", result.scene.elements?.length, "elements");
-
-              // Add completion message
-              set(state => ({
-                generationLogs: [...state.generationLogs, `✅ Scene generated: ${result.scene.elements?.length || 0} elements`]
-              }));
-            }
-          } else if (content.startsWith("[START]")) {
-            const message = content.replace("[START]", "").trim();
-            set(state => ({
-              generationLogs: [...state.generationLogs, `🎬 ${message}`]
-            }));
-          } else if (content.startsWith("[CALL]")) {
-            const message = content.replace("[CALL]", "").trim();
-            set(state => ({
-              generationLogs: [...state.generationLogs, `🔮 ${message}`]
-            }));
+          } else if (content.startsWith("[END]")) {
+            pushLog(content);
           } else if (content.startsWith("[ERROR]")) {
-            const errorMsg = content.replace("[ERROR]", "").trim();
-            console.error("Excalidraw streaming error:", errorMsg);
-            throw new Error(errorMsg);
+            pushLog(content);
+            updateChatStatus(`❌ 生成失败: ${content.replace("[ERROR]", "").trim()}`);
+            throw new Error(content.replace("[ERROR]", ""));
           }
         }
       }
 
-      console.log("Excalidraw streaming completed successfully");
+      console.log("[Excalidraw] Stream completed");
     } catch (error: any) {
-      console.error("Excalidraw streaming error:", error);
-      // Don't throw - the mock scene should have been sent by the backend
+      console.error("[Excalidraw] Error:", error);
       set(state => ({
-        generationLogs: [...state.generationLogs, `❌ Error: ${error.message}`]
+        generationLogs: [...state.generationLogs, `❌ Error: ${error.message}`],
+        chatHistory: [
+          ...state.chatHistory.slice(0, -1),
+          { role: "assistant", content: `❌ 生成失败: ${error.message}` }
+        ]
       }));
     } finally {
       set({ isGeneratingFlowchart: false });
