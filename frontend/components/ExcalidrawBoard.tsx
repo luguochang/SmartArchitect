@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import "@excalidraw/excalidraw/index.css";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useArchitectStore } from "@/lib/store/useArchitectStore";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types/types";
 
@@ -14,19 +14,13 @@ const Excalidraw = dynamic(
 export default function ExcalidrawBoard() {
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const scene = useArchitectStore((s) => s.excalidrawScene);
+  const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  console.log("[ExcalidrawBoard] Render, scene elements:", scene?.elements?.length || 0);
-
-  useEffect(() => {
-    console.log("[ExcalidrawBoard] Effect: api=", !!apiRef.current, "scene=", !!scene);
-
-    if (!apiRef.current || !scene?.elements) {
-      console.log("[ExcalidrawBoard] Waiting...");
+  // Function to update scene - can be called from multiple places
+  const updateScene = (api: ExcalidrawImperativeAPI, sceneData: typeof scene) => {
+    if (!sceneData?.elements || sceneData.elements.length === 0) {
       return;
     }
-
-    console.log("[ExcalidrawBoard] CALLING updateScene with", scene.elements.length, "elements");
-    console.log("[ExcalidrawBoard] First element:", scene.elements[0]);
 
     try {
       // 设置完整的 appState
@@ -35,36 +29,49 @@ export default function ExcalidrawBoard() {
         zoom: { value: 1 },
         scrollX: 0,
         scrollY: 0,
-        ...scene.appState
+        ...sceneData.appState
       };
 
-      apiRef.current.updateScene({
-        elements: scene.elements,
+      api.updateScene({
+        elements: sceneData.elements,
         appState
       });
 
-      console.log("[ExcalidrawBoard] ✅ updateScene SUCCESS");
-
-      // 强制滚动到内容
-      setTimeout(() => {
+      // 只在完成时滚动一次，使用防抖
+      if (updateTimeoutRef.current) {
+        clearTimeout(updateTimeoutRef.current);
+      }
+      updateTimeoutRef.current = setTimeout(() => {
         if (apiRef.current) {
-          console.log("[ExcalidrawBoard] Scrolling to content...");
           apiRef.current.scrollToContent();
-          console.log("[ExcalidrawBoard] ✅ Scrolled");
         }
-      }, 100);
+      }, 150);
 
     } catch (error) {
       console.error("[ExcalidrawBoard] ❌ updateScene FAILED:", error);
     }
+  };
+
+  // Update scene when scene data changes (if API is ready)
+  useEffect(() => {
+    if (!apiRef.current || !scene?.elements) {
+      return;
+    }
+
+    updateScene(apiRef.current, scene);
   }, [scene]);
 
   return (
     <div className="h-full w-full bg-white dark:bg-slate-900">
       <Excalidraw
         excalidrawAPI={(api) => {
-          console.log("[ExcalidrawBoard] API callback fired");
           apiRef.current = api;
+
+          // CRITICAL FIX: If scene data arrived before API was ready, render it now
+          const currentScene = useArchitectStore.getState().excalidrawScene;
+          if (currentScene?.elements && currentScene.elements.length > 0) {
+            setTimeout(() => updateScene(api, currentScene), 0);
+          }
         }}
         initialData={{
           elements: [],

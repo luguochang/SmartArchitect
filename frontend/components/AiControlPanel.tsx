@@ -73,11 +73,20 @@ export function AiControlPanel() {
     }
   }, [flowTemplates.length, promptScenarios.length, loadFlowTemplates, loadPromptScenarios]);
 
-  // Auto-scroll to bottom when messages update
+  // Auto-scroll to bottom when messages update (throttled)
   useEffect(() => {
-    if (generationLogs.length > 0 || chatHistory.length > 0) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (generationLogs.length === 0 && chatHistory.length === 0) {
+      return;
     }
+
+    // Use requestAnimationFrame to batch scroll updates
+    const scrollTimeout = setTimeout(() => {
+      requestAnimationFrame(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      });
+    }, 100);
+
+    return () => clearTimeout(scrollTimeout);
   }, [generationLogs, chatHistory]);
 
   const apiReady = useMemo(() => Boolean(modelConfig.apiKey && modelConfig.apiKey.trim()), [modelConfig.apiKey]);

@@ -127,15 +127,16 @@ class ExcalidrawGeneratorService:
         Build Excalidraw generation prompt - balanced between quality and parsability.
         """
         return f"""
-You are an Excalidraw Expert. Generate a hand-drawn style diagram based on the user's request.
+You are an Excalidraw Expert. Generate a COMPLETE hand-drawn style diagram based on the user's request.
 
 CRITICAL OUTPUT FORMAT:
-- Output ONLY valid JSON (no markdown fences, no explanations)
+- Output ONLY valid JSON (no markdown fences, no explanations, no truncation)
 - Start directly with {{ and end with }}
 - Use proper commas between all array elements and properties
 - NO trailing commas
+- IMPORTANT: Generate the COMPLETE JSON structure - do NOT stop mid-generation
 
-Required JSON structure:
+Required JSON structure (MUST be complete):
 {{
   "elements": [...],
   "appState": {{"viewBackgroundColor": "#ffffff"}},
@@ -143,33 +144,35 @@ Required JSON structure:
 }}
 
 Element Requirements:
-- Create 8-15 elements for rich diagrams (use rectangles, ellipses, arrows, lines, text)
-- Each element MUST have these fields:
+- Create 10-15 elements for rich, complete diagrams (use rectangles, ellipses, arrows, lines, text)
+- Each element MUST have ALL these fields (no shortcuts):
   id, type, x, y, width, height, angle, strokeColor, backgroundColor,
   fillStyle, strokeWidth, strokeStyle, roughness, opacity, groupIds,
   frameId, roundness, seed, version, versionNonce, isDeleted,
   boundElements, updated, link, locked
 
-- For arrows/lines, add: points, startBinding, endBinding
+- For arrows/lines, add: points (array of [x,y]), startBinding, endBinding
 - For text elements, add: text, fontSize, fontFamily, textAlign, verticalAlign, baseline, containerId, originalText
 
 Valid types: rectangle, diamond, ellipse, arrow, line, text
 
-Layout:
+Layout Guidelines:
 - Canvas size: {width}x{height}px
 - Place elements within x:[100,{width-100}], y:[100,{height-100}]
-- Avoid overlaps
+- Distribute elements evenly across the canvas
 - Use arrows to connect related shapes
+- Add labels with text elements for clarity
 
 Colors (hand-drawn style):
-- strokeColor: "#1e1e1e", "#2563eb", "#dc2626", "#059669"
-- backgroundColor: "#a5d8ff", "#fde68a", "#bbf7d0", "transparent"
+- strokeColor: "#1e1e1e", "#2563eb", "#dc2626", "#059669", "#8b5cf6"
+- backgroundColor: "#a5d8ff", "#fde68a", "#bbf7d0", "#ddd6fe", "transparent"
 - fillStyle: "hachure" or "solid"
 - roughness: 1 (hand-drawn) or 0 (smooth)
 
 User request: "{prompt}"
 
-Generate the JSON now (REMEMBER: no markdown fences, just raw JSON):"""
+CRITICAL: Generate the COMPLETE JSON now. Make sure to close all arrays and objects properly. Do NOT stop mid-generation.
+Output format: raw JSON only (no markdown fences, no ```json, just {{ ... }}):"""
 
     def _safe_json(self, payload):
         """Sanitize AI response into valid JSON dict with aggressive cleaning."""
