@@ -6,6 +6,63 @@
 
 ## 2026-01-19 - 修复流式端点挂起问题 (Critical Fix)
 
+### 🔴 Critical Issue #1: LoggerMiddleware 缓冲流式响应（已修复）
+
+**问题**: 用户反馈"一口气返回，需要等待将近一分钟"，没有实时流式打印效果。
+
+**根本原因**:
+`LoggerMiddleware` 会等待整个响应完成才返回，导致流式传输被完全缓冲。
+
+**技术细节**:
+```python
+# backend/app/middleware/logging_middleware.py line 53
+response = await call_next(request)  # ❌ 等待整个流完成！
+
+# line 56 - 计算执行时间
+duration_ms = (time.time() - start_time) * 1000
+
+# line 59 - 记录响应
+logger.info(f"[RESPONSE] ... Duration: {duration_ms:.2f}ms")
+```
+
+对于 StreamingResponse，`call_next()` 会等待整个 generator 完成后才返回，这导致：
+- 所有 token 被缓冲在内存中
+- 用户需要等待 AI 生成完所有内容（~1 分钟）
+- 然后一次性收到所有数据
+- **完全失去了流式传输的意义**
+
+**修复方案**:
+检测流式端点并立即返回，不等待响应完成：
+
+```python
+# 检查是否是流式端点
+is_stream_endpoint = (
+    "-stream" in url_path or
+    "/generate-stream" in url_path or
+    url_path.endswith("/stream")
+)
+
+response = await call_next(request)
+
+# 对于流式端点，立即返回避免缓冲
+if is_stream_endpoint:
+    logger.info(f"[STREAM START] {url_path} | Streaming response initiated")
+    return response  # ✅ 立即返回，不等待！
+
+# 非流式端点才计算时间和记录响应
+duration_ms = (time.time() - start_time) * 1000
+logger.info(f"[RESPONSE] ... Duration: {duration_ms:.2f}ms")
+```
+
+**验证方法**:
+使用 `diagnose_stream.py` 检查 token 间隔：
+- **修复前**: 所有 token 间隔 < 1ms（批量返回）
+- **修复后**: token 间隔 10-100ms（实时流式）
+
+---
+
+### 🔴 Critical Issue #2: API Key 缺失导致挂起（已修复）
+
 ### 发现的问题
 用户反馈：Excalidraw 点击 generate 一直转圈圈，没有流式打印效果。
 
