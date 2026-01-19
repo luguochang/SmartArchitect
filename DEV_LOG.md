@@ -4,6 +4,121 @@
 
 ---
 
+## 2026-01-19 - 修复流式端点挂起问题 (Critical Fix)
+
+### 发现的问题
+用户反馈：Excalidraw 点击 generate 一直转圈圈，没有流式打印效果。
+
+### 根本原因
+通过直接测试后端 API 发现：**当 API key 缺失或无效时，流式端点会挂起 120 秒超时**。
+
+**技术原因**:
+1. `backend/app/api/excalidraw.py` line 80: 先 yield 了 `[START]` 事件
+2. Line 83-88: 然后才创建 `vision_service`
+3. 当 API key 缺失时，`create_vision_service()` 在 `ai_vision.py` line 110 抛出 `ValueError`
+4. 此时 HTTP 响应头已发送（200 OK, text/event-stream），无法改变状态码
+5. 异常导致 generator 挂起，客户端一直等待，直到 120 秒超时
+
+**测试证据**:
+```
+requests.exceptions.ReadTimeout: HTTPConnectionPool(host='localhost', port=8000):
+Read timed out. (read timeout=120)
+```
+
+### 修复方案
+**文件**: `backend/app/api/excalidraw.py` (lines 74-105)
+
+**关键改动**:
+- 在 yield 任何数据**之前**，先创建和验证 vision_service
+- 捕获 ValueError 异常（API key 缺失）
+- 立即返回 mock scene 和错误信息，而不是挂起
+
+**修复后的代码流程**:
+```python
+async def event_stream():
+    try:
+        # 1. 先创建 service（可能失败）
+        service = create_excalidraw_service()
+        try:
+            vision_service = create_vision_service(...)
+        except ValueError as ve:
+            # API key 缺失 - 立即返回 mock scene
+            yield "data: [START] API key missing, using mock scene...\n\n"
+            mock_scene = service._mock_scene()
+            response_data = {...}
+            yield f"data: [RESULT] {json.dumps(response_data)}\n\n"
+            yield "data: [END] done\n\n"
+            return
+
+        # 2. 验证成功后，才开始正常流式生成
+        yield "data: [START] Building Excalidraw prompt...\n\n"
+        # ... rest of stream
+```
+
+### 默认配置确认
+检查 `frontend/lib/store/useArchitectStore.ts` line 341-346:
+```typescript
+modelConfig: {
+  provider: "custom",
+  apiKey: "sk-7oflvgMRXPZe0skck0qIqsFuDSvOBKiMqqGiC0Sx9gzAsALh",
+  modelName: "claude-sonnet-4-5-20250929",
+  baseUrl: "https://www.linkflow.run/v1",
+}
+```
+
+API key 是配置好的，所以如果用户仍然遇到问题，可能是：
+1. modelConfig 被重置或覆盖了
+2. 后端服务没有正确启动
+3. 网络连接问题（代理、防火墙等）
+
+### 验证步骤（明天在公司测试）
+
+1. **确认后端运行**:
+   ```bash
+   cd backend
+   python -m app.main
+   # 应该看到: INFO: Application startup complete.
+   ```
+
+2. **确认前端配置**:
+   - 打开浏览器开发者工具 → Application → Local Storage
+   - 检查 modelConfig 的值
+   - 或在 Console 中运行: `JSON.parse(localStorage.getItem('architect-storage'))`
+
+3. **测试流式端点**:
+   ```bash
+   python test_excalidraw_stream.py
+   # 应该看到流式事件输出，而不是超时
+   ```
+
+4. **检查网络请求**:
+   - 浏览器 Network 面板
+   - 查看 `/api/excalidraw/generate-stream` 请求
+   - 检查 Response Headers 是否包含 `content-type: text/event-stream`
+   - 检查 Response 是否有数据返回
+
+5. **查看控制台日志**:
+   - 前端: 应该看到 `[Excalidraw STREAM DEBUG]` 日志
+   - 后端: 应该看到 `[EXCALIDRAW-STREAM]` 日志
+
+### 已修改文件
+- `backend/app/api/excalidraw.py` - 修复流式端点挂起问题
+
+### 待提交
+```bash
+git add backend/app/api/excalidraw.py DEV_LOG.md
+git commit -m "fix: prevent stream hanging when API key is missing
+
+- Move vision_service creation before first yield in event_stream
+- Catch ValueError and return mock scene immediately
+- Prevent 120s timeout when API key is invalid/missing
+
+This fixes the issue where Excalidraw generation would hang indefinitely
+instead of providing user feedback."
+```
+
+---
+
 ## 2026-01-18 - Excalidraw 流式打印功能实现
 
 ### 问题描述

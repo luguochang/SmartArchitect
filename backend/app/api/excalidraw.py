@@ -77,15 +77,32 @@ async def generate_excalidraw_scene_stream(request: ExcalidrawGenerateRequest):
             logger.info(f"[EXCALIDRAW-STREAM] Provider: {request.provider}, Model: {request.model_name}")
             logger.info(f"[EXCALIDRAW-STREAM] Prompt: {request.prompt[:100]}...")
 
-            yield "data: [START] Building Excalidraw prompt...\n\n"
-
+            # CRITICAL: Create services BEFORE yielding any data
+            # If this fails, we want to return HTTP error instead of hanging stream
             service = create_excalidraw_service()
-            vision_service = create_vision_service(
-                provider=request.provider or "siliconflow",
-                api_key=request.api_key,
-                base_url=request.base_url,
-                model_name=request.model_name,
-            )
+            try:
+                vision_service = create_vision_service(
+                    provider=request.provider or "siliconflow",
+                    api_key=request.api_key,
+                    base_url=request.base_url,
+                    model_name=request.model_name,
+                )
+            except ValueError as ve:
+                # API key missing or invalid - send mock scene immediately
+                logger.warning(f"[EXCALIDRAW-STREAM] Vision service creation failed: {ve}")
+                yield "data: [START] API key missing, using mock scene...\n\n"
+                mock_scene = service._mock_scene()
+                mock_scene.appState["message"] = f"API key required: {str(ve)}"
+                response_data = {
+                    "scene": mock_scene.model_dump(),
+                    "success": False,
+                    "message": f"API key missing or invalid: {str(ve)}"
+                }
+                yield f"data: [RESULT] {json.dumps(response_data)}\n\n"
+                yield "data: [END] done\n\n"
+                return
+
+            yield "data: [START] Building Excalidraw prompt...\n\n"
 
             logger.info(f"[EXCALIDRAW-STREAM] Vision service created: provider={vision_service.provider}, model={vision_service.model_name}")
 
