@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.middleware.logging_middleware import LoggerMiddleware
-from app.api import health, mermaid, models, vision, prompter, export, rag, chat_generator, excalidraw, diagnosis
+from app.api import health, mermaid, models, vision, prompter, export, rag, chat_generator, excalidraw
 
 # 初始化日志系统（在创建 FastAPI app 之前）
 setup_logging()
@@ -36,7 +36,6 @@ app.include_router(export.router, prefix="/api", tags=["export"])
 app.include_router(rag.router, prefix="/api", tags=["rag"])
 app.include_router(chat_generator.router, prefix="/api", tags=["chat-generator"])
 app.include_router(excalidraw.router, prefix="/api", tags=["excalidraw"])
-app.include_router(diagnosis.router, prefix="/api", tags=["diagnosis"])
 
 
 @app.get("/")
