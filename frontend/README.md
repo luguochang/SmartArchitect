@@ -1,4 +1,4 @@
-# SmartArchitect AI - Frontend
+# Archboard - Frontend
 
 Next.js 14 前端应用，提供可视化架构设计画布和代码编辑器。
 

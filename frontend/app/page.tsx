@@ -4,7 +4,7 @@ import { ArchitectCanvas } from "@/components/ArchitectCanvas";
 import { AiControlPanel } from "@/components/AiControlPanel";
 import { Sidebar } from "@/components/Sidebar";
 import ThemeSwitcher from "@/components/ThemeSwitcher";
-import { Sparkles } from "lucide-react";
+import { LayoutDashboard } from "lucide-react";
 import { useArchitectStore } from "@/lib/store/useArchitectStore";
 
 export default function Home() {
@@ -15,8 +15,8 @@ export default function Home() {
       {/* 顶部导航栏 */}
       <header className="flex h-14 items-center justify-between border-b border-slate-200 bg-white px-6 dark:border-slate-800 dark:bg-slate-900">
         <div className="flex items-center gap-3">
-          <Sparkles className="h-6 w-6 text-indigo-600" />
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white">SmartArchitect AI</h1>
+          <LayoutDashboard className="h-6 w-6 text-indigo-600" />
+          <h1 className="text-xl font-bold text-slate-900 dark:text-white">Archboard</h1>
         </div>
         <div className="flex items-center gap-4">
           <div className="flex rounded-full border border-slate-200 bg-white text-xs dark:border-slate-800 dark:bg-slate-800">
