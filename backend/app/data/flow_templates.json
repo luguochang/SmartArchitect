@@ -1,6 +1,86 @@
 {
   "templates": [
     {
+      "id": "user-registration",
+      "name": "用户注册登录流程",
+      "description": "完整的用户注册和登录认证流程",
+      "category": "business",
+      "example_input": "生成用户注册登录流程：注册（验证邮箱→创建账号→发送验证邮件）→ 登录（账号密码验证→生成Token→返回用户信息）",
+      "icon": "User"
+    },
+    {
+      "id": "file-upload",
+      "name": "文件上传处理流程",
+      "description": "文件上传、校验、存储的完整流程",
+      "category": "business",
+      "example_input": "生成文件上传流程：选择文件 → 前端校验（大小/格式）→ 获取上传凭证 → 分片上传到 OSS → 合并文件 → 保存记录到数据库",
+      "icon": "Upload"
+    },
+    {
+      "id": "message-push",
+      "name": "消息推送系统",
+      "description": "多渠道消息推送和触达流程",
+      "category": "architecture",
+      "example_input": "生成消息推送系统：触发事件 → 消息队列 → 路由服务（选择渠道）→ App推送/短信/邮件 → 回执处理",
+      "icon": "Bell"
+    },
+    {
+      "id": "payment-gateway",
+      "name": "支付网关流程",
+      "description": "第三方支付对接和回调处理",
+      "category": "business",
+      "example_input": "生成支付流程：创建订单 → 调用支付接口 → 跳转支付页 → 用户支付 → 支付回调 → 验证签名 → 更新订单状态",
+      "icon": "CreditCard"
+    },
+    {
+      "id": "distributed-lock",
+      "name": "分布式锁流程",
+      "description": "使用 Redis 实现分布式锁",
+      "category": "troubleshooting",
+      "example_input": "生成分布式锁流程：尝试获取锁（SETNX）→ 设置过期时间 → 执行业务逻辑 → 释放锁（Lua脚本）",
+      "icon": "Lock"
+    },
+    {
+      "id": "rate-limiting",
+      "name": "限流降级策略",
+      "description": "接口限流和服务降级处理",
+      "category": "troubleshooting",
+      "example_input": "生成限流降级流程：请求到达 → 检查限流（令牌桶/滑动窗口）→ 通过则正常处理 → 超限则降级（返回默认数据/排队/拒绝）",
+      "icon": "Shield"
+    },
+    {
+      "id": "data-backup",
+      "name": "数据备份恢复流程",
+      "description": "定时备份和灾难恢复流程",
+      "category": "devops",
+      "example_input": "生成数据备份流程：定时任务触发 → 全量/增量备份 → 压缩加密 → 上传到异地存储 → 验证备份完整性 → 恢复演练",
+      "icon": "Archive"
+    },
+    {
+      "id": "api-retry",
+      "name": "API 重试机制",
+      "description": "接口调用失败重试策略",
+      "category": "troubleshooting",
+      "example_input": "生成 API 重试流程：发起请求 → 失败判断 → 指数退避重试（最多3次）→ 记录日志 → 返回结果或抛出异常",
+      "icon": "RefreshCw"
+    },
+    {
+      "id": "database-transaction",
+      "name": "数据库事务流程",
+      "description": "事务的开始、提交、回滚流程",
+      "category": "troubleshooting",
+      "example_input": "生成数据库事务流程：开始事务 → 执行 SQL 操作 → 检查错误 → 成功则提交 → 失败则回滚",
+      "icon": "Database"
+    },
+    {
+      "id": "websocket-chat",
+      "name": "WebSocket 聊天室",
+      "description": "实时消息推送和聊天功能",
+      "category": "architecture",
+      "example_input": "生成 WebSocket 聊天系统：建立连接 → 心跳保持 → 接收消息 → 广播给房间内用户 → 离线消息存储",
+      "icon": "MessageCircle"
+    },
+    {
       "id": "microservice-architecture",
       "name": "微服务架构流程（完整版）",
       "description": "展示现代微服务系统的完整请求处理流程，包含网关、缓存、队列、存储等核心组件",

@@ -5,16 +5,12 @@ import {
   Database,
   Globe,
   Box,
-  Settings,
-  Image as ImageIcon,
-  Wand2,
   FileText,
   Shield,
   Zap,
   Layers,
   HardDrive,
   Monitor,
-  MessageSquare,
   Search,
   ChevronDown,
   ChevronRight,
@@ -47,11 +43,6 @@ import {
   Lock,
 } from "lucide-react";
 import { useArchitectStore } from "@/lib/store/useArchitectStore";
-import { ModelConfigModal } from "./ModelConfigModal";
-import { ImageUploadModal } from "./ImageUploadModal";
-import PrompterModal from "./PrompterModal";
-import DocumentUploadModal from "./DocumentUploadModal";
-import ChatGeneratorModal from "./ChatGeneratorModal";
 
 // 节点类型定义
 interface NodeType {
@@ -72,11 +63,6 @@ interface NodeCategory {
 }
 
 export function Sidebar() {
-  const [isConfigOpen, setIsConfigOpen] = useState(false);
-  const [isImageUploadOpen, setIsImageUploadOpen] = useState(false);
-  const [isPrompterOpen, setIsPrompterOpen] = useState(false);
-  const [isDocumentUploadOpen, setIsDocumentUploadOpen] = useState(false);
-  const [isChatGeneratorOpen, setIsChatGeneratorOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
     new Set(["basic", "flowchart"])
@@ -387,87 +373,7 @@ export function Sidebar() {
             </div>
           )}
         </div>
-
-        {/* 功能按钮区域 */}
-        <div className="border-t border-slate-200 px-4 py-3 space-y-2 dark:border-slate-800">
-          <button
-            onClick={() => setIsImageUploadOpen(true)}
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm
-                     text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-          >
-            <ImageIcon className="h-5 w-5 text-indigo-600" />
-            <span>上传架构图</span>
-          </button>
-
-          <button
-            onClick={() => setIsPrompterOpen(true)}
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm
-                     text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-          >
-            <Wand2 className="h-5 w-5 text-purple-600" />
-            <span>AI Prompter</span>
-          </button>
-
-          <button
-            onClick={() => setIsChatGeneratorOpen(true)}
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm
-                     text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-          >
-            <MessageSquare className="h-5 w-5 text-green-600" />
-            <span>Chat Generator</span>
-          </button>
-
-          <button
-            onClick={() => setIsDocumentUploadOpen(true)}
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm
-                     text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-          >
-            <FileText className="h-5 w-5 text-green-600" />
-            <span>上传文档 (RAG)</span>
-          </button>
-
-          <div className="h-px bg-slate-200 dark:bg-slate-700 my-2" />
-
-          <button
-            onClick={() => setIsConfigOpen(true)}
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm
-                     text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-          >
-            <Settings className="h-5 w-5 text-slate-600 dark:text-slate-400" />
-            <span>设置</span>
-          </button>
-        </div>
       </aside>
-
-      {/* 模型配置弹窗 */}
-      <ModelConfigModal
-        isOpen={isConfigOpen}
-        onClose={() => setIsConfigOpen(false)}
-      />
-
-      {/* 图片上传弹窗 */}
-      <ImageUploadModal
-        isOpen={isImageUploadOpen}
-        onClose={() => setIsImageUploadOpen(false)}
-      />
-
-      {/* AI Prompter 弹窗 */}
-      <PrompterModal
-        isOpen={isPrompterOpen}
-        onClose={() => setIsPrompterOpen(false)}
-      />
-
-      {/* 文档上传弹窗（Phase 4 RAG） */}
-      <DocumentUploadModal
-        isOpen={isDocumentUploadOpen}
-        onClose={() => setIsDocumentUploadOpen(false)}
-      />
-
-      {/* Chat Flowchart Generator 弹窗（Phase 5） */}
-      <ChatGeneratorModal
-        isOpen={isChatGeneratorOpen}
-        onClose={() => setIsChatGeneratorOpen(false)}
-      />
     </>
   );
 }

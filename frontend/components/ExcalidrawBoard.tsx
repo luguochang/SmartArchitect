@@ -4,7 +4,9 @@ import dynamic from "next/dynamic";
 import "@excalidraw/excalidraw/index.css";
 import { useEffect, useRef } from "react";
 import { useArchitectStore } from "@/lib/store/useArchitectStore";
-import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types/types";
+
+// Type import - using any to avoid build-time type errors
+type ExcalidrawImperativeAPI = any;
 
 const Excalidraw = dynamic(
   async () => (await import("@excalidraw/excalidraw")).Excalidraw,

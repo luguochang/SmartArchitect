@@ -11,6 +11,7 @@ import ReactFlow, {
   addEdge,
   Connection,
   MarkerType,
+  ConnectionMode,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { useArchitectStore } from "@/lib/store/useArchitectStore";
@@ -101,7 +102,7 @@ function ArchitectCanvasInner() {
         edgeTypes={edgeTypes}
         connectOnClick
         connectionRadius={32}
-        connectionMode="loose"
+        connectionMode={ConnectionMode.Loose}
         defaultEdgeOptions={{
           type: "glow",
           markerEnd: { type: MarkerType.ArrowClosed, width: 18, height: 18 },
