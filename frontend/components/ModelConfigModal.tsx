@@ -19,17 +19,43 @@ export function ModelConfigModal({ isOpen, onClose }: ModelConfigModalProps) {
 
   if (!isOpen) return null;
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    // Save to local store (always happens)
     setModelConfig(localConfig);
+
+    // Optionally test connection and save to backend
+    if (localConfig.apiKey && localConfig.apiKey.trim()) {
+      try {
+        const response = await fetch("http://localhost:8000/api/models/config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            provider: localConfig.provider,
+            api_key: localConfig.apiKey,
+            model_name: localConfig.modelName,
+            base_url: localConfig.baseUrl || "",
+          }),
+        });
+
+        if (response.ok) {
+          console.log("✓ Model config synced to backend");
+        } else {
+          console.warn("Backend config sync failed (non-critical):", await response.text());
+        }
+      } catch (error) {
+        console.warn("Backend config sync failed (non-critical):", error);
+      }
+    }
+
     onClose();
   };
 
   const modelProviders = [
-    { value: "gemini", label: "Google Gemini", defaultModel: "gemini-2.5-flash" },
-    { value: "openai", label: "OpenAI", defaultModel: "gpt-4-turbo" },
-    { value: "claude", label: "Anthropic Claude", defaultModel: "claude-3-5-sonnet-20241022" },
-    { value: "siliconflow", label: "SiliconFlow", defaultModel: "Pro/Qwen/Qwen2.5-7B-Instruct" },
-    { value: "custom", label: "Custom API", defaultModel: "custom-model" },
+    { value: "gemini", label: "Google Gemini", defaultModel: "gemini-2.5-flash", baseUrl: "" },
+    { value: "openai", label: "OpenAI", defaultModel: "gpt-4-turbo", baseUrl: "" },
+    { value: "claude", label: "Anthropic Claude", defaultModel: "claude-3-5-sonnet-20241022", baseUrl: "" },
+    { value: "siliconflow", label: "SiliconFlow", defaultModel: "Qwen/Qwen2.5-7B-Instruct", baseUrl: "https://api.siliconflow.cn/v1" },
+    { value: "custom", label: "Custom API", defaultModel: "custom-model", baseUrl: "" },
   ];
 
   const handleProviderChange = (provider: string) => {
@@ -38,6 +64,7 @@ export function ModelConfigModal({ isOpen, onClose }: ModelConfigModalProps) {
       ...localConfig,
       provider: provider as any,
       modelName: selectedProvider?.defaultModel || "",
+      baseUrl: selectedProvider?.baseUrl || "",
     });
   };
 
@@ -136,8 +163,10 @@ export function ModelConfigModal({ isOpen, onClose }: ModelConfigModalProps) {
           {/* 提示信息 */}
           <div className="rounded-lg bg-indigo-50 p-3 dark:bg-indigo-900/20">
             <p className="text-sm text-indigo-900 dark:text-indigo-200">
-              <strong>Note:</strong> AI features will be available in Phase 2.
-              Configure your preferred model now for future use.
+              <strong>💡 提示:</strong> 配置保存后立即生效，用于所有 AI 功能（流程图生成、截图识别、架构优化等）
+            </p>
+            <p className="mt-1 text-xs text-indigo-700 dark:text-indigo-300">
+              配置会保存在浏览器本地，每次调用 AI 功能时自动使用
             </p>
           </div>
         </div>

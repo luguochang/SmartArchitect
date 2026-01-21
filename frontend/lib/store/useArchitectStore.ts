@@ -339,10 +339,10 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
   promptError: undefined,
 
   modelConfig: {
-    provider: "custom",
-    apiKey: "sk-7oflvgMRXPZe0skck0qIqsFuDSvOBKiMqqGiC0Sx9gzAsALh",
-    modelName: "claude-sonnet-4-5-20250929",
-    baseUrl: "https://www.linkflow.run/v1",
+    provider: "siliconflow",
+    apiKey: "",
+    modelName: "Qwen/Qwen3-VL-32B-Thinking",
+    baseUrl: "https://api.siliconflow.cn/v1",
   },
 
   setCanvasMode: (mode) => set({ canvasMode: mode }),

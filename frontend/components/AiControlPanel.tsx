@@ -13,10 +13,14 @@ import {
   AlertCircle,
   Palette,
   Grid3x3,
+  Upload,
+  Settings,
 } from "lucide-react";
 import { useArchitectStore, PromptScenario, DiagramType } from "@/lib/store/useArchitectStore";
 import { toast } from "sonner";
 import { SelectedDetailsPanel } from "./SelectedDetailsPanel";
+import { FlowchartUploader } from "./FlowchartUploader";
+import ModelPresetsManager from "./ModelPresetsManager";
 
 const CATEGORY_ICONS = {
   refactoring: Sparkles,
@@ -35,6 +39,7 @@ const CATEGORY_COLORS = {
 export function AiControlPanel() {
   const {
     modelConfig,
+    setModelConfig,
     // Flowchat generator
     flowTemplates,
     isGeneratingFlowchart,
@@ -59,6 +64,8 @@ export function AiControlPanel() {
   const [selectedScenario, setSelectedScenario] = useState<string | null>(null);
   const [scenarioInput, setScenarioInput] = useState("");
   const [showPrompter, setShowPrompter] = useState(false);
+  const [showUploader, setShowUploader] = useState(false);
+  const [showPresetsManager, setShowPresetsManager] = useState(false);
   const [diagramType, setDiagramType] = useState<DiagramType>("flow");
   const [templateFilter, setTemplateFilter] = useState<"flow" | "architecture">("flow");
 
@@ -167,17 +174,40 @@ export function AiControlPanel() {
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setShowPrompter((prev) => !prev)}
+            onClick={() => setShowPresetsManager(true)}
+            className={`rounded-lg px-3 py-1.5 text-xs font-medium shadow-sm transition ${
+              apiReady
+                ? "bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-500/10 dark:text-green-400"
+                : "bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-500/10 dark:text-amber-400"
+            }`}
+            title="管理 AI 配置预设"
+          >
+            <Settings className="mr-1 inline-block h-3.5 w-3.5" />
+            {apiReady ? "Configured" : "Configure"} AI
+          </button>
+          <button
+            onClick={() => {
+              setShowUploader((prev) => !prev);
+              if (!showUploader) setShowPrompter(false);
+            }}
+            className={`rounded-lg px-3 py-1.5 text-xs font-medium shadow-sm transition ${
+              showUploader
+                ? "bg-indigo-500 text-white hover:bg-indigo-600"
+                : "bg-white text-slate-700 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            }`}
+          >
+            <Upload className="mr-1 inline-block h-3.5 w-3.5" />
+            {showUploader ? "Hide" : "Upload"} Flowchart
+          </button>
+          <button
+            onClick={() => {
+              setShowPrompter((prev) => !prev);
+              if (!showPrompter) setShowUploader(false);
+            }}
             className="rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
           >
             {showPrompter ? "Hide" : "Show"} Prompter
           </button>
-          {!apiReady && (
-            <div className="flex items-center gap-1.5 rounded-lg bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
-              <AlertCircle className="h-3.5 w-3.5" />
-              No API key
-            </div>
-          )}
         </div>
       </div>
 
@@ -185,8 +215,18 @@ export function AiControlPanel() {
 
       {/* Main Content - Full Height */}
       <div className="flex min-h-0 flex-1 flex-col gap-4">
-        {/* Generator Section */}
-        <section className="flex min-h-0 flex-1 flex-col rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        {/* Flowchart Uploader Section */}
+        {showUploader ? (
+          <section className="flex min-h-0 flex-1 flex-col rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 p-4 overflow-y-auto">
+            <h3 className="mb-4 text-sm font-semibold text-slate-900 dark:text-white">
+              流程图截图识别
+            </h3>
+            <FlowchartUploader />
+          </section>
+        ) : (
+          <>
+            {/* Generator Section */}
+            <section className="flex min-h-0 flex-1 flex-col rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
           {/* Templates (only for ReactFlow mode) */}
           {canvasMode !== "excalidraw" && (
             <div className="border-b border-slate-200 p-4 dark:border-slate-800">
@@ -350,6 +390,8 @@ export function AiControlPanel() {
             </div>
           </div>
         </section>
+          </>
+        )}
 
         {/* Prompter (Collapsible) */}
         {showPrompter && (
@@ -428,6 +470,22 @@ export function AiControlPanel() {
           </section>
         )}
       </div>
+
+      {/* Model Presets Manager Modal */}
+      <ModelPresetsManager
+        isOpen={showPresetsManager}
+        onClose={() => setShowPresetsManager(false)}
+        onSelectPreset={(preset) => {
+          // Apply selected preset to store
+          setModelConfig({
+            provider: preset.provider,
+            apiKey: preset.api_key,
+            modelName: preset.model_name,
+            baseUrl: preset.base_url || "",
+          });
+          toast.success(`使用配置: ${preset.name}`);
+        }}
+      />
     </aside>
   );
 }

@@ -69,6 +69,47 @@ class ModelConfigResponse(BaseModel):
     message: str
 
 
+# 模型预设配置（支持保存多个配置）
+class ModelPreset(BaseModel):
+    id: str  # 预设ID（如 "my-gemini", "company-openai"）
+    name: str  # 显示名称（如 "个人 Gemini", "公司 OpenAI"）
+    provider: Literal["gemini", "openai", "claude", "siliconflow", "custom"]
+    api_key: str
+    model_name: str
+    base_url: Optional[str] = None
+    is_default: bool = False  # 是否为默认配置
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class ModelPresetCreate(BaseModel):
+    name: str
+    provider: Literal["gemini", "openai", "claude", "siliconflow", "custom"]
+    api_key: str
+    model_name: str
+    base_url: Optional[str] = None
+    is_default: bool = False
+
+
+class ModelPresetUpdate(BaseModel):
+    name: Optional[str] = None
+    api_key: Optional[str] = None
+    model_name: Optional[str] = None
+    base_url: Optional[str] = None
+    is_default: Optional[bool] = None
+
+
+class ModelPresetListResponse(BaseModel):
+    success: bool
+    presets: List[ModelPreset]
+
+
+class ModelPresetResponse(BaseModel):
+    success: bool
+    preset: Optional[ModelPreset] = None
+    message: Optional[str] = None
+
+
 # ========== Phase 2: 图片分析和架构优化 ==========
 
 # 架构瓶颈
@@ -109,6 +150,10 @@ class ImageAnalysisResponse(BaseModel):
     success: bool = True
     message: Optional[str] = None
     ai_analysis: Optional[AIAnalysis] = None
+
+    # Phase 6: 流程图识别专用字段
+    warnings: Optional[List[dict]] = None  # 识别警告（如：形状映射）
+    flowchart_analysis: Optional[dict] = None  # 流程图分析（复杂度、类型等）
 
 
 # 架构优化分析请求
