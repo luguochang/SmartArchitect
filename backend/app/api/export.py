@@ -5,18 +5,28 @@ Handles PPT, Slidev, and Speech Script generation
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response, StreamingResponse
-from typing import Optional
+from typing import Optional, List
 import logging
 from io import BytesIO
+import json
+import asyncio
 
 from app.models.schemas import (
     ExportRequest,
     SpeechScriptRequest,
     SpeechScriptResponse,
+    EnhancedSpeechScriptRequest,
+    ScriptContent,
+    ScriptMetadata,
+    SaveDraftResponse,
+    RefinedSectionResponse,
+    ImprovementSuggestions,
 )
 from app.services.ppt_exporter import create_ppt_exporter
 from app.services.slidev_exporter import create_slidev_exporter
 from app.services.ai_vision import create_vision_service
+from app.services.speech_script_rag import get_rag_speech_script_generator
+from app.services.script_editor import get_script_editor_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -162,3 +172,290 @@ async def export_health():
             "status": "unhealthy",
             "error": str(e)
         }
+
+
+# ============================================================
+# Enhanced Speech Script Generation with RAG and Streaming
+# ============================================================
+
+
+@router.post("/export/script-stream")
+async def generate_script_stream(
+    request: EnhancedSpeechScriptRequest,
+    provider: Optional[str] = "gemini",
+    api_key: Optional[str] = None
+):
+    """
+    Generate professional speech script with streaming (Server-Sent Events)
+
+    This endpoint uses the CO-STAR framework and RAG enhancement to generate
+    high-quality speech scripts. Progress is streamed in real-time using SSE.
+
+    Args:
+        request: Enhanced script generation request with nodes, edges, duration, options
+        provider: AI provider (gemini, openai, claude, siliconflow, custom)
+        api_key: API key for the provider
+
+    Returns:
+        text/event-stream (SSE) with StreamEvent objects
+
+    Event Types:
+        - CONTEXT_SEARCH: RAG searching in progress
+        - CONTEXT_FOUND: RAG results found
+        - GENERATION_START: Script generation starting
+        - TOKEN: Individual token generated
+        - SECTION_COMPLETE: A section (intro/body/conclusion) completed
+        - COMPLETE: Full script generation completed
+        - ERROR: Error occurred
+    """
+    try:
+        logger.info(
+            f"Streaming {request.duration} speech script generation "
+            f"(audience: {request.options.audience}, tone: {request.options.tone})"
+        )
+
+        # Get the RAG-powered script generator
+        generator = get_rag_speech_script_generator()
+
+        async def event_generator():
+            """Async generator for SSE events"""
+            try:
+                # Stream generation events
+                async for event in generator.generate_speech_script_stream(
+                    nodes=request.nodes,
+                    edges=request.edges,
+                    duration=request.duration,
+                    options=request.options
+                ):
+                    # Convert StreamEvent to SSE format
+                    event_data = json.dumps(
+                        {
+                            "type": event.type,
+                            "data": event.data
+                        },
+                        ensure_ascii=False
+                    )
+                    yield f"data: {event_data}\n\n"
+
+                    # Small delay to prevent overwhelming the client
+                    await asyncio.sleep(0.01)
+
+            except Exception as e:
+                logger.error(f"Stream generation error: {e}", exc_info=True)
+                error_event = json.dumps(
+                    {
+                        "type": "ERROR",
+                        "data": {"error": str(e)}
+                    },
+                    ensure_ascii=False
+                )
+                yield f"data: {error_event}\n\n"
+
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"  # Disable nginx buffering
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Script stream generation failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate script stream: {str(e)}"
+        )
+
+
+@router.put("/export/script/{script_id}/draft", response_model=SaveDraftResponse)
+async def save_script_draft(
+    script_id: str,
+    content: ScriptContent,
+    metadata: ScriptMetadata
+):
+    """
+    Save speech script draft with version control
+
+    Supports incremental updates and auto-save functionality from frontend.
+    Each save increments the version number.
+
+    Args:
+        script_id: Unique script identifier (UUID)
+        content: Script content (intro, body, conclusion, full_text)
+        metadata: Script metadata (duration, word_count, rag_sources, etc.)
+
+    Returns:
+        SaveDraftResponse with script_id, version, saved_at
+    """
+    try:
+        logger.info(f"Saving draft for script {script_id}, version {metadata.version}")
+
+        editor = get_script_editor_service()
+        response = await editor.save_draft(script_id, content, metadata)
+
+        logger.info(f"Draft saved successfully: version {response.version}")
+        return response
+
+    except Exception as e:
+        logger.error(f"Failed to save draft {script_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to save draft: {str(e)}"
+        )
+
+
+@router.get("/export/script/{script_id}/draft")
+async def load_script_draft(script_id: str):
+    """
+    Load speech script draft by ID
+
+    Args:
+        script_id: Unique script identifier
+
+    Returns:
+        ScriptDraft object with full content and metadata
+
+    Raises:
+        404: Script not found
+    """
+    try:
+        logger.info(f"Loading draft for script {script_id}")
+
+        editor = get_script_editor_service()
+        draft = await editor.load_draft(script_id)
+
+        if draft is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Script {script_id} not found"
+            )
+
+        logger.info(f"Draft loaded: version {draft.version}")
+        return draft
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to load draft {script_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to load draft: {str(e)}"
+        )
+
+
+@router.post("/export/script/{script_id}/refine", response_model=RefinedSectionResponse)
+async def refine_script_section(
+    script_id: str,
+    section: str,
+    user_feedback: str,
+    rag_context: Optional[dict] = None
+):
+    """
+    Refine a specific section of the speech script based on user feedback
+
+    Allows targeted improvements to intro, body, or conclusion sections.
+    The AI will regenerate the section while preserving core information.
+
+    Args:
+        script_id: Script identifier
+        section: Section to refine ("intro", "body", or "conclusion")
+        user_feedback: User's refinement request (e.g., "增加数据支撑", "使用类比")
+        rag_context: Optional additional RAG context
+
+    Returns:
+        RefinedSectionResponse with refined_text and changes_summary
+
+    Raises:
+        400: Invalid section name
+        404: Script not found
+    """
+    try:
+        # Validate section parameter
+        if section not in ["intro", "body", "conclusion"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid section '{section}'. Must be 'intro', 'body', or 'conclusion'"
+            )
+
+        logger.info(f"Refining {section} section for script {script_id}")
+        logger.info(f"User feedback: {user_feedback}")
+
+        editor = get_script_editor_service()
+        response = await editor.refine_section(
+            script_id=script_id,
+            section=section,
+            user_feedback=user_feedback,
+            rag_context=rag_context
+        )
+
+        logger.info(f"Section refined successfully. Changes: {response.changes_summary}")
+        return response
+
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to refine section: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to refine section: {str(e)}"
+        )
+
+
+@router.get("/export/script/{script_id}/suggestions", response_model=ImprovementSuggestions)
+async def get_script_suggestions(
+    script_id: str,
+    focus_areas: Optional[List[str]] = None
+):
+    """
+    Get AI-powered improvement suggestions for the speech script
+
+    Analyzes the script and provides specific, actionable suggestions
+    without directly modifying the content. Users can review and apply
+    suggestions selectively.
+
+    Args:
+        script_id: Script identifier
+        focus_areas: Optional focus areas (e.g., ["clarity", "engagement", "flow"])
+                    Defaults to ["clarity", "engagement", "flow"]
+
+    Returns:
+        ImprovementSuggestions with:
+            - overall_score: Quality score (1-10)
+            - strengths: List of strong points
+            - weaknesses: List of areas to improve
+            - suggestions: Detailed improvement suggestions by section
+
+    Raises:
+        404: Script not found
+    """
+    try:
+        if focus_areas is None:
+            focus_areas = ["clarity", "engagement", "flow"]
+
+        logger.info(f"Generating suggestions for script {script_id}")
+        logger.info(f"Focus areas: {', '.join(focus_areas)}")
+
+        editor = get_script_editor_service()
+        suggestions = await editor.suggest_improvements(
+            script_id=script_id,
+            focus_areas=focus_areas
+        )
+
+        logger.info(
+            f"Generated {len(suggestions.suggestions)} suggestions "
+            f"(score: {suggestions.overall_score}/10)"
+        )
+        return suggestions
+
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to generate suggestions: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate suggestions: {str(e)}"
+        )
