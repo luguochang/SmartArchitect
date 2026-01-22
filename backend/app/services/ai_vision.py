@@ -54,7 +54,7 @@ class AIVisionService:
         default_model = (
             "claude-3-5-sonnet-20241022"
             if provider == "claude"
-            else "Qwen/Qwen3-VL-32B-Instruct"
+            else "Qwen/Qwen3-VL-32B-Thinking"
             if provider == "siliconflow"
             else "gpt-4o-mini"
         )
@@ -85,7 +85,11 @@ class AIVisionService:
                 api_key = self.custom_api_key or settings.OPENAI_API_KEY
                 if not api_key:
                     raise ValueError("OPENAI_API_KEY not configured. Please set in UI or .env file")
-                self.client = OpenAI(api_key=api_key)
+                self.client = OpenAI(
+                    api_key=api_key,
+                    timeout=120.0,  # 2 minutes timeout
+                    max_retries=2   # Limit retries
+                )
                 logger.info("OpenAI client initialized")
 
             elif self.provider == "claude":
@@ -105,7 +109,12 @@ class AIVisionService:
                 if not api_key:
                     raise ValueError("SILICONFLOW_API_KEY not configured. Please set in UI or .env file")
                 base_url = self.custom_base_url or settings.SILICONFLOW_BASE_URL
-                self.client = OpenAI(api_key=api_key, base_url=base_url)
+                self.client = OpenAI(
+                    api_key=api_key,
+                    base_url=base_url,
+                    timeout=240.0,  # 增加到 240 秒匹配 flowchart_timeout
+                    max_retries=0   # 禁用重试（视觉模型处理慢，重试会导致超时）
+                )
                 logger.info(f"SiliconFlow client initialized with base_url: {base_url}")
 
             elif self.provider == "custom":
@@ -119,7 +128,9 @@ class AIVisionService:
 
                 self.client = OpenAI(
                     api_key=self.custom_api_key,
-                    base_url=self.custom_base_url
+                    base_url=self.custom_base_url,
+                    timeout=120.0,  # 2 minutes timeout for streaming responses
+                    max_retries=2   # Limit retries to fail fast on errors
                 )
                 logger.info(f"Custom provider initialized with base_url: {self.custom_base_url}")
 
@@ -227,6 +238,235 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
 
         return base_prompt
 
+    def _build_flowchart_prompt_simple(self, preserve_layout: bool = True) -> str:
+        """
+        简化版流程图识别 Prompt - 用于图片识别快速模式
+
+        特点：
+        - 更短的提示词（减少 token 消耗）
+        - 核心功能保留（节点识别、连线提取）
+        - 处理时间约 60-120 秒
+        """
+
+        layout_hint = "preserve node positions" if preserve_layout else "use auto layout"
+
+        prompt = f"""Analyze this flowchart image and extract nodes and edges.
+
+**Node Types** (by shape):
+- Circle → start-event (if text contains "Start"/"开始") or end-event (if "End"/"结束")
+- Rectangle → task
+- Diamond → decision
+- Other shapes → default with shape attribute
+
+**Output JSON** (no markdown wrapper):
+
+{{
+  "nodes": [
+    {{"id": "node_1", "type": "start-event", "position": {{"x": 100, "y": 50}}, "data": {{"label": "Start", "shape": "circle"}}}},
+    {{"id": "node_2", "type": "task", "position": {{"x": 100, "y": 200}}, "data": {{"label": "Task A", "shape": "rectangle"}}}}
+  ],
+  "edges": [
+    {{"id": "edge_1", "source": "node_1", "target": "node_2", "label": ""}}
+  ],
+  "mermaid_code": "graph TD\\n    node_1((Start))\\n    node_2[Task A]\\n    node_1 --> node_2",
+  "warnings": [],
+  "analysis": {{"total_nodes": 2, "total_branches": 0}}
+}}
+
+**Requirements:**
+- All nodes must have position (x, y)
+- Extract text labels from nodes and edges
+- {layout_hint}
+- Return pure JSON only
+"""
+
+        return prompt
+
+    def _build_flowchart_prompt_detailed(self, preserve_layout: bool = True) -> str:
+        """
+        详细版流程图识别 Prompt - 用于文本生成高质量模式
+
+        特点：
+        - 完整的形状识别规则
+        - 详细的输出示例
+        - 更高的识别准确度
+        - 处理时间较长（200+ 秒）
+        """
+
+        # 支持的形状类型（从 SvgShapes.tsx 映射）
+        supported_shapes = {
+            "circle": "圆形 → start-event（开始）或 end-event（结束）",
+            "rectangle": "矩形 → task（处理任务）",
+            "diamond": "菱形 → decision（判断/决策）",
+            "parallelogram": "平行四边形 → default with shape='parallelogram'（数据/输入输出）",
+            "hexagon": "六边形 → default with shape='hexagon'（准备）",
+            "trapezoid": "梯形 → default with shape='trapezoid'（手动操作）",
+            "cylinder": "圆柱体 → database（数据库）",
+            "document": "文档形 → default with shape='document'",
+            "cloud": "云形 → default with shape='cloud'",
+        }
+
+        shapes_desc = "\\n".join([f"   - {shape}: {desc}" for shape, desc in supported_shapes.items()])
+
+        layout_instruction = ""
+        if preserve_layout:
+            layout_instruction = """
+4. **布局保留**：
+   - 记录每个节点的相对位置（左上角坐标）
+   - 参考原图的空间布局关系
+   - x坐标从100开始，y坐标从50开始
+   - 节点间距建议保持150-200px
+"""
+        else:
+            layout_instruction = """
+4. **自动布局**：
+   - 忽略原图位置，使用标准布局
+   - 从上到下、从左到右排列
+   - x坐标从100开始，y坐标从50开始，每行间距200px
+"""
+
+        prompt = f"""
+你是专业的流程图分析专家。请分析这张**流程图截图**，提取节点和连线关系。
+
+## 识别规则
+
+1. **节点类型识别**（根据形状判断）：
+{shapes_desc}
+
+   **重要：** 圆形节点需判断是开始还是结束：
+   - 文本包含"开始"/"Start"/"启动" → type="start-event"
+   - 文本包含"结束"/"End"/"完成" → type="end-event"
+   - 无法判断时默认 → type="start-event"
+
+2. **文本识别**：
+   - 提取每个节点内的文本作为 label
+   - 识别连线上的文本作为 edge.label
+   - 如果节点无文本，label 设为 "未命名节点"
+
+3. **连线识别**：
+   - 识别箭头方向（起点节点 → 终点节点）
+   - 判断连线类型：
+     * 虚线 → animated: false（保持默认）
+     * 实线 → animated: false
+   - 提取判断分支标签（是/否、Yes/No、True/False、Y/N）
+
+{layout_instruction}
+
+## 输出格式（JSON）
+
+返回 **纯 JSON 对象**，不要用 markdown 代码块包裹：
+
+{{
+  "nodes": [
+    {{
+      "id": "node_1",
+      "type": "start-event",
+      "position": {{"x": 100, "y": 50}},
+      "data": {{
+        "label": "开始",
+        "shape": "circle"
+      }}
+    }},
+    {{
+      "id": "node_2",
+      "type": "task",
+      "position": {{"x": 100, "y": 200}},
+      "data": {{
+        "label": "执行任务A",
+        "shape": "rectangle"
+      }}
+    }},
+    {{
+      "id": "node_3",
+      "type": "decision",
+      "position": {{"x": 100, "y": 350}},
+      "data": {{
+        "label": "条件判断",
+        "shape": "diamond"
+      }}
+    }},
+    {{
+      "id": "node_4",
+      "type": "end-event",
+      "position": {{"x": 300, "y": 500}},
+      "data": {{
+        "label": "结束",
+        "shape": "circle"
+      }}
+    }}
+  ],
+  "edges": [
+    {{
+      "id": "edge_1",
+      "source": "node_1",
+      "target": "node_2",
+      "label": ""
+    }},
+    {{
+      "id": "edge_2",
+      "source": "node_2",
+      "target": "node_3",
+      "label": ""
+    }},
+    {{
+      "id": "edge_3",
+      "source": "node_3",
+      "target": "node_4",
+      "label": "是"
+    }},
+    {{
+      "id": "edge_4",
+      "source": "node_3",
+      "target": "node_5",
+      "label": "否"
+    }}
+  ],
+  "mermaid_code": "graph TD\\n    node_1((开始))\\n    node_2[执行任务A]\\n    node_3{{条件判断}}\\n    node_4((结束))\\n    node_1 --> node_2\\n    node_2 --> node_3\\n    node_3 -->|是| node_4\\n    node_3 -->|否| node_5",
+  "warnings": [
+    {{"node_id": "node_X", "message": "原图为八边形，已映射为六边形（hexagon）"}}
+  ],
+  "analysis": {{
+    "total_nodes": 4,
+    "total_branches": 1,
+    "flowchart_type": "业务流程图",
+    "complexity": "简单",
+    "description": "这是一个包含4个节点的简单流程图，从开始到结束经过一个判断节点"
+  }}
+}}
+
+## 注意事项
+
+- **所有节点必须有 position**（即使是自动布局也要给坐标）
+- **edges 的 source 和 target 必须对应 nodes 的 id**
+- **节点 id 必须唯一**（建议使用 node_1, node_2, node_3...）
+- **不要输出 markdown 代码块**（如 ```json ... ```），直接输出 JSON
+- **如果形状不在支持列表，选择最接近的形状，并在 warnings 中说明**
+- **Mermaid 代码格式：**
+  - 开始/结束节点：`nodeId((label))`
+  - 处理节点：`nodeId[label]`
+  - 判断节点：`nodeId{{label}}`
+  - 连线：`node1 --> node2` 或 `node1 -->|label| node2`
+
+现在开始分析图片，返回 JSON：
+"""
+
+        return prompt
+
+    def _build_flowchart_prompt(self, preserve_layout: bool = True, fast_mode: bool = True) -> str:
+        """
+        构建流程图识别专用 Prompt
+
+        参数：
+        - preserve_layout: 是否保留原图布局
+        - fast_mode: 是否使用快速模式（简化 prompt）
+          - True: 用于图片识别（60-120秒）
+          - False: 用于文本生成（200+秒，高质量）
+        """
+        if fast_mode:
+            return self._build_flowchart_prompt_simple(preserve_layout)
+        else:
+            return self._build_flowchart_prompt_detailed(preserve_layout)
+
     async def analyze_architecture(
         self,
         image_data: bytes,
@@ -243,7 +483,7 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
             elif self.provider == "claude":
                 result = await self._analyze_with_claude(image_data, prompt)
             elif self.provider == "siliconflow":
-                raise ValueError("SiliconFlow provider is text-only in current release. Use another provider for image analysis.")
+                result = await self._analyze_with_siliconflow(image_data, prompt)
             elif self.provider == "custom":
                 result = await self._analyze_with_custom(image_data, prompt)
             else:
@@ -255,10 +495,66 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
             logger.error(f"Analysis failed with {self.provider}: {e}")
             raise
 
-    async def _analyze_with_gemini(self, image_data: bytes, prompt: str) -> ImageAnalysisResponse:
+    async def analyze_flowchart(
+        self,
+        image_data: bytes,
+        preserve_layout: bool = True,
+        fast_mode: bool = True
+    ) -> ImageAnalysisResponse:
+        """
+        分析流程图截图
+
+        Args:
+            image_data: 图片二进制数据
+            preserve_layout: 是否保留原图布局
+            fast_mode: 是否使用快速模式
+                - True: 简化 prompt，60-120秒完成（图片识别推荐）
+                - False: 详细 prompt，200+秒，高质量（文本生成推荐）
+
+        Returns:
+            ImageAnalysisResponse: 包含 nodes, edges, mermaid_code, warnings
+        """
+        prompt = self._build_flowchart_prompt(preserve_layout, fast_mode)
+
+        # 根据 fast_mode 设置 max_tokens（进一步优化）
+        max_tokens = 1500 if fast_mode else 4096
+
+        # 设置超时时间
+        self._flowchart_timeout = 240.0 if fast_mode else 300.0
+
+        # 关键优化：设置 detail 参数（SiliconFlow 专用）
+        self._image_detail = "low" if fast_mode else "high"
+
+        try:
+            logger.info(f"[FLOWCHART] Starting analysis with {self.provider}, preserve_layout={preserve_layout}, fast_mode={fast_mode}, max_tokens={max_tokens}, timeout={self._flowchart_timeout}s, detail={self._image_detail}")
+
+            if self.provider == "gemini":
+                result = await self._analyze_with_gemini(image_data, prompt, max_tokens)
+            elif self.provider == "openai":
+                result = await self._analyze_with_openai(image_data, prompt, max_tokens)
+            elif self.provider == "claude":
+                result = await self._analyze_with_claude(image_data, prompt, max_tokens)
+            elif self.provider == "siliconflow":
+                result = await self._analyze_with_siliconflow(image_data, prompt, max_tokens)
+            elif self.provider == "custom":
+                result = await self._analyze_with_custom(image_data, prompt, max_tokens)
+            else:
+                raise ValueError(f"Unsupported provider: {self.provider}")
+
+            logger.info(f"[FLOWCHART] Analysis completed: {len(result.nodes)} nodes, {len(result.edges)} edges")
+
+            # warnings 和 analysis 已经在 JSON 中，_build_response 会处理
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Flowchart analysis failed with {self.provider}: {e}", exc_info=True)
+            raise
+
+    async def _analyze_with_gemini(self, image_data: bytes, prompt: str, max_tokens: int = 4096) -> ImageAnalysisResponse:
         """使用 Gemini 分析"""
         try:
-            logger.info(f"[GEMINI] Starting analysis, image size: {len(image_data)} bytes")
+            logger.info(f"[GEMINI] Starting analysis, image size: {len(image_data)} bytes, max_tokens: {max_tokens}")
 
             # Gemini 支持直接传 bytes
             image_parts = [
@@ -271,7 +567,10 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
             logger.info("[GEMINI] Calling Gemini API...")
             response = await self.client.generate_content_async(
                 [prompt, image_parts[0]],
-                generation_config={"temperature": 0.2}
+                generation_config={
+                    "temperature": 0.2,
+                    "max_output_tokens": max_tokens
+                }
             )
 
             logger.info(f"[GEMINI] Response received, type: {type(response)}")
@@ -290,12 +589,15 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
             logger.error(f"Gemini analysis failed: {e}", exc_info=True)
             raise
 
-    async def _analyze_with_openai(self, image_data: bytes, prompt: str) -> ImageAnalysisResponse:
+    async def _analyze_with_openai(self, image_data: bytes, prompt: str, max_tokens: int = 4096) -> ImageAnalysisResponse:
         """使用 OpenAI GPT-4 Vision 分析"""
         try:
+            logger.info(f"[OPENAI] Starting vision analysis, max_tokens: {max_tokens}")
             image_b64 = base64.b64encode(image_data).decode("utf-8")
 
-            response = self.client.chat.completions.create(
+            # 使用 asyncio.to_thread 包装同步调用
+            response = await asyncio.to_thread(
+                self.client.chat.completions.create,
                 model="gpt-4-vision-preview",
                 messages=[
                     {
@@ -311,10 +613,11 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
                         ]
                     }
                 ],
-                max_tokens=4096,
+                max_tokens=max_tokens,
                 temperature=0.2
             )
 
+            logger.info("[OPENAI] Response received, extracting JSON")
             result_json = self._extract_json_from_response(
                 response.choices[0].message.content
             )
@@ -322,17 +625,20 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
             return self._build_response(result_json)
 
         except Exception as e:
-            logger.error(f"OpenAI analysis failed: {e}")
+            logger.error(f"OpenAI analysis failed: {e}", exc_info=True)
             raise
 
-    async def _analyze_with_claude(self, image_data: bytes, prompt: str) -> ImageAnalysisResponse:
+    async def _analyze_with_claude(self, image_data: bytes, prompt: str, max_tokens: int = 4096) -> ImageAnalysisResponse:
         """使用 Claude 3.5 Sonnet 分析"""
         try:
+            logger.info(f"[CLAUDE] Starting vision analysis, max_tokens: {max_tokens}")
             image_b64 = base64.b64encode(image_data).decode("utf-8")
 
-            response = self.client.messages.create(
+            # 使用 asyncio.to_thread 包装同步调用
+            response = await asyncio.to_thread(
+                self.client.messages.create,
                 model="claude-3-5-sonnet-20241022",
-                max_tokens=4096,
+                max_tokens=max_tokens,
                 temperature=0.2,
                 messages=[
                     {
@@ -352,6 +658,7 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
                 ]
             )
 
+            logger.info("[CLAUDE] Response received, extracting JSON")
             result_json = self._extract_json_from_response(
                 response.content[0].text
             )
@@ -359,12 +666,65 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
             return self._build_response(result_json)
 
         except Exception as e:
-            logger.error(f"Claude analysis failed: {e}")
+            logger.error(f"Claude analysis failed: {e}", exc_info=True)
             raise
 
-    async def _analyze_with_custom(self, image_data: bytes, prompt: str) -> ImageAnalysisResponse:
+    async def _analyze_with_siliconflow(self, image_data: bytes, prompt: str, max_tokens: int = 4096) -> ImageAnalysisResponse:
+        """使用 SiliconFlow 视觉模型分析（如 Qwen3-VL）"""
+        try:
+            # 获取超时配置（如果是 flowchart 调用会设置此属性）
+            timeout = getattr(self, '_flowchart_timeout', 180.0)
+            # 获取 detail 参数（low/high，用于控制图片分辨率）
+            detail = getattr(self, '_image_detail', 'high')
+
+            logger.info(f"[SILICONFLOW] Starting vision analysis with model: {self.model_name}, max_tokens: {max_tokens}, timeout: {timeout}s, detail: {detail}")
+            image_b64 = base64.b64encode(image_data).decode("utf-8")
+
+            # 使用 asyncio.to_thread 包装同步调用，并增加超时时间
+            response = await asyncio.wait_for(
+                asyncio.to_thread(
+                    self.client.chat.completions.create,
+                    model=self.model_name,  # 例如: Qwen/Qwen3-VL-32B-Thinking
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/jpeg;base64,{image_b64}",
+                                        "detail": detail  # 关键参数：low=快速，high=高质量
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    max_tokens=max_tokens,
+                    temperature=0.2
+                ),
+                timeout=timeout
+            )
+
+            logger.info("[SILICONFLOW] Response received, extracting JSON")
+            result_json = self._extract_json_from_response(
+                response.choices[0].message.content
+            )
+
+            logger.info(f"[SILICONFLOW] Analysis completed successfully")
+            return self._build_response(result_json)
+
+        except asyncio.TimeoutError:
+            logger.error(f"SiliconFlow vision analysis timeout after {timeout}s")
+            raise ValueError(f"AI vision analysis timeout ({timeout/60:.1f} minutes). Please try again or use a different provider.")
+        except Exception as e:
+            logger.error(f"SiliconFlow vision analysis failed: {e}", exc_info=True)
+            raise
+
+    async def _analyze_with_custom(self, image_data: bytes, prompt: str, max_tokens: int = 4096) -> ImageAnalysisResponse:
         """使用自定义 provider 分析（OpenAI 兼容 API）"""
         try:
+            logger.info(f"[CUSTOM] Starting vision analysis, max_tokens: {max_tokens}")
             image_b64 = base64.b64encode(image_data).decode("utf-8")
 
             # 使用自定义模型名称，默认为 gpt-4-vision-preview
@@ -372,7 +732,9 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
 
             logger.info(f"[CUSTOM] Using model: {model}, base_url: {self.custom_base_url}")
 
-            response = self.client.chat.completions.create(
+            # 使用 asyncio.to_thread 包装同步调用
+            response = await asyncio.to_thread(
+                self.client.chat.completions.create,
                 model=model,
                 messages=[
                     {
@@ -388,7 +750,7 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
                         ]
                     }
                 ],
-                max_tokens=4096,
+                max_tokens=max_tokens,
                 temperature=0.2
             )
 
@@ -548,7 +910,10 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
                     id=node["id"],
                     type=node.get("type", "default"),
                     position=Position(**node["position"]),
-                    data=NodeData(label=node["data"]["label"])
+                    data=NodeData(
+                        label=node["data"]["label"],
+                        shape=node["data"].get("shape")  # 添加 shape 支持（流程图识别）
+                    )
                 )
                 for node in result_json.get("nodes", [])
             ]
@@ -581,12 +946,20 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
                     model_used=ai_data.get("model_used")
                 )
 
+            # 提取 warnings（流程图识别专用）
+            warnings = result_json.get("warnings", [])
+
+            # 提取 analysis（流程图分析）
+            flowchart_analysis = result_json.get("analysis", {})
+
             return ImageAnalysisResponse(
                 nodes=nodes,
                 edges=edges,
                 mermaid_code=result_json.get("mermaid_code", ""),
                 success=True,
-                ai_analysis=ai_analysis
+                ai_analysis=ai_analysis,
+                warnings=warnings,  # 新增字段
+                flowchart_analysis=flowchart_analysis  # 新增字段
             )
 
         except Exception as e:
@@ -608,22 +981,28 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
         try:
             if self.provider == "openai":
                 # OpenAI native streaming - use queue for real-time streaming
+                logger.info(f"[STREAM] OpenAI streaming with model: {self.model_name}")
                 q = queue.Queue()
 
                 def _openai_stream():
                     try:
+                        logger.info(f"[STREAM] Initiating OpenAI stream with model={self.model_name}")
                         stream = self.client.chat.completions.create(
                             model=self.model_name,
                             messages=[{"role": "user", "content": prompt}],
                             stream=True,
                             temperature=0.2,
+                            max_tokens=8192,  # Increased for complete Excalidraw JSON generation
                         )
+                        logger.info("[STREAM] OpenAI stream created, starting iteration")
                         for chunk in stream:
                             delta = chunk.choices[0].delta.content
                             if delta:
                                 q.put(("data", delta))
+                        logger.info("[STREAM] OpenAI stream completed successfully")
                         q.put(("done", None))
                     except Exception as e:
+                        logger.error(f"[STREAM] Exception in _openai_stream: {e}", exc_info=True)
                         q.put(("error", e))
 
                 loop = asyncio.get_event_loop()
@@ -641,20 +1020,24 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
 
             elif self.provider == "claude":
                 # Claude streaming with context manager
+                logger.info(f"[STREAM] Claude streaming with model: {self.model_name}")
                 q = queue.Queue()
 
                 def _claude_stream():
                     try:
+                        logger.info(f"[STREAM] Initiating Claude stream with model={self.model_name}")
                         with self.client.messages.stream(
                             model=self.model_name,
-                            max_tokens=4096,
+                            max_tokens=8192,  # Increased for complete Excalidraw JSON generation
                             temperature=0.2,
                             messages=[{"role": "user", "content": prompt}],
                         ) as stream:
                             for text in stream.text_stream:
                                 q.put(("data", text))
+                        logger.info("[STREAM] Claude stream completed successfully")
                         q.put(("done", None))
                     except Exception as e:
+                        logger.error(f"[STREAM] Exception in _claude_stream: {e}", exc_info=True)
                         q.put(("error", e))
 
                 loop = asyncio.get_event_loop()
@@ -682,10 +1065,12 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
 
             elif self.provider == "siliconflow":
                 # SiliconFlow (OpenAI-compatible) - use queue for real-time streaming
+                logger.info(f"[STREAM] SiliconFlow streaming with model: {self.model_name}")
                 q = queue.Queue()
 
                 def _siliconflow_stream():
                     try:
+                        logger.info(f"[STREAM] Initiating SiliconFlow stream with model={self.model_name}")
                         stream = self.client.chat.completions.create(
                             model=self.model_name,
                             messages=[{"role": "user", "content": prompt}],
@@ -693,14 +1078,23 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
                             temperature=0.3,
                             top_p=0.7,
                             frequency_penalty=0.5,
-                            max_tokens=4096,
+                            max_tokens=8192,  # Increased for complete Excalidraw JSON generation
                         )
+                        logger.info("[STREAM] SiliconFlow stream created, starting iteration")
                         for chunk in stream:
-                            delta = chunk.choices[0].delta.content
-                            if delta:
-                                q.put(("data", delta))
+                            # Some providers emit empty heartbeat chunks - guard against missing choices
+                            if not getattr(chunk, "choices", None):
+                                continue
+                            if not chunk.choices:
+                                continue
+                            delta = chunk.choices[0].delta.content if chunk.choices[0].delta else None
+                            if not delta:
+                                continue
+                            q.put(("data", delta))
+                        logger.info("[STREAM] SiliconFlow stream completed successfully")
                         q.put(("done", None))
                     except Exception as e:
+                        logger.error(f"[STREAM] Exception in _siliconflow_stream: {e}", exc_info=True)
                         q.put(("error", e))
 
                 loop = asyncio.get_event_loop()
@@ -717,22 +1111,34 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
 
             elif self.provider == "custom":
                 # Custom provider (OpenAI-compatible) - use queue for real-time streaming
+                logger.info(f"[STREAM] Custom provider streaming with model: {self.model_name}")
                 q = queue.Queue()
 
                 def _custom_stream():
                     try:
+                        logger.info(f"[STREAM] Initiating stream with base_url={self.custom_base_url}, model={self.model_name}")
                         stream = self.client.chat.completions.create(
-                            model=self.custom_model_name or "gpt-3.5-turbo",
+                            model=self.model_name,  # ✅ 使用 self.model_name 而非 custom_model_name
                             messages=[{"role": "user", "content": prompt}],
                             stream=True,
-                            temperature=0.2,
+                            max_tokens=8192,  # ✅ 增加到 8192，确保 JSON 能完整生成
+                            temperature=0.1,  # ✅ 降低温度，更确定性的输出
                         )
+                        logger.info("[STREAM] Stream created successfully, starting to iterate chunks")
                         for chunk in stream:
-                            delta = chunk.choices[0].delta.content
-                            if delta:
-                                q.put(("data", delta))
+                            # Some providers emit empty heartbeat chunks - guard against missing choices
+                            if not getattr(chunk, "choices", None):
+                                continue
+                            if not chunk.choices:
+                                continue
+                            delta = chunk.choices[0].delta.content if chunk.choices[0].delta else None
+                            if not delta:
+                                continue
+                            q.put(("data", delta))
+                        logger.info("[STREAM] Stream iteration completed successfully")
                         q.put(("done", None))
                     except Exception as e:
+                        logger.error(f"[STREAM] Exception in _custom_stream: {e}", exc_info=True)
                         q.put(("error", e))
 
                 loop = asyncio.get_event_loop()
@@ -763,7 +1169,10 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
 
             response = await self.client.generate_content_async(
                 prompt,
-                generation_config={"temperature": 0.2}
+                generation_config={
+                    "temperature": 0.2,
+                    "max_output_tokens": 8192  # Increased for complete Excalidraw JSON generation
+                }
             )
 
             logger.info(f"[GEMINI TEXT] Response received")
@@ -789,7 +1198,7 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
                         "content": prompt
                     }
                 ],
-                max_tokens=4096,
+                max_tokens=8192,  # Increased for complete Excalidraw JSON generation
                 temperature=0.2
             )
 
@@ -811,7 +1220,7 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
 
             response = self.client.messages.create(
                 model="claude-3-5-sonnet-20241022",
-                max_tokens=4096,
+                max_tokens=8192,  # Increased for complete Excalidraw JSON generation
                 temperature=0.2,
                 messages=[
                     {
@@ -839,7 +1248,7 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
 
             # Detect if this is an Excalidraw prompt (needs more tokens for element arrays)
             is_excalidraw = "excalidraw" in prompt.lower() or "elements" in prompt.lower()
-            max_tokens = 4096 if is_excalidraw else 2000
+            max_tokens = 8192 if is_excalidraw else 2000  # Increased from 4096 to 8192 for complete generation
 
             logger.info(f"[SILICONFLOW TEXT] Using max_tokens={max_tokens}, is_excalidraw={is_excalidraw}")
 
@@ -921,7 +1330,7 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
                         "content": prompt
                     }
                 ],
-                max_tokens=4096,
+                max_tokens=8192,  # Increased for complete Excalidraw JSON generation
                 temperature=0.2
             )
 

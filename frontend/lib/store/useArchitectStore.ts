@@ -339,10 +339,10 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
   promptError: undefined,
 
   modelConfig: {
-    provider: "custom",
-    apiKey: "sk-7oflvgMRXPZe0skck0qIqsFuDSvOBKiMqqGiC0Sx9gzAsALh",
-    modelName: "claude-sonnet-4-5-20250929",
-    baseUrl: "https://www.linkflow.run/v1",
+    provider: "siliconflow",
+    apiKey: "",
+    modelName: "Qwen/Qwen3-VL-32B-Thinking",
+    baseUrl: "https://api.siliconflow.cn/v1",
   },
 
   setCanvasMode: (mode) => set({ canvasMode: mode }),
@@ -622,7 +622,7 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
 
       const body = {
         prompt,
-        style: "neon cyber cat with glowing eyes, bold strokes, 8-color palette",
+        style: "balanced",  // Use FlowPilot-compatible style system
         width: 1200,
         height: 800,
         provider: modelConfig.provider,
@@ -665,13 +665,23 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
   },
 
   generateExcalidrawSceneStream: async (prompt) => {
-    set({ isGeneratingFlowchart: true, generationLogs: ["🎨 Starting generation..."], excalidrawScene: null });
+    console.log("[Excalidraw] Starting generation for:", prompt.substring(0, 50));
+    set({ isGeneratingFlowchart: true, generationLogs: [], excalidrawScene: null });
+
     try {
       const { modelConfig } = get();
 
+      // 添加用户消息到聊天历史
+      set((state) => ({
+        chatHistory: [
+          ...state.chatHistory,
+          { role: "user", content: prompt },
+        ],
+      }));
+
       const body = {
         prompt,
-        style: "neon cyber cat with glowing eyes, bold strokes, 8-color palette",
+        style: "balanced",
         width: 1200,
         height: 800,
         provider: modelConfig.provider,
@@ -680,91 +690,299 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
         model_name: modelConfig.modelName,
       };
 
-      const response = await fetch("/api/excalidraw/generate-stream", {
+      // IMPORTANT: Connect directly to backend to avoid Next.js proxy buffering
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+      const response = await fetch(`${backendUrl}/api/excalidraw/generate-stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
         body: JSON.stringify(body),
       });
 
       if (!response.ok) {
-        const detail = await response.text();
-        throw new Error(detail || "Excalidraw streaming failed");
+        throw new Error(`HTTP ${response.status}`);
       }
 
       const reader = response.body!.getReader();
       const decoder = new TextDecoder();
       let buffered = "";
-      let accumulatedJson = "";  // Accumulated JSON text for typewriter effect
+      let tokenCount = 0;
+
+      const logs: string[] = [];
+      const pushLog = (line: string) => {
+        logs.push(line);
+        // Throttle log updates to every 10 logs to reduce re-renders
+        if (logs.length % 10 === 0) {
+          setTimeout(() => set({ generationLogs: [...logs] }), 0);
+        }
+      };
+
+      // Track generation status in chat history (打字机效果)
+      let statusMessage = "🎨 正在生成 Excalidraw 场景...";
+      let lastChatUpdate = Date.now();
+      const updateChatStatus = (message: string, force = false) => {
+        statusMessage = message;
+        // Throttle chat updates to max once per 500ms unless forced
+        const now = Date.now();
+        if (!force && now - lastChatUpdate < 500) return;
+        lastChatUpdate = now;
+
+        setTimeout(() => {
+          set((state) => {
+            const newHistory = [...state.chatHistory];
+            const last = newHistory[newHistory.length - 1];
+            if (last && last.role === "assistant") {
+              newHistory[newHistory.length - 1] = { role: "assistant", content: statusMessage };
+            } else {
+              newHistory.push({ role: "assistant", content: statusMessage });
+            }
+            return { chatHistory: newHistory };
+          });
+        }, 0);
+      };
+
+      // Accumulate JSON tokens for display in logs
+      let jsonBuffer = "";
+      let parsedElements: any[] = []; // Track already parsed elements for incremental rendering
+
+      // Throttle scene updates using requestAnimationFrame
+      let pendingSceneUpdate: any = null;
+      let animationFrameId: number | null = null;
+
+      const scheduleSceneUpdate = (elements: any[]) => {
+        pendingSceneUpdate = elements;
+
+        if (animationFrameId === null) {
+          animationFrameId = requestAnimationFrame(() => {
+            if (pendingSceneUpdate && pendingSceneUpdate.length > 0) {
+              const partialScene = {
+                elements: pendingSceneUpdate,
+                appState: { viewBackgroundColor: "#ffffff" },
+                files: {}
+              };
+              set({ excalidrawScene: partialScene });
+            }
+            animationFrameId = null;
+            pendingSceneUpdate = null;
+          });
+        }
+      };
+
+      const updateJsonLog = (token: string) => {
+        jsonBuffer += token;
+        const generatingIndex = logs.findIndex(log => log.startsWith("[生成中]"));
+
+        // Only update logs display every 50 tokens to reduce re-renders
+        if (tokenCount % 50 === 0) {
+          if (generatingIndex !== -1) {
+            logs[generatingIndex] = `[生成中] ${jsonBuffer.substring(0, 200)}...`;
+          } else {
+            logs.push(`[生成中] ${jsonBuffer.substring(0, 200)}...`);
+          }
+          setTimeout(() => set({ generationLogs: [...logs] }), 0);
+        }
+
+        // Try to parse and render partial elements in real-time
+        tryParseAndRenderPartialElements();
+      };
+
+      const tryParseAndRenderPartialElements = () => {
+        try {
+          // Strip markdown fences if present (AI sometimes returns ```json ... ```)
+          let cleanBuffer = jsonBuffer.trim();
+          if (cleanBuffer.startsWith('```json')) {
+            cleanBuffer = cleanBuffer.substring('```json'.length).trim();
+          } else if (cleanBuffer.startsWith('```')) {
+            cleanBuffer = cleanBuffer.substring('```'.length).trim();
+          }
+          if (cleanBuffer.endsWith('```')) {
+            cleanBuffer = cleanBuffer.substring(0, cleanBuffer.length - 3).trim();
+          }
+
+          // Try to extract completed elements from the JSON buffer
+          // Look for pattern: "elements": [{ ... }, { ... },
+          const elementsMatch = cleanBuffer.match(/"elements"\s*:\s*\[([\s\S]*)/);
+          if (!elementsMatch) {
+            return;
+          }
+
+          const elementsJson = elementsMatch[1];
+          let depth = 0;
+          let currentElement = "";
+          let inString = false;
+          let escape = false;
+          let foundNewElement = false;
+          let startedElement = false;
+
+          for (let i = 0; i < elementsJson.length; i++) {
+            const char = elementsJson[i];
+
+            // Track string context to avoid false positives in strings
+            if (char === '"' && !escape) {
+              inString = !inString;
+            }
+            escape = char === '\\' && !escape;
+
+            if (!inString) {
+              if (char === '{') {
+                depth++;
+                if (depth === 1) {
+                  // Start of a new element
+                  startedElement = true;
+                  currentElement = "";
+                }
+              }
+              if (char === '}') {
+                depth--;
+              }
+            }
+
+            // Only accumulate if we're inside an element
+            if (startedElement) {
+              currentElement += char;
+            }
+
+            // Found a complete element (depth back to 0 after closing })
+            if (startedElement && depth === 0 && char === '}') {
+              try {
+                const elementText = currentElement.trim();
+                const element = JSON.parse(elementText);
+
+                // Only add new elements (check if ID already exists)
+                if (element.id && !parsedElements.some(e => e.id === element.id)) {
+                  parsedElements.push(element);
+                  foundNewElement = true;
+
+                  // Only log every 5th element to reduce console spam
+                  if (parsedElements.length % 5 === 0 || parsedElements.length === 1) {
+                    console.log(`[Excalidraw INCREMENTAL] ✅ Parsed ${parsedElements.length} elements`);
+                  }
+                }
+              } catch (e) {
+                // Element not yet complete or invalid JSON, continue silently
+              }
+
+              currentElement = "";
+              startedElement = false;
+            }
+          }
+
+          // Use throttled update if we found new elements
+          if (foundNewElement && parsedElements.length > 0) {
+            scheduleSceneUpdate([...parsedElements]);
+          }
+        } catch (e) {
+          // Parsing failed, wait for more data (silent)
+        }
+      };
+
+      // Initialize status message
+      updateChatStatus(statusMessage, true);
 
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
 
-        buffered += decoder.decode(value, { stream: true });
+        const chunk = decoder.decode(value, { stream: true });
+        buffered += chunk;
         const parts = buffered.split("\n\n");
         buffered = parts.pop() || "";
 
         for (const part of parts) {
           const content = part.trim().replace(/^data:\s?/, "");
-
           if (!content) continue;
 
-          if (content.startsWith("[TOKEN]")) {
-            const token = content.replace("[TOKEN]", "").trimStart();
-            accumulatedJson += token;
-
-            // Update the LAST log entry with accumulated JSON (typewriter effect)
-            set(state => {
-              const logs = [...state.generationLogs];
-              if (logs.length > 0 && logs[logs.length - 1].startsWith("🤖")) {
-                // Update existing JSON display
-                logs[logs.length - 1] = `🤖 Generating JSON...\n${accumulatedJson}`;
-              } else {
-                // Start new JSON display
-                logs.push(`🤖 Generating JSON...\n${accumulatedJson}`);
-              }
-              return { generationLogs: logs };
-            });
-          } else if (content.startsWith("[RESULT]")) {
-            const resultContent = content.replace("[RESULT]", "").trim();
-            const result = JSON.parse(resultContent);
-
-            if (result.scene) {
-              set({ excalidrawScene: result.scene });
-              console.log("Excalidraw scene saved to store (streaming):", result.scene.elements?.length, "elements");
-
-              // Add completion message
-              set(state => ({
-                generationLogs: [...state.generationLogs, `✅ Scene generated: ${result.scene.elements?.length || 0} elements`]
-              }));
-            }
-          } else if (content.startsWith("[START]")) {
-            const message = content.replace("[START]", "").trim();
-            set(state => ({
-              generationLogs: [...state.generationLogs, `🎬 ${message}`]
-            }));
+          if (content.startsWith("[START]")) {
+            pushLog(content);
+            updateChatStatus("📝 正在构建提示词...");
           } else if (content.startsWith("[CALL]")) {
-            const message = content.replace("[CALL]", "").trim();
-            set(state => ({
-              generationLogs: [...state.generationLogs, `🔮 ${message}`]
-            }));
+            pushLog(content);
+            updateChatStatus("🤖 AI 正在绘制场景...");
+          } else if (content.startsWith("[TOKEN]")) {
+            const token = content.replace("[TOKEN]", "").trimStart();
+            tokenCount++;
+
+            updateJsonLog(token);
+
+            // 每 100 个 token 更新聊天状态
+            if (tokenCount % 100 === 0) {
+              updateChatStatus(`🤖 AI 正在绘制场景...\n已生成 ${tokenCount} tokens`);
+            }
+          } else if (content.startsWith("[RESULT]")) {
+            // Remove "[生成中]" log
+            const generatingIndex = logs.findIndex(log => log.startsWith("[生成中]"));
+            if (generatingIndex !== -1) {
+              logs.splice(generatingIndex, 1);
+            }
+
+            pushLog(content);
+            const resultContent = content.replace("[RESULT]", "").trim();
+
+            try {
+              const result = JSON.parse(resultContent);
+              console.log("[Excalidraw] Parsed RESULT:", {
+                hasScene: !!result.scene,
+                elementsCount: result.scene?.elements?.length,
+                incrementalCount: parsedElements.length,
+                success: result.success
+              });
+
+              if (result.scene?.elements) {
+                // Cancel any pending animation frame
+                if (animationFrameId !== null) {
+                  cancelAnimationFrame(animationFrameId);
+                  animationFrameId = null;
+                }
+
+                // CRITICAL FIX: Always use complete RESULT elements as the final data
+                // Incremental parsing is only for intermediate display
+                const finalScene = {
+                  elements: result.scene.elements,  // Always use complete data
+                  appState: result.scene.appState || { viewBackgroundColor: "#ffffff" },
+                  files: result.scene.files || {}
+                };
+
+                console.log("[Excalidraw] Final scene:", {
+                  elementsCount: result.scene.elements.length,
+                  incrementalParsed: parsedElements.length,
+                  source: 'complete-result'
+                });
+                set({ excalidrawScene: finalScene });
+
+                const successMsg = result.success
+                  ? `✅ Excalidraw 场景生成完成\n- 元素数量: ${result.scene.elements.length}\n- 增量解析: ${parsedElements.length} 个元素\n- 生成方式: ${parsedElements.length > 0 ? 'AI 实时流式生成' : 'AI 智能生成'}`
+                  : `⚠️ 使用备用场景\n- 元素数量: ${result.scene.elements.length}\n- 原因: ${result.message || 'AI 生成失败'}`;
+
+                updateChatStatus(successMsg, true);
+              }
+            } catch (e) {
+              console.error("[Excalidraw] Failed to parse RESULT:", e);
+            }
+          } else if (content.startsWith("[END]")) {
+            pushLog(content);
+            // Final log update
+            set({ generationLogs: [...logs] });
           } else if (content.startsWith("[ERROR]")) {
-            const errorMsg = content.replace("[ERROR]", "").trim();
-            console.error("Excalidraw streaming error:", errorMsg);
-            throw new Error(errorMsg);
+            pushLog(content);
+            updateChatStatus(`❌ 生成失败: ${content.replace("[ERROR]", "").trim()}`, true);
+            throw new Error(content.replace("[ERROR]", ""));
           }
         }
       }
 
-      console.log("Excalidraw streaming completed successfully");
+      console.log("[Excalidraw] Stream completed");
     } catch (error: any) {
-      console.error("Excalidraw streaming error:", error);
-      // Don't throw - the mock scene should have been sent by the backend
+      console.error("[Excalidraw] Error:", error);
       set(state => ({
-        generationLogs: [...state.generationLogs, `❌ Error: ${error.message}`]
+        generationLogs: [...state.generationLogs, `❌ Error: ${error.message}`],
+        chatHistory: [
+          ...state.chatHistory,
+          { role: "assistant", content: `❌ 生成失败: ${error.message}` }
+        ]
       }));
     } finally {
+      console.log("[Excalidraw] Finally block: setting isGeneratingFlowchart = false");
       set({ isGeneratingFlowchart: false });
+      console.log("[Excalidraw] Finally block: completed");
     }
   },
 

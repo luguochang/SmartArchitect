@@ -10,6 +10,82 @@ from app.services.ai_vision import create_vision_service
 logger = logging.getLogger(__name__)
 
 
+def repair_json(json_str: str) -> str:
+    """
+    Repair incomplete JSON by tracking bracket/brace stack and closing open structures.
+    Based on FlowPilot's json-repair.ts implementation.
+
+    Args:
+        json_str: Potentially incomplete JSON string
+
+    Returns:
+        Repaired JSON string with closed brackets/braces
+    """
+    if not json_str:
+        return "{}"
+
+    trimmed = json_str.strip()
+    if trimmed.endswith("}"):
+        return trimmed  # Assume complete
+
+    # Track bracket/brace stack
+    stack = []
+    is_string = False
+    is_escaped = False
+
+    for char in trimmed:
+        if is_string:
+            if char == '"' and not is_escaped:
+                is_string = False
+            elif char == '\\':
+                is_escaped = not is_escaped
+            else:
+                is_escaped = False
+        else:
+            if char == '"':
+                is_string = True
+            elif char == '{':
+                stack.append('}')
+            elif char == '[':
+                stack.append(']')
+            elif char == '}':
+                if stack and stack[-1] == '}':
+                    stack.pop()
+            elif char == ']':
+                if stack and stack[-1] == ']':
+                    stack.pop()
+
+    # Build completion string
+    completion = ""
+    if is_string:
+        completion += '"'  # Close open string
+    while stack:
+        completion += stack.pop()
+
+    return trimmed + completion
+
+
+def safe_parse_partial_json(json_str: str) -> Optional[dict]:
+    """
+    Safely parse potentially incomplete JSON with automatic repair.
+
+    Args:
+        json_str: JSON string (may be incomplete)
+
+    Returns:
+        Parsed dict or None if unrepairable
+    """
+    try:
+        return json.loads(json_str)
+    except json.JSONDecodeError:
+        try:
+            repaired = repair_json(json_str)
+            return json.loads(repaired)
+        except Exception as e:
+            logger.debug(f"JSON repair failed: {e}")
+            return None
+
+
 class ExcalidrawGeneratorService:
     """Excalidraw scene generation via LLM with validation and mock fallback."""
 
@@ -47,38 +123,56 @@ class ExcalidrawGeneratorService:
         return base
 
     def _build_prompt(self, prompt: str, style: Optional[str], width: int, height: int) -> str:
-        theme = style or "neon cyber cat with glowing eyes, bold strokes, 8-color palette"
+        """
+        Build Excalidraw generation prompt - balanced between quality and parsability.
+        """
         return f"""
-You are an Excalidraw scene generator. Generate a simple illustration with 8-15 elements.
+You are an Excalidraw Expert. Generate a COMPLETE hand-drawn style diagram based on the user's request.
 
-CRITICAL: Return ONLY valid JSON. No text before or after.
+CRITICAL OUTPUT FORMAT:
+- Output ONLY valid JSON (no markdown fences, no explanations, no truncation)
+- Start directly with {{ and end with }}
+- Use proper commas between all array elements and properties
+- NO trailing commas
+- IMPORTANT: Generate the COMPLETE JSON structure - do NOT stop mid-generation
 
-Format:
+Required JSON structure (MUST be complete):
 {{
-  "elements": [
-    {{"id": "elem-1", "type": "rectangle", "x": 200, "y": 100, "width": 80, "height": 60, "strokeColor": "#22d3ee", "backgroundColor": "transparent", "strokeWidth": 3, "opacity": 100}},
-    {{"id": "elem-2", "type": "ellipse", "x": 300, "y": 200, "width": 60, "height": 60, "strokeColor": "#a855f7", "backgroundColor": "rgba(168,85,247,0.2)", "strokeWidth": 3, "opacity": 100}}
-  ],
-  "appState": {{}},
+  "elements": [...],
+  "appState": {{"viewBackgroundColor": "#ffffff"}},
   "files": {{}}
 }}
 
-Rules:
-- Canvas: {width}x{height}px. Place elements within x:[50,{width-150}], y:[50,{height-150}]
-- Types: rectangle, ellipse, text (NO line, freedraw, or arrow)
-- Colors: #22d3ee (cyan), #a855f7 (purple), #22c55e (green), #f97316 (orange), #eab308 (yellow)
-- Each element MUST have: id, type, x, y, width, height, strokeColor, backgroundColor, strokeWidth, opacity
-- strokeWidth: 2-4
-- opacity: 80-100
-- Size: width/height between 40 and 150
-- 8-15 elements max
-- NO trailing commas
-- NO comments
+Element Requirements:
+- Create 10-15 elements for rich, complete diagrams (use rectangles, ellipses, arrows, lines, text)
+- Each element MUST have ALL these fields (no shortcuts):
+  id, type, x, y, width, height, angle, strokeColor, backgroundColor,
+  fillStyle, strokeWidth, strokeStyle, roughness, opacity, groupIds,
+  frameId, roundness, seed, version, versionNonce, isDeleted,
+  boundElements, updated, link, locked
 
-Style: {theme}
+- For arrows/lines, add: points (array of [x,y]), startBinding, endBinding
+- For text elements, add: text, fontSize, fontFamily, textAlign, verticalAlign, baseline, containerId, originalText
+
+Valid types: rectangle, diamond, ellipse, arrow, line, text
+
+Layout Guidelines:
+- Canvas size: {width}x{height}px
+- Place elements within x:[100,{width-100}], y:[100,{height-100}]
+- Distribute elements evenly across the canvas
+- Use arrows to connect related shapes
+- Add labels with text elements for clarity
+
+Colors (hand-drawn style):
+- strokeColor: "#1e1e1e", "#2563eb", "#dc2626", "#059669", "#8b5cf6"
+- backgroundColor: "#a5d8ff", "#fde68a", "#bbf7d0", "#ddd6fe", "transparent"
+- fillStyle: "hachure" or "solid"
+- roughness: 1 (hand-drawn) or 0 (smooth)
+
 User request: "{prompt}"
 
-Return ONLY the JSON object."""
+CRITICAL: Generate the COMPLETE JSON now. Make sure to close all arrays and objects properly. Do NOT stop mid-generation.
+Output format: raw JSON only (no markdown fences, no ```json, just {{ ... }}):"""
 
     def _safe_json(self, payload):
         """Sanitize AI response into valid JSON dict with aggressive cleaning."""
@@ -90,26 +184,26 @@ Return ONLY the JSON object."""
             return payload.model_dump()
 
         if isinstance(payload, str):
-            # Strip markdown code blocks more robustly
+            # FlowPilot-inspired code block extraction using regex
             text = payload.strip()
-            if text.startswith("```"):
-                # Remove opening ```json or ```
-                lines = text.split("\n")
-                if lines[0].startswith("```"):
-                    lines = lines[1:]
-                # Remove closing ```
-                if lines and lines[-1].strip() == "```":
-                    lines = lines[:-1]
-                text = "\n".join(lines).strip()
 
-            # Remove any leading/trailing prose
-            text = text.strip()
+            # Extract from markdown code block if present (more robust than line-by-line)
+            import re
+            code_block_match = re.search(r'```(?:json)?\s*\n?([^`]*?)(?:```|$)', text, re.IGNORECASE | re.DOTALL)
+            if code_block_match:
+                text = code_block_match.group(1).strip()
 
-            # Find JSON object boundaries
-            start_idx = text.find("{")
-            end_idx = text.rfind("}")
-            if start_idx >= 0 and end_idx > start_idx:
-                text = text[start_idx:end_idx+1]
+            # If not in code block, find JSON object boundaries
+            if not text.startswith("{"):
+                start_idx = text.find("{")
+                if start_idx >= 0:
+                    text = text[start_idx:]
+
+            # Find last closing brace
+            if not text.endswith("}"):
+                end_idx = text.rfind("}")
+                if end_idx > 0:
+                    text = text[:end_idx+1]
 
             # Try parsing as-is
             try:
@@ -117,7 +211,38 @@ Return ONLY the JSON object."""
             except json.JSONDecodeError as e:
                 logger.warning(f"JSON decode failed: {e}. Attempting repair...")
 
-                # Strategy 1: Find the last valid closing brace for "elements" array
+                # Strategy 0: Use FlowPilot-inspired bracket tracking repair FIRST
+                # This handles incomplete/unclosed JSON from streaming
+                repaired_result = safe_parse_partial_json(text)
+                if repaired_result is not None:
+                    logger.info("JSON repaired successfully with bracket tracking")
+                    return repaired_result
+
+                # Strategy 1: Aggressive comma insertion for "} {" patterns
+                # Common when AI forgets commas between array elements
+                if "Expecting ',' delimiter" in str(e):
+                    import re
+                    # Fix missing commas between array elements: } { → }, {
+                    text_with_commas = re.sub(r'}\s+{', '}, {', text)
+                    # Fix missing commas between array items: }\n{ → },\n{
+                    text_with_commas = re.sub(r'}\n\s*{', '},\n{', text_with_commas)
+                    # Fix missing commas between properties: "key": value "key2" → "key": value, "key2"
+                    text_with_commas = re.sub(r'"\s*\n\s*"', '",\n"', text_with_commas)
+                    text_with_commas = re.sub(r'(\d+)\s+(")', r'\1, \2', text_with_commas)
+                    text_with_commas = re.sub(r'(true|false|null)\s+(")', r'\1, \2', text_with_commas)
+
+                    try:
+                        result = json.loads(text_with_commas)
+                        logger.info("JSON repaired by inserting commas via regex")
+                        return result
+                    except json.JSONDecodeError:
+                        # Try bracket tracking on the comma-fixed version
+                        repaired_result = safe_parse_partial_json(text_with_commas)
+                        if repaired_result is not None:
+                            logger.info("JSON repaired by combining comma fix + bracket tracking")
+                            return repaired_result
+
+                # Strategy 2: Find the last valid closing brace for "elements" array
                 # Many LLMs fail mid-generation, leaving incomplete JSON
                 try:
                     # Find where "elements" array ends
@@ -144,15 +269,49 @@ Return ONLY the JSON object."""
                 except Exception:
                     pass
 
-                # Strategy 2: Basic repairs
-                text = text.replace("'", '"')  # Single quotes to double quotes
-                text = text.replace("\n", " ")  # Remove newlines
-                text = text.replace(",]", "]").replace(",}", "}")  # Trailing commas
+                # Strategy 3: Fix common JSON syntax errors
                 try:
-                    return json.loads(text)
+                    # Remove newlines that might break parsing
+                    text_normalized = text.replace("\n", " ")
+
+                    # Fix missing commas between object properties
+                    # Pattern: "key": value "key2": value2  →  "key": value, "key2": value2
+                    import re
+                    text_normalized = re.sub(r'"\s*"', '", "', text_normalized)
+
+                    # Fix missing commas between array elements
+                    # Pattern: } {  →  }, {
+                    text_normalized = re.sub(r'\}\s*\{', '}, {', text_normalized)
+
+                    # Fix trailing commas
+                    text_normalized = text_normalized.replace(",]", "]").replace(",}", "}")
+
+                    # Fix single quotes
+                    text_normalized = text_normalized.replace("'", '"')
+
+                    return json.loads(text_normalized)
                 except json.JSONDecodeError:
-                    logger.error(f"JSON repair failed. Raw payload: {payload[:200]}...")
-                    return {}
+                    pass
+
+                # Strategy 4: Last resort - extract elements array only
+                try:
+                    elements_match = re.search(r'"elements"\s*:\s*\[(.*?)\]', text, re.DOTALL)
+                    if elements_match:
+                        elements_text = elements_match.group(1)
+                        # Try to build a minimal valid JSON
+                        reconstructed = f'{{"elements": [{elements_text}], "appState": {{}}, "files": {{}}}}'
+                        return json.loads(reconstructed)
+                except Exception:
+                    pass
+
+                # Log full payload for debugging
+                logger.error(f"All JSON repair strategies failed. Payload length: {len(payload)}")
+                logger.error(f"First 500 chars: {payload[:500]}")
+                logger.error(f"Last 500 chars: {payload[-500:]}")
+
+                # Return None to trigger fallback to mock scene
+                # DO NOT return empty dict as it will cause downstream issues
+                return None
 
         # Last resort: convert to JSON string and parse
         try:
@@ -161,33 +320,85 @@ Return ONLY the JSON object."""
             return {}
 
     def _validate_scene(self, ai_data: dict, width: int, height: int) -> ExcalidrawScene:
+        """
+        Validate and clean Excalidraw scene data with deep element validation.
+        Based on FlowPilot's sanitizeData implementation.
+
+        Returns mock scene if ai_data is None or invalid.
+        """
+        # Handle None or invalid input - return mock scene immediately
+        if ai_data is None or not isinstance(ai_data, dict):
+            logger.warning("Invalid ai_data provided to _validate_scene, returning mock scene")
+            return self._mock_scene()
+
         elements = ai_data.get("elements", [])
         if not isinstance(elements, list):
             elements = []
+
         cleaned = []
         max_elems = 25
+        seen_ids = set()  # Track unique IDs
+
         for elem in elements[:max_elems]:
+            # Deep validation: filter out invalid elements
             if not isinstance(elem, dict):
-                continue
-            etype = elem.get("type") or "rectangle"
-            if etype not in ["rectangle", "ellipse", "freedraw", "line", "text"]:
-                continue
-            # points required for line/freedraw
-            if etype in ["line", "freedraw"] and not elem.get("points"):
+                logger.debug(f"Skipping non-dict element: {type(elem)}")
                 continue
 
+            # Type and ID must be strings (MANDATORY)
+            etype = elem.get("type")
+            elem_id = elem.get("id")
+            if not isinstance(etype, str) or not isinstance(elem_id, str):
+                logger.debug(f"Skipping element with invalid type/id: type={type(etype)}, id={type(elem_id)}")
+                continue
+
+            # Ensure ID uniqueness
+            if elem_id in seen_ids:
+                logger.warning(f"Duplicate ID detected: {elem_id}, regenerating...")
+                elem_id = f"{elem_id}-{random.randint(1000,9999)}"
+            seen_ids.add(elem_id)
+
+            # Validate element type
+            if etype not in ["rectangle", "ellipse", "diamond", "freedraw", "line", "arrow", "text"]:
+                logger.debug(f"Skipping unsupported element type: {etype}")
+                continue
+
+            # CRITICAL: Linear elements MUST have valid points array
+            if etype in ["line", "arrow", "draw", "freedraw"]:
+                points = elem.get("points", [])
+                if not isinstance(points, list) or len(points) == 0:
+                    logger.debug(f"Skipping {etype} element without points array")
+                    continue
+
+                # Validate each point is [number, number] format
+                are_points_valid = all(
+                    isinstance(p, list) and len(p) >= 2 and
+                    isinstance(p[0], (int, float)) and isinstance(p[1], (int, float))
+                    for p in points
+                )
+                if not are_points_valid:
+                    logger.debug(f"Skipping {etype} with invalid points format")
+                    continue
+
+            # Text elements MUST have text property
+            if etype == "text":
+                if not isinstance(elem.get("text"), str):
+                    logger.debug(f"Skipping text element without text property")
+                    continue
+
+            # Create base element with defaults
             base = self._base_element(
-                id=elem.get("id") or f"{random.randint(1000,9999)}",
+                id=elem_id,
                 type=etype,
             )
 
-            # For line elements, normalize points first
-            if etype in ["line", "freedraw"]:
+            # For line/arrow elements, normalize points
+            if etype in ["line", "arrow", "freedraw"]:
                 points = elem.get("points", [])
                 if points:
                     # Normalize line: calculate bounding box and adjust coordinates
-                    xs = [p[0] for p in points]
-                    ys = [p[1] for p in points]
+                    xs = [float(p[0]) for p in points]
+                    ys = [float(p[1]) for p in points]
                     min_x, max_x = min(xs), max(xs)
                     min_y, max_y = min(ys), max(ys)
 
@@ -207,8 +418,15 @@ Return ONLY the JSON object."""
                     base["width"] = w
                     base["height"] = h
                     base["points"] = normalized_points
+
+                    # Arrow-specific properties
+                    if etype == "arrow":
+                        if "startBinding" in elem and isinstance(elem["startBinding"], dict):
+                            base["startBinding"] = elem["startBinding"]
+                        if "endBinding" in elem and isinstance(elem["endBinding"], dict):
+                            base["endBinding"] = elem["endBinding"]
                 else:
-                    continue  # skip invalid line without points
+                    continue  # Skip invalid line without points
             else:
                 # Regular element handling
                 x = float(elem.get("x", base["x"]))
@@ -220,27 +438,65 @@ Return ONLY the JSON object."""
                 base["width"] = w
                 base["height"] = h
 
-            base["strokeColor"] = elem.get("strokeColor", base["strokeColor"])
-            base["backgroundColor"] = elem.get("backgroundColor", base["backgroundColor"])
-            base["fillStyle"] = elem.get("fillStyle", base["fillStyle"])
-            base["strokeWidth"] = max(2, elem.get("strokeWidth", base["strokeWidth"]))
-            base["strokeStyle"] = elem.get("strokeStyle", base["strokeStyle"])
-            base["roughness"] = elem.get("roughness", base["roughness"])
-            base["opacity"] = max(60, elem.get("opacity", base["opacity"]))
+            # Apply element-specific properties with validation
+            if "strokeColor" in elem and isinstance(elem["strokeColor"], str):
+                base["strokeColor"] = elem["strokeColor"]
+            if "backgroundColor" in elem and isinstance(elem["backgroundColor"], str):
+                base["backgroundColor"] = elem["backgroundColor"]
+            if "fillStyle" in elem and isinstance(elem["fillStyle"], str):
+                base["fillStyle"] = elem["fillStyle"]
+            if "strokeWidth" in elem and isinstance(elem["strokeWidth"], (int, float)):
+                base["strokeWidth"] = max(1, float(elem["strokeWidth"]))
+            if "strokeStyle" in elem and isinstance(elem["strokeStyle"], str):
+                base["strokeStyle"] = elem["strokeStyle"]
+            if "roughness" in elem and isinstance(elem["roughness"], (int, float)):
+                base["roughness"] = float(elem["roughness"])
+            if "opacity" in elem and isinstance(elem["opacity"], (int, float)):
+                base["opacity"] = max(0, min(100, float(elem["opacity"])))
+            if "angle" in elem and isinstance(elem["angle"], (int, float)):
+                base["angle"] = float(elem["angle"])
 
+            # Text-specific properties
             if etype == "text":
-                base["text"] = elem.get("text") or "Label"
-                base["fontSize"] = elem.get("fontSize", 20)
+                base["text"] = elem.get("text", "Label")
+                if "fontSize" in elem and isinstance(elem["fontSize"], (int, float)):
+                    base["fontSize"] = int(elem["fontSize"])
+                else:
+                    base["fontSize"] = 20
                 base["fontFamily"] = elem.get("fontFamily", 1)
                 base["textAlign"] = elem.get("textAlign", "center")
 
+            # Ensure groupIds and boundElements are arrays
+            if not isinstance(base.get("groupIds"), list):
+                base["groupIds"] = []
+            if not isinstance(base.get("boundElements"), list):
+                base["boundElements"] = []
+
             cleaned.append(base)
 
+        # If no valid elements after cleaning, return mock scene
+        if not cleaned:
+            logger.warning("No valid elements after cleaning, returning mock scene")
+            mock = self._mock_scene()
+            mock.appState["message"] = "AI generated invalid elements, showing fallback scene"
+            return mock
+
+        # Validate and clean appState
         app_state = ai_data.get("appState") or {}
-        files = ai_data.get("files") or {}
-        # Don't override user's background color preference
-        # app_state.setdefault("viewBackgroundColor", "#0f172a")
+        if not isinstance(app_state, dict):
+            app_state = {}
+
+        # Remove collaborators to avoid "forEach is not a function" error
+        if "collaborators" in app_state:
+            del app_state["collaborators"]
+
+        # Ensure zoom is properly formatted
         app_state.setdefault("zoom", {"value": 1})
+
+        files = ai_data.get("files") or {}
+        if not isinstance(files, dict):
+            files = {}
+
         return ExcalidrawScene(elements=cleaned, appState=app_state, files=files)
 
     def _mock_scene(self) -> ExcalidrawScene:
@@ -380,9 +636,13 @@ Return ONLY the JSON object."""
 
             ai_data = self._safe_json(ai_raw)
             scene = self._validate_scene(ai_data, width, height)
-            scene.appState["message"] = f"Generated via {provider}"
-            if not scene.elements:
-                raise ValueError("Empty scene generated by AI")
+
+            # Update message based on whether it's a fallback
+            current_message = scene.appState.get("message", "")
+            if "fallback" not in current_message.lower() and "mock" not in current_message.lower():
+                scene.appState["message"] = f"Generated via {provider}"
+
+            # Scene is guaranteed to have elements now (either AI or mock)
             return scene
         except Exception as e:
             logger.error(f"Excalidraw generation failed: {e}", exc_info=True)

@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "icons:generate": "node scripts/generate-icons.js",
+    "og:generate": "node scripts/generate-og-image.js",
+    "brand:setup": "npm run icons:generate && npm run og:generate"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.0",
@@ -33,6 +36,7 @@
     "eslint": "^8.57.1",
     "eslint-config-next": "^14.2.18",
     "postcss": "^8.4.49",
+    "sharp": "^0.34.5",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2"
   }

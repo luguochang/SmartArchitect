@@ -42,6 +42,13 @@ class LoggerMiddleware(BaseHTTPMiddleware):
         query_params = dict(request.query_params) if request.query_params else {}
         client_ip = request.client.host if request.client else "unknown"
 
+        # 检查是否是流式端点（SSE streaming）
+        is_stream_endpoint = (
+            "-stream" in url_path or
+            "/generate-stream" in url_path or
+            url_path.endswith("/stream")
+        )
+
         # 记录请求（INFO 级别）
         if query_params:
             logger.info(f"[REQUEST] {method} {url_path} | Client: {client_ip} | Params: {query_params}")
@@ -52,7 +59,12 @@ class LoggerMiddleware(BaseHTTPMiddleware):
             # 调用下一个处理器
             response: Response = await call_next(request)
 
-            # 计算执行时间
+            # 对于流式端点，不等待完成，立即返回以避免缓冲
+            if is_stream_endpoint:
+                logger.info(f"[STREAM START] {method} {url_path} | Streaming response initiated")
+                return response
+
+            # 计算执行时间（非流式端点）
             duration_ms = (time.time() - start_time) * 1000
 
             # 记录响应（INFO 级别）
