@@ -458,11 +458,11 @@ export default function ScriptEditor({
                     ? "字数符合目标"
                     : wordCountStatus === "too-short"
                     ? "字数偏少"
-                    : "字数过多"}
+                    : "内容丰富"}
                 </span>
               </div>
               <div className="text-gray-600">
-                建议范围: {Math.floor(targetWords * 0.8)} - {Math.ceil(targetWords * 1.2)} 字
+                参考范围: {Math.floor(targetWords * 0.5)} - {Math.ceil(targetWords * 2.0)} 字
               </div>
             </div>
           </div>

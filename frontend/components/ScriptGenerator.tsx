@@ -100,9 +100,23 @@ export default function ScriptGenerator({
         } as ScriptOptions,
       };
 
+      // Build query params with all model config
+      const params = new URLSearchParams({
+        provider: modelConfig.provider,
+        api_key: modelConfig.apiKey,
+      });
+
+      // Add optional params for custom provider
+      if (modelConfig.provider === "custom" && modelConfig.baseUrl) {
+        params.append("base_url", modelConfig.baseUrl);
+      }
+      if (modelConfig.modelName) {
+        params.append("model_name", modelConfig.modelName);
+      }
+
       // Call streaming API
       const response = await fetch(
-        `/api/export/script-stream?provider=${modelConfig.provider}&api_key=${modelConfig.apiKey}`,
+        `/api/export/script-stream?${params.toString()}`,
         {
           method: "POST",
           headers: {

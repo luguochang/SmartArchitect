@@ -212,9 +212,9 @@ export interface ScriptEditorState {
  */
 export function getTargetWordCount(duration: ScriptDuration): number {
   const targets = {
-    "30s": 70,
-    "2min": 300,
-    "5min": 750,
+    "30s": 140,
+    "2min": 600,
+    "5min": 1500,
   };
   return targets[duration];
 }
@@ -341,9 +341,10 @@ export function getWordCountStatus(
 ): "too-short" | "good" | "too-long" {
   const target = getTargetWordCount(duration);
 
-  if (wordCount < target * 0.8) {
+  // 放宽字数限制范围：允许50%-200%的范围
+  if (wordCount < target * 0.5) {
     return "too-short";
-  } else if (wordCount > target * 1.2) {
+  } else if (wordCount > target * 2.0) {
     return "too-long";
   } else {
     return "good";
