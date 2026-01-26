@@ -64,81 +64,147 @@ Please generate a similar flowchart following this template's style.
 """
 
         if request.diagram_type == "architecture":
-            return f"""You are a professional systems architect. Generate a layered architecture map (no edges needed).
+            return f"""You are a professional systems architect. Generate a clean, layered architecture map with clear hierarchy.
 
-Requirements:
-- Output JSON with "layers": [
-    {{"name": "infrastructure", "items": []}},
-    {{"name": "middleware", "items": []}},
-    {{"name": "backend", "items": []}},
-    {{"name": "frontend", "items": []}},
-    {{"name": "data", "items": []}}
+**CRITICAL REQUIREMENTS:**
+1. Output JSON with "layers" array - each layer becomes a visual background frame
+2. Structure:
+   {{
+     "layers": [
+       {{"name": "Layer名称", "items": [...]}},
+       ...
+     ]
+   }}
+3. Layer order (top to bottom):
+   - frontend (前端层): Web/Mobile clients
+   - backend (后端层): APIs, Services
+   - middleware (中间件层): Gateway, Cache, Queue
+   - data (数据层): Databases, Storage
+   - infrastructure (基础设施层): Servers, Network
+
+4. Each item format:
+   {{"label": "组件名称", "tech_stack": ["技术栈"], "note": "简短说明"}}
+
+5. **ICON RULE**: Do NOT include "iconType" field - system will use default box icons
+6. Keep 3-6 items per layer (avoid overcrowding)
+7. Use Chinese labels if user input is Chinese
+8. Do NOT generate edges - architecture shows layers only
+9. Return ONLY valid JSON, no markdown blocks
+
+**EXAMPLE OUTPUT:**
+{{
+  "layers": [
+    {{"name": "frontend", "items": [
+      {{"label": "Web端", "tech_stack": ["React", "Next.js"], "note": "用户界面"}},
+      {{"label": "移动端", "tech_stack": ["React Native"], "note": "iOS/Android"}}
+    ]}},
+    {{"name": "backend", "items": [
+      {{"label": "用户服务", "tech_stack": ["Spring Boot"], "note": "用户管理"}},
+      {{"label": "订单服务", "tech_stack": ["Go"], "note": "订单处理"}}
+    ]}},
+    {{"name": "data", "items": [
+      {{"label": "MySQL", "tech_stack": ["MySQL 8.0"], "note": "主数据库"}},
+      {{"label": "Redis", "tech_stack": ["Redis"], "note": "缓存层"}}
+    ]}}
   ]
-- Each item: {{"label": "...", "tech_stack": ["..."], "note": "...", "iconType": "box"}}
-- Do NOT return edges. Focus on listing components per layer.
-- Keep counts reasonable (3-8 items per layer). Include empty list if not applicable.
-- Return ONLY JSON, no prose.
+}}
+
 {template_context}
-User Request: "{request.user_input}"
+**User Request:** "{request.user_input}"
+
+Generate architecture with clear layer separation. Focus on component organization, not connections.
 """
 
-        system_prompt = f"""You are a professional flowchart generation expert. Convert user descriptions into clear, simple flowcharts.
+        system_prompt = f"""You are a professional flowchart generation expert. Create beautiful, well-organized flowcharts with optimal layout.
 
-**AVAILABLE NODE TYPES (choose appropriate for the scenario):**
-For general processes:
-- start: Start point (圆形/circle, use for beginning)
-- end: End point (圆形/circle, use for termination)
-- process: Process step (矩形/rectangle, use for actions/tasks)
-- decision: Decision point (菱形/diamond, use for yes/no choices)
-- data: Data/Input/Output (平行四边形/parallelogram)
-- document: Document/Report (文档形状)
-- subprocess: Sub-process (圆角矩形/rounded rectangle)
+**AVAILABLE NODE TYPES:**
+Basic Flow (for general processes):
+- start: Start point (use shape="start-event" for BPMN style circle)
+- end: End point (use shape="end-event" for BPMN style circle)
+- process: Process/Task (use shape="task" for modern card style, or "rectangle" for simple box)
+- decision: Decision/Gateway (use shape="diamond" for yes/no branches)
+- data: Data Input/Output (use shape="parallelogram")
+- subprocess: Sub-process (use shape="rounded-rectangle")
 
-For technical systems (ONLY if user explicitly requests technical architecture):
-- api: API Gateway
-- service: Microservice
-- database: Database
-- cache: Cache
-- queue: Message Queue
-- storage: File Storage
+Technical Nodes (ONLY for technical architecture):
+- api, service, database, cache, queue, storage, client, gateway
 
-**LAYOUT RULES:**
-- Top-to-bottom flow (start at x=250, y=100)
-- Vertical spacing: 150-200px between levels
-- Horizontal spacing: 200-250px for parallel branches
-- Keep it simple and clean
+**LAYOUT ALGORITHM - CRITICAL:**
+1. **Main Flow**: Center column, start at x=400, y=100
+2. **Vertical spacing**: 180px between sequential steps
+3. **Decision Branches**:
+   - "Yes" branch: Continue straight down (same x)
+   - "No" branch: Branch to the LEFT at -350px offset
+   - Rejoin branches after processing both paths
+4. **Parallel processes**: Use horizontal offset ±300px from center
+5. **Edge directions**:
+   - Sequential: Vertical (top → bottom)
+   - Branches: Diagonal or horizontal
+   - Avoid all edges exiting from same side!
 
-**GENERATION RULES:**
-1. Analyze user input to determine if it's a general process or technical system
-2. For general processes (like "约会流程", "做饭流程", "购物流程"):
-   - Use ONLY basic nodes: start, process, decision, end
-   - Generate 5-10 nodes (keep it simple)
-   - Clear sequential flow
-3. For technical systems (like "微服务架构", "API设计"):
-   - Use technical nodes: api, service, database, etc.
-   - Can be more complex (10-15 nodes)
-
-**OUTPUT FORMAT:**
+**LAYOUT EXAMPLE (Decision Flow):**
 {{
   "nodes": [
-    {{"id": "start", "type": "start", "position": {{"x": 250, "y": 100}}, "data": {{"label": "开始"}}}},
-    {{"id": "step1", "type": "process", "position": {{"x": 250, "y": 250}}, "data": {{"label": "步骤1"}}}},
-    {{"id": "decision1", "type": "decision", "position": {{"x": 250, "y": 400}}, "data": {{"label": "判断条件?"}}}},
-    {{"id": "end", "type": "end", "position": {{"x": 250, "y": 650}}, "data": {{"label": "结束"}}}}
+    {{"id": "start", "type": "default", "position": {{"x": 400, "y": 100}},
+      "data": {{"label": "开始", "shape": "start-event", "color": "#16a34a"}}}},
+    {{"id": "step1", "type": "default", "position": {{"x": 400, "y": 280}},
+      "data": {{"label": "提交申请", "shape": "task", "color": "#2563eb"}}}},
+    {{"id": "decision1", "type": "gateway", "position": {{"x": 400, "y": 460}},
+      "data": {{"label": "审批通过?", "shape": "diamond"}}}},
+    {{"id": "yes-branch", "type": "default", "position": {{"x": 400, "y": 640}},
+      "data": {{"label": "发放通知", "shape": "task", "color": "#2563eb"}}}},
+    {{"id": "no-branch", "type": "default", "position": {{"x": 50, "y": 640}},
+      "data": {{"label": "驳回并说明原因", "shape": "task", "color": "#dc2626"}}}},
+    {{"id": "end", "type": "default", "position": {{"x": 400, "y": 820}},
+      "data": {{"label": "结束", "shape": "end-event", "color": "#dc2626"}}}}
   ],
   "edges": [
     {{"id": "e1", "source": "start", "target": "step1"}},
     {{"id": "e2", "source": "step1", "target": "decision1"}},
-    {{"id": "e3", "source": "decision1", "target": "end", "label": "是"}}
-  ],
-  "mermaid_code": "graph TB\\n  start[开始]-->step1[步骤1]-->decision1{{判断条件?}}-->end[结束]"
+    {{"id": "e3", "source": "decision1", "target": "yes-branch", "label": "是"}},
+    {{"id": "e4", "source": "decision1", "target": "no-branch", "label": "否"}},
+    {{"id": "e5", "source": "yes-branch", "target": "end"}},
+    {{"id": "e6", "source": "no-branch", "target": "end"}}
+  ]
+}}
+
+**STYLING RULES:**
+1. Use BPMN shapes for clean look:
+   - start-event: Green (#16a34a)
+   - end-event: Red (#dc2626)
+   - task: Blue (#2563eb)
+   - gateway/decision: No color override (default gray)
+2. DO NOT use iconType field - system provides default icons
+3. Label text should be concise (5-15 Chinese chars, 3-8 English words)
+4. For loops: Position loop-back nodes to the right (+350px)
+
+**GENERATION RULES:**
+1. Analyze user input to identify:
+   - Decision points (questions, conditions, branches)
+   - Sequential steps
+   - Parallel processes
+   - Loop logic
+2. For simple flows (5-8 nodes):
+   - Linear top-to-bottom with 1-2 decisions
+3. For complex flows (10-15 nodes):
+   - Multiple decision branches
+   - Use horizontal space for clarity
+4. Avoid cluttered layouts:
+   - Max 3 parallel branches
+   - Clear visual separation between branches
+
+**OUTPUT FORMAT:**
+{{
+  "nodes": [...],  // Array of node objects with position/type/data
+  "edges": [...],  // Array of edge objects with source/target/label
+  "mermaid_code": "graph TB\\n..."  // Optional Mermaid syntax
 }}
 
 {template_context}
 
 **User Request:** "{request.user_input}"
 
-Analyze the request and generate an appropriate flowchart. Return ONLY valid JSON, no markdown blocks or prose."""
+Generate a well-laid-out flowchart. Focus on clarity and visual balance. Return ONLY valid JSON, no markdown blocks."""
         return system_prompt
 
     async def _call_ai_text_generation(self, vision_service, prompt: str, provider: str) -> dict:
@@ -187,7 +253,7 @@ Analyze the request and generate an appropriate flowchart. Return ONLY valid JSO
         return json.loads(json.dumps(payload, default=str))
 
     def _normalize_architecture_graph(self, ai_data: dict):
-        """Normalize architecture JSON (layers/items) into nodes; edges stay empty."""
+        """Normalize architecture JSON (layers/items) into nodes with LayerFrame backgrounds."""
         try:
             layers = (
                 ai_data.get("layers")
@@ -201,67 +267,93 @@ Analyze the request and generate an appropriate flowchart. Return ONLY valid JSO
         nodes = []
         edges = []
         layer_colors = {
-            "infrastructure": "#0ea5e9",
-            "middleware": "#6366f1",
-            "backend": "#22c55e",
-            "frontend": "#f59e0b",
-            "data": "#a855f7",
-            "observability": "#14b8a6",
+            "frontend": "#f59e0b",      # Orange
+            "backend": "#22c55e",       # Green
+            "middleware": "#6366f1",    # Indigo
+            "data": "#a855f7",          # Purple
+            "infrastructure": "#0ea5e9", # Sky blue
+            "observability": "#14b8a6", # Teal
         }
 
-        def add_node(layer_idx: int, item_idx: int, label: str, layer_name: str, note: str = "", icon: str = "box"):
-            x = 120 + item_idx * 240
-            y = 120 + layer_idx * 180
-            color = layer_colors.get(layer_name.lower(), "#64748b")
-            nodes.append(
-                {
-                    "id": f"{layer_name}-{item_idx}",
-                    "type": "frame",
-                    "position": {"x": x, "y": y},
-                    "data": {
-                        "label": label,
-                        "shape": "task",
-                        "iconType": icon,
-                        "color": color,
-                        "layer": layer_name,
-                        "note": note,
-                        "layerColor": color,
-                    },
-                }
-            )
+        # Configuration for layout
+        frame_width = 1100
+        frame_height = 180
+        frame_padding_x = 60
+        frame_padding_y = 100
+        item_width = 220
+        item_spacing_x = 240
+        layer_spacing_y = 200
 
         if isinstance(layers, dict):
             layers = [{"name": k, "items": v} for k, v in layers.items()]
         elif not isinstance(layers, list):
             return [], [], ""
 
+        # Generate nodes with LayerFrame backgrounds
         for layer_idx, layer in enumerate(layers):
-            name = layer.get("name") if isinstance(layer, dict) else f"layer-{layer_idx}"
+            layer_name = layer.get("name") if isinstance(layer, dict) else f"layer-{layer_idx}"
             items = layer.get("items", []) if isinstance(layer, dict) else []
+            color = layer_colors.get(layer_name.lower(), "#64748b")
+
+            # Add LayerFrame background node
+            frame_y = frame_padding_y + layer_idx * layer_spacing_y
+            nodes.append({
+                "id": f"{layer_name}-frame",
+                "type": "layerFrame",
+                "position": {"x": frame_padding_x, "y": frame_y},
+                "data": {
+                    "label": layer_name.capitalize(),
+                    "color": color,
+                    "width": frame_width,
+                    "height": frame_height,
+                },
+                "draggable": False,
+            })
+
+            # Add component nodes within the layer
             for item_idx, item in enumerate(items):
                 if isinstance(item, dict):
-                    label = item.get("label") or item.get("name") or f"{name}-{item_idx}"
-                    note = item.get("note") or ", ".join(item.get("tech_stack", []) or [])
-                    icon = item.get("iconType") or "box"
+                    label = item.get("label") or item.get("name") or f"{layer_name}-{item_idx}"
+                    tech_stack = item.get("tech_stack", []) or []
+                    note = item.get("note") or (", ".join(tech_stack) if tech_stack else "")
                 else:
                     label = str(item)
                     note = ""
-                    icon = "box"
-                add_node(layer_idx, item_idx, label, name or f"layer-{layer_idx}", note, icon)
 
+                # Position component nodes inside the layer frame
+                item_x = frame_padding_x + 60 + item_idx * item_spacing_x
+                item_y = frame_y + 40
+
+                nodes.append({
+                    "id": f"{layer_name}-{item_idx}",
+                    "type": "frame",
+                    "position": {"x": item_x, "y": item_y},
+                    "data": {
+                        "label": label,
+                        "shape": "task",
+                        "color": color,
+                        "layer": layer_name,
+                        "note": note,
+                        "layerColor": color,
+                    },
+                })
+
+        # Generate mermaid code
         mermaid_lines = ["# Architecture Overview"]
         for layer in layers:
             lname = layer.get("name") if isinstance(layer, dict) else str(layer)
-            mermaid_lines.append(f"- {lname}:")
+            mermaid_lines.append(f"## {lname.capitalize()}")
             items = layer.get("items", []) if isinstance(layer, dict) else []
             for item in items:
                 if isinstance(item, dict):
                     label = item.get("label") or item.get("name") or "component"
-                    note = item.get("note") or ", ".join(item.get("tech_stack", []) or [])
-                    mermaid_lines.append(f"  - {label} ({note})")
+                    tech_stack = item.get("tech_stack", []) or []
+                    note = item.get("note") or ", ".join(tech_stack)
+                    mermaid_lines.append(f"- **{label}**: {note}")
                 else:
-                    mermaid_lines.append(f"  - {item}")
+                    mermaid_lines.append(f"- {item}")
         mermaid_code = "\n".join(mermaid_lines)
+
         return nodes, edges, mermaid_code
 
     def _ensure_positions(self, nodes: List[dict]) -> List[dict]:

@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- 背景圆形 -->
+  <circle cx="64" cy="64" r="60" fill="#4F46E5"/>
+
+  <!-- 字母 S 的流程图风格设计 -->
+  <g fill="white" stroke="white" stroke-width="2">
+    <!-- 上半部分圆角矩形节点 -->
+    <rect x="40" y="30" width="48" height="20" rx="4" fill="white"/>
+
+    <!-- 连接线 -->
+    <path d="M 64 50 L 64 60" stroke="white" stroke-width="3" fill="none"/>
+
+    <!-- 中间菱形决策节点 -->
+    <path d="M 64 60 L 80 72 L 64 84 L 48 72 Z" fill="white"/>
+
+    <!-- 连接线 -->
+    <path d="M 64 84 L 64 94" stroke="white" stroke-width="3" fill="none"/>
+
+    <!-- 下半部分圆角矩形节点 -->
+    <rect x="40" y="94" width="48" height="20" rx="4" fill="white"/>
+  </g>
+
+  <!-- AI 智能光点装饰 -->
+  <g fill="#10B981">
+    <circle cx="92" cy="36" r="4" opacity="0.8">
+      <animate attributeName="opacity" values="0.4;1;0.4" dur="2s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="100" cy="48" r="3" opacity="0.6">
+      <animate attributeName="opacity" values="0.3;0.9;0.3" dur="2.5s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="96" cy="60" r="2.5" opacity="0.7">
+      <animate attributeName="opacity" values="0.5;1;0.5" dur="1.8s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+</svg>
