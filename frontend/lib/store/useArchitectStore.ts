@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { Node, Edge, NodeChange, EdgeChange, applyNodeChanges, applyEdgeChanges } from "reactflow";
+import { PROVIDER_DEFAULTS } from "@/lib/config/providerDefaults";
 
 export interface PromptScenario {
   id: string;
@@ -339,10 +340,10 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
   promptError: undefined,
 
   modelConfig: {
-    provider: "siliconflow",
-    apiKey: "",
-    modelName: "Qwen/Qwen3-VL-32B-Thinking",
-    baseUrl: "https://api.siliconflow.cn/v1",
+    provider: PROVIDER_DEFAULTS.siliconflow.provider,
+    apiKey: PROVIDER_DEFAULTS.siliconflow.apiKey,
+    modelName: PROVIDER_DEFAULTS.siliconflow.modelName,
+    baseUrl: PROVIDER_DEFAULTS.siliconflow.baseUrl,
   },
 
   setCanvasMode: (mode) => set({ canvasMode: mode }),
