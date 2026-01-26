@@ -53,9 +53,6 @@ export const ServiceNode = memo(({ id, data }: NodeProps) => {
         style={{ backgroundColor: "var(--service-border)" }}
       />
       <div className="flex items-center gap-3">
-        <div className="rounded-lg bg-white/80 px-2 py-1 text-[11px] font-semibold text-slate-600 shadow-sm dark:bg-slate-800/80 dark:text-slate-200">
-          SVC
-        </div>
         <Box className="h-5 w-5 transition-transform duration-200 hover:scale-110" style={{ color: "var(--service-icon)" }} />
         <div className="flex-1">
           {isEditing ? (

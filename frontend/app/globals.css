@@ -79,10 +79,43 @@
 
 /* React Flow 样式覆盖 */
 .react-flow__node {
-  @apply rounded-lg shadow-md;
   transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out, border-color 0.2s ease-in-out;
   /* 移除默认边框，让每个节点自己控制 */
   border: none !important;
+  /* 移除默认背景 */
+  background: transparent !important;
+  /* 移除默认内边距 */
+  padding: 0 !important;
+}
+
+/* 非圆形节点才添加圆角和阴影 */
+.react-flow__node:not(:has(.glass-node.rounded-full)):not(:has(.svg-shape-node)) {
+  @apply rounded-lg shadow-md;
+}
+
+/* 圆形节点完全透明，无任何装饰 */
+.react-flow__node:has(.glass-node.rounded-full),
+.react-flow__node-default:has(.glass-node.rounded-full) {
+  border-radius: 9999px !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  border-width: 0 !important;
+  outline: none !important;
+  padding: 0 !important;
+  width: auto !important;
+  height: auto !important;
+}
+
+/* 圆形节点选中时也不显示方框 */
+.react-flow__node.selected:has(.glass-node.rounded-full),
+.react-flow__node-default.selected:has(.glass-node.rounded-full) {
+  border: none !important;
+  border-width: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+  background: transparent !important;
 }
 
 /* 覆盖 React Flow 默认节点类型的边框 */
@@ -119,23 +152,27 @@
   background: transparent !important;
   background-color: transparent !important;
   padding: 0 !important;
-  /* 保留 box-shadow 和 border-radius，因为 glass-node 需要这些效果 */
 }
 
 .react-flow__node:hover {
   transform: translateY(-2px);
+}
+
+/* 圆形节点 hover 时不添加阴影 */
+.react-flow__node:has(.glass-node.rounded-full):hover {
+  box-shadow: none !important;
+  transform: translateY(-2px);
+}
+
+/* 非圆形节点 hover 时添加阴影 */
+.react-flow__node:not(:has(.glass-node.rounded-full)):not(:has(.svg-shape-node)):hover {
   box-shadow: 0 16px 40px -18px rgba(15, 23, 42, 0.3),
               0 8px 18px -10px rgba(15, 23, 42, 0.18) !important;
 }
 
-/* SVG 节点 hover 时只抬升，不要阴影 */
-.react-flow__node:has(.svg-shape-node):hover,
-.react-flow__node-default:has(.svg-shape-node):hover {
-  transform: translateY(-2px);
-  box-shadow: none !important;
-}
+/* SVG 节点 hover 时已经在基础规则中处理 */
 
-/* CSS 节点（glass-node）hover 时抬升并保持阴影效果 */
+/* CSS 节点（glass-node）hover 时抬升 */
 .react-flow__node:has(.glass-node):hover,
 .react-flow__node-default:has(.glass-node):hover {
   transform: translateY(-2px);

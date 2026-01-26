@@ -53,9 +53,6 @@ export const DatabaseNode = memo(({ id, data }: NodeProps) => {
         style={{ backgroundColor: "var(--database-border)" }}
       />
       <div className="flex items-center gap-3">
-        <div className="rounded-lg bg-white/80 px-2 py-1 text-[11px] font-semibold text-slate-600 shadow-sm dark:bg-slate-800/80 dark:text-slate-200">
-          DB
-        </div>
         <Database className="h-5 w-5 transition-transform duration-200 hover:scale-110" style={{ color: "var(--database-icon)" }} />
         <div className="flex-1">
           {isEditing ? (

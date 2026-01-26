@@ -188,7 +188,7 @@ export default function ScriptGenerator({
                 const wordCount = event.data.word_count || 0;
                 const estimatedSeconds = event.data.estimated_seconds || 0;
 
-                setCurrentStep("生成完成！");
+                setCurrentStep("生成完成！正在保存...");
                 setProgressLog((prev) => [
                   ...prev,
                   `✓ 生成完成 (${wordCount} 字, 预计 ${Math.round(estimatedSeconds / 60)} 分钟)`,
@@ -203,10 +203,51 @@ export default function ScriptGenerator({
                 // Show success toast
                 toast.success(`演讲稿生成成功！(${wordCount} 字)`);
 
-                // Auto-transition to editor after 2 seconds
-                setTimeout(() => {
-                  onComplete(scriptId, scriptData, duration);
-                }, 2000);
+                // Save draft to backend before opening editor
+                (async () => {
+                  try {
+                    setCurrentStep("正在保存草稿...");
+                    setProgressLog((prev) => [...prev, `💾 保存草稿到服务器...`]);
+
+                    const saveResponse = await fetch(`/api/export/script/${scriptId}/draft`, {
+                      method: "PUT",
+                      headers: {
+                        "Content-Type": "application/json",
+                      },
+                      body: JSON.stringify({
+                        content: scriptData,
+                        metadata: {
+                          duration: duration,
+                          word_count: wordCount,
+                          rag_sources: [],
+                          version: 0,
+                        },
+                      }),
+                    });
+
+                    if (!saveResponse.ok) {
+                      throw new Error("保存草稿失败");
+                    }
+
+                    setCurrentStep("保存成功！");
+                    setProgressLog((prev) => [...prev, `✓ 草稿已保存`]);
+                    toast.success("草稿已保存到服务器");
+
+                    // Auto-transition to editor after 1 second
+                    setTimeout(() => {
+                      onComplete(scriptId, scriptData, duration);
+                    }, 1000);
+                  } catch (saveError: any) {
+                    console.error("Failed to save draft:", saveError);
+                    setProgressLog((prev) => [...prev, `⚠️ 保存失败: ${saveError.message}`]);
+                    toast.error("保存草稿失败，但仍可编辑", { duration: 5000 });
+
+                    // Still open editor even if save fails (user can retry from editor)
+                    setTimeout(() => {
+                      onComplete(scriptId, scriptData, duration);
+                    }, 2000);
+                  }
+                })();
                 break;
 
               case "ERROR":

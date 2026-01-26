@@ -134,7 +134,7 @@ export const DefaultNode = memo(({ id, data }: NodeProps) => {
       <IconComponent style={{ color: iconColor, width: `${size}px`, height: `${size}px` }} />
     ) : (
       <span
-        className="flex items-center justify-center rounded-full bg-white/80 text-xs font-semibold shadow-sm dark:bg-slate-800/80"
+        className="flex items-center justify-center text-xs font-semibold"
         style={{ color: iconColor, width: `${size}px`, height: `${size}px` }}
       >
         {iconFallbackLabel}
@@ -325,9 +325,6 @@ const renderCircularHandles = (color: string) => (
         />
 
         <div className="flex flex-col items-center gap-1">
-          <div className="rounded-lg bg-white/80 px-2 py-1 text-[11px] font-semibold text-slate-600 shadow-sm dark:bg-slate-800/80 dark:text-slate-200">
-            TASK
-          </div>
           {renderIcon(20)}
         </div>
 
@@ -371,10 +368,6 @@ const renderCircularHandles = (color: string) => (
             }}
           >
             Task
-          </div>
-          <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
-            <span className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">Task</span>
-            <span className="opacity-70">Type: {shape}</span>
           </div>
         </div>
       </div>

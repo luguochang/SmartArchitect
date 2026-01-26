@@ -431,3 +431,33 @@ export const FOCUS_AREAS: FocusArea[] = [
     description: "语气是否符合受众和场景",
   },
 ];
+
+// ============================================================
+// Suggestion History (for undo/redo)
+// ============================================================
+
+export interface SuggestionHistoryItem {
+  id: string;
+  timestamp: Date;
+  section: ScriptSection;
+  suggestion: ImprovementSuggestion;
+  originalText: string;
+  refinedText: string;
+  status: "success" | "failed" | "reverted";
+}
+
+export interface SuggestionHistory {
+  items: SuggestionHistoryItem[];
+  canUndo: boolean;
+}
+
+// ============================================================
+// Preview State (for suggestion preview before applying)
+// ============================================================
+
+export interface SuggestionPreview {
+  suggestion: ImprovementSuggestion;
+  originalText: string;
+  previewText: string;
+  isLoading: boolean;
+}

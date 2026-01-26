@@ -134,6 +134,12 @@ SmartArchitect/
 - `DocumentUploadModal` - RAG knowledge base document upload
 - `ExportMenu` - Multi-format export (PPT, Slidev, Speech Script)
 
+**Node System:**
+- Node types defined in `components/nodes/` - Each node type has its own component (ApiNode, ServiceNode, DatabaseNode, etc.)
+- Node shapes configured in `lib/utils/nodeShapes.ts` - Centralized shape configuration with dimensions, styling, and render methods
+- Shape types: CSS-based (rectangles, circles, rounded) and SVG-based (diamonds, hexagons, stars, etc.)
+- BPMN shapes: start-event, end-event, intermediate-event, task, gateway (all with specific styling rules)
+
 **React Flow Integration:**
 - Custom node components with developer-focused icons (Lucide React)
 - Bidirectional sync: Canvas changes → Mermaid code, Code changes → Canvas redraw
@@ -504,6 +510,47 @@ const generateScene = async (prompt: string) => {
 // Fallback to mock scene if AI generation fails
 // Backend automatically provides mock data on errors
 ```
+
+**Node Styling Architecture:**
+
+The application uses a sophisticated CSS system to style React Flow nodes. Key patterns:
+
+```css
+/* globals.css - Critical styling rules */
+
+/* React Flow nodes have transparent containers by default */
+.react-flow__node {
+  border: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+/* Only non-circular nodes get rounded corners and shadows */
+.react-flow__node:not(:has(.glass-node.rounded-full)):not(:has(.svg-shape-node)) {
+  @apply rounded-lg shadow-md;
+}
+
+/* Circular nodes (start-event, end-event, circle, etc.) must be fully transparent */
+.react-flow__node:has(.glass-node.rounded-full) {
+  border-radius: 9999px !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  /* This prevents square boxes around circular nodes */
+}
+```
+
+**Node Component Patterns:**
+- All node components use `.glass-node` class for consistent styling
+- Circular BPMN nodes (start-event, end-event, intermediate-event) use `.rounded-full` class
+- **IMPORTANT**: Do not add background boxes or frames around icons - icons should render directly
+- Node type labels (API, SVC, DB, etc.) were removed to keep UI clean
+- Icon components from Lucide React render with color via inline styles: `style={{ color: "var(--api-icon)" }}`
+
+**Common Styling Pitfalls:**
+- Adding `.rounded-lg` or `.shadow-md` to `.react-flow__node` will create square boxes around circular nodes
+- Icon containers with `bg-white/80` or similar backgrounds create unwanted boxes - remove them
+- React Flow's default node styling must be overridden with `!important` rules
+- The `.glass-node` class provides consistent glassmorphism effects across all node types
 
 ## Performance Characteristics
 
