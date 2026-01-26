@@ -4,12 +4,22 @@ import { useState } from "react";
 import { Download, FileText, Presentation, Mic, ChevronDown, Loader2 } from "lucide-react";
 import { useArchitectStore } from "@/lib/store/useArchitectStore";
 import { toast } from "sonner";
+import ScriptGenerator from "./ScriptGenerator";
+import ScriptEditor from "./ScriptEditor";
+import type { ScriptContent, ScriptDuration } from "@/types/script";
 
 export default function ExportMenu() {
   const { nodes, edges, mermaidCode, modelConfig } = useArchitectStore();
   const [isOpen, setIsOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportType, setExportType] = useState<string>("");
+
+  // Script generation workflow state
+  const [showScriptGenerator, setShowScriptGenerator] = useState(false);
+  const [showScriptEditor, setShowScriptEditor] = useState(false);
+  const [currentScriptId, setCurrentScriptId] = useState<string | null>(null);
+  const [currentScriptContent, setCurrentScriptContent] = useState<ScriptContent | null>(null);
+  const [scriptDuration, setScriptDuration] = useState<ScriptDuration>("2min");
 
   const handleExportPPT = async () => {
     setIsExporting(true);
@@ -99,64 +109,21 @@ export default function ExportMenu() {
     }
   };
 
-  const handleGenerateScript = async (duration: "30s" | "2min" | "5min") => {
+  const handleGenerateScript = () => {
     if (!modelConfig.apiKey) {
       toast.error("API key not configured. Please configure in Settings.");
       return;
     }
+    setIsOpen(false);
+    setShowScriptGenerator(true);
+  };
 
-    setIsExporting(true);
-    setExportType(`script-${duration}`);
-
-    try {
-      const formData = new URLSearchParams();
-      formData.append("provider", modelConfig.provider);
-      formData.append("api_key", modelConfig.apiKey);
-
-      const response = await fetch(`/api/export/script?${formData.toString()}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          nodes,
-          edges,
-          duration,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to generate script");
-      }
-
-      const data = await response.json();
-
-      // Copy script to clipboard
-      await navigator.clipboard.writeText(data.script);
-
-      toast.success(
-        `Generated ${duration} script (${data.word_count} words) - Copied to clipboard!`,
-        { duration: 4000 }
-      );
-
-      // Also download as text file
-      const blob = new Blob([data.script], { type: "text/plain" });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `presentation_script_${duration}.txt`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (error) {
-      toast.error("Failed to generate speech script");
-      console.error("Script generation error:", error);
-    } finally {
-      setIsExporting(false);
-      setExportType("");
-      setIsOpen(false);
-    }
+  const handleScriptComplete = (scriptId: string, content: ScriptContent, duration: ScriptDuration) => {
+    setCurrentScriptId(scriptId);
+    setCurrentScriptContent(content);
+    setScriptDuration(duration);
+    setShowScriptGenerator(false);
+    setShowScriptEditor(true);
   };
 
   return (
@@ -213,37 +180,37 @@ export default function ExportMenu() {
             </button>
 
             {/* Speech Scripts */}
-            <div className="p-2">
-              <div className="px-2 py-1 text-xs font-semibold text-gray-500 uppercase">
-                Speech Script
+            <button
+              onClick={handleGenerateScript}
+              className="w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors text-left"
+            >
+              <Mic className="w-5 h-5 text-purple-600" />
+              <div>
+                <div className="text-sm font-medium text-gray-900">生成演讲稿</div>
+                <div className="text-xs text-gray-500">AI专业演讲稿生成与编辑</div>
               </div>
-
-              <button
-                onClick={() => handleGenerateScript("30s")}
-                className="w-full px-3 py-2 flex items-center gap-2 hover:bg-gray-50 transition-colors text-left rounded"
-              >
-                <Mic className="w-4 h-4 text-purple-600" />
-                <div className="text-sm text-gray-700">30 seconds</div>
-              </button>
-
-              <button
-                onClick={() => handleGenerateScript("2min")}
-                className="w-full px-3 py-2 flex items-center gap-2 hover:bg-gray-50 transition-colors text-left rounded"
-              >
-                <Mic className="w-4 h-4 text-purple-600" />
-                <div className="text-sm text-gray-700">2 minutes</div>
-              </button>
-
-              <button
-                onClick={() => handleGenerateScript("5min")}
-                className="w-full px-3 py-2 flex items-center gap-2 hover:bg-gray-50 transition-colors text-left rounded"
-              >
-                <Mic className="w-4 h-4 text-purple-600" />
-                <div className="text-sm text-gray-700">5 minutes</div>
-              </button>
-            </div>
+            </button>
           </div>
         </>
+      )}
+
+      {/* Script Generation Workflow Modals */}
+      {showScriptGenerator && (
+        <ScriptGenerator
+          isOpen={showScriptGenerator}
+          onClose={() => setShowScriptGenerator(false)}
+          onComplete={handleScriptComplete}
+        />
+      )}
+
+      {showScriptEditor && currentScriptContent && (
+        <ScriptEditor
+          scriptId={currentScriptId!}
+          initialContent={currentScriptContent}
+          duration={scriptDuration}
+          isOpen={showScriptEditor}
+          onClose={() => setShowScriptEditor(false)}
+        />
       )}
     </div>
   );

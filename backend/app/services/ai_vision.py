@@ -1391,28 +1391,28 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
                 label_text = f" ({edge.label})" if edge.label else ""
                 arch_desc += f"- {source_node.data.label} → {target_node.data.label}{label_text}\\n"
 
-        # Duration-specific prompts
+        # Duration-specific prompts (中文输出)
         duration_prompts = {
-            "30s": "Generate a 30-second elevator pitch script (approximately 75 words). Focus on the key value proposition.",
-            "2min": "Generate a 2-minute presentation script (approximately 300 words). Cover the architecture overview, key components, and benefits.",
-            "5min": "Generate a 5-minute detailed presentation script (approximately 750 words). Include introduction, architecture overview, component details, data flow, and conclusion."
+            "30s": "生成一个30秒的电梯演讲稿（约150字）。聚焦核心价值主张。",
+            "2min": "生成一个2分钟的演讲稿（约600字）。涵盖架构概览、核心组件和优势。",
+            "5min": "生成一个5分钟的详细演讲稿（约1500字）。包含开场、架构概览、组件细节、数据流和结论。"
         }
 
-        prompt = f'''You are a technical presenter creating a presentation script.
+        prompt = f'''你是一位专业的技术演讲者，正在创建一份演讲稿。
 
 {arch_desc}
 
 {duration_prompts.get(duration, duration_prompts["2min"])}
 
-Requirements:
-1. Use clear, professional language
-2. Explain technical concepts in an accessible way
-3. Highlight the architecture's strengths and design decisions
-4. Include smooth transitions between topics
-5. End with a strong conclusion
-6. Return ONLY the script text, no JSON or additional formatting
+要求：
+1. 使用清晰、专业的中文表达
+2. 用通俗易懂的方式解释技术概念
+3. 突出架构的优势和设计决策
+4. 段落之间过渡自然流畅
+5. 以有力的结论收尾
+6. 只返回演讲稿文本，不要返回JSON或其他格式
 
-Create the script now:'''
+现在开始创作演讲稿：'''
 
         if self.mock_mode:
             logger.warning("Mock mode enabled for speech script generation (placeholder API key)")
@@ -1458,21 +1458,15 @@ Create the script now:'''
                 return response.content[0].text.strip()
 
             # custom provider (OpenAI-compatible)
-            payload = {
-                "model": self.model_name,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.7
-            }
-
-            response = await asyncio.to_thread(self.client.post, "/chat/completions", json=payload)
-            response.raise_for_status()
-            data = response.json()
-
-            if "choices" in data and len(data["choices"]) > 0:
-                return data["choices"][0]["message"]["content"].strip()
-            if "output" in data:
-                return data["output"].strip()
-            raise ValueError("Unexpected custom provider response format")
+            response = await asyncio.to_thread(
+                self.client.chat.completions.create,
+                model=self.model_name,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+                max_tokens=4000,
+                timeout=self.request_timeout,
+            )
+            return response.choices[0].message.content.strip()
 
         try:
             script = await asyncio.wait_for(_generate_with_provider(), timeout=self.request_timeout)
@@ -1485,6 +1479,100 @@ Create the script now:'''
         except Exception as e:
             logger.error(f"Speech script generation failed: {e}", exc_info=True)
             return self._build_mock_script(arch_desc, duration)
+
+    async def generate_speech_script_stream(
+        self,
+        nodes: List,
+        edges: List,
+        duration: str = "2min"
+    ):
+        """Generate a presentation script with streaming support"""
+        # Build architecture description
+        arch_desc = f"Architecture with {len(nodes)} components and {len(edges)} connections:\n\n"
+
+        arch_desc += "Components:\n"
+        for node in nodes:
+            arch_desc += f"- {node.data.label} (type: {node.type or 'default'})\n"
+
+        arch_desc += "\nConnections:\n"
+        for edge in edges:
+            source_node = next((n for n in nodes if n.id == edge.source), None)
+            target_node = next((n for n in nodes if n.id == edge.target), None)
+            if source_node and target_node:
+                label_text = f" ({edge.label})" if edge.label else ""
+                arch_desc += f"- {source_node.data.label} → {target_node.data.label}{label_text}\n"
+
+        # Duration-specific prompts (中文输出)
+        duration_prompts = {
+            "30s": "生成一个30秒的电梯演讲稿（约150字）。聚焦核心价值主张。",
+            "2min": "生成一个2分钟的演讲稿（约600字）。涵盖架构概览、核心组件和优势。",
+            "5min": "生成一个5分钟的详细演讲稿（约1500字）。包含开场、架构概览、组件细节、数据流和结论。"
+        }
+
+        prompt = f'''你是一位专业的技术演讲者，正在创建一份演讲稿。
+
+{arch_desc}
+
+{duration_prompts.get(duration, duration_prompts["2min"])}
+
+要求：
+1. 使用清晰、专业的中文表达
+2. 用通俗易懂的方式解释技术概念
+3. 突出架构的优势和设计决策
+4. 段落之间过渡自然流畅
+5. 以有力的结论收尾
+6. 只返回演讲稿文本，不要返回JSON或其他格式
+
+现在开始创作演讲稿：'''
+
+        if self.mock_mode:
+            logger.warning("Mock mode enabled for speech script generation (placeholder API key)")
+            yield self._build_mock_script(arch_desc, duration)
+            return
+
+        try:
+            # OpenAI-compatible providers support streaming
+            if self.provider in ["openai", "siliconflow", "custom"]:
+                logger.info(f"Starting streaming speech script generation with {self.provider}")
+
+                # 直接创建stream并同步迭代（参考chat_generator的实现）
+                stream = self.client.chat.completions.create(
+                    model=self.model_name,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.7,
+                    max_tokens=4000,
+                    stream=True,
+                )
+
+                # 同步迭代stream chunks
+                for chunk in stream:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        yield chunk.choices[0].delta.content
+
+            elif self.provider == "claude":
+                logger.info("Starting streaming speech script generation with Claude")
+                # Claude uses async streaming API
+                async with self.client.messages.stream(
+                    model=self.model_name,
+                    max_tokens=4000,
+                    temperature=0.7,
+                    messages=[{"role": "user", "content": prompt}]
+                ) as stream:
+                    async for text in stream.text_stream:
+                        yield text
+
+            else:
+                # Fallback to non-streaming for other providers (like Gemini)
+                logger.info(f"Provider {self.provider} doesn't support streaming, using non-streaming")
+                full_script = await self.generate_speech_script(nodes, edges, duration)
+                # Yield in chunks for simulated streaming
+                chunk_size = 20
+                for i in range(0, len(full_script), chunk_size):
+                    yield full_script[i:i+chunk_size]
+
+        except Exception as e:
+            logger.error(f"Streaming speech script generation failed: {e}", exc_info=True)
+            yield self._build_mock_script(arch_desc, duration)
 
 
 # 工厂函数
