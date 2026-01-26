@@ -340,3 +340,90 @@ class ExcalidrawGenerateResponse(BaseModel):
     scene: ExcalidrawScene
     success: bool = True
     message: Optional[str] = None
+
+
+# ============================================================
+# Phase 1 Enhancement: Professional Speech Script Generation
+# ============================================================
+
+# Script generation options
+class ScriptOptions(BaseModel):
+    tone: Literal["professional", "casual", "technical"] = "professional"
+    audience: Literal["executive", "technical", "mixed"] = "mixed"
+    focus_areas: List[str] = Field(default_factory=lambda: ["scalability", "performance"])
+
+
+# Script content sections
+class ScriptContent(BaseModel):
+    intro: str
+    body: str
+    conclusion: str
+    full_text: str
+
+
+# Script metadata
+class ScriptMetadata(BaseModel):
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    duration: Literal["30s", "2min", "5min"]
+    word_count: int = 0
+    rag_sources: List[str] = Field(default_factory=list)
+    architecture_snapshot: Optional[dict] = None
+    version: int = 0
+
+
+# Script draft (for editing and saving)
+class ScriptDraft(BaseModel):
+    id: str
+    content: ScriptContent
+    metadata: ScriptMetadata
+    version: int = 1
+
+
+# Stream event for SSE
+class StreamEvent(BaseModel):
+    type: Literal["CONTEXT_SEARCH", "CONTEXT_FOUND", "GENERATION_START",
+                  "TOKEN", "SECTION_COMPLETE", "COMPLETE", "ERROR"]
+    data: dict = Field(default_factory=dict)
+
+
+# Save draft response
+class SaveDraftResponse(BaseModel):
+    script_id: str
+    version: int
+    saved_at: str
+    success: bool = True
+
+
+# Refine section response
+class RefinedSectionResponse(BaseModel):
+    script_id: str
+    section: Literal["intro", "body", "conclusion"]
+    refined_text: str
+    changes_summary: str
+    success: bool = True
+
+
+# Improvement suggestion
+class ImprovementSuggestion(BaseModel):
+    section: Literal["intro", "body", "conclusion", "overall"]
+    issue: str
+    suggestion: str
+    priority: Literal["high", "medium", "low"]
+
+
+# Improvement suggestions response
+class ImprovementSuggestions(BaseModel):
+    overall_score: float = Field(..., ge=0.0, le=10.0)
+    strengths: List[str] = Field(default_factory=list)
+    weaknesses: List[str] = Field(default_factory=list)
+    suggestions: List[ImprovementSuggestion] = Field(default_factory=list)
+    success: bool = True
+
+
+# Enhanced speech script request (with RAG support)
+class EnhancedSpeechScriptRequest(BaseModel):
+    nodes: List[Node]
+    edges: List[Edge]
+    duration: Literal["30s", "2min", "5min"]
+    options: ScriptOptions = Field(default_factory=ScriptOptions)
