@@ -1,9 +1,10 @@
 "use client";
 
 import { memo, useState, useCallback } from "react";
-import { Handle, Position, NodeProps } from "reactflow";
+import { NodeProps } from "reactflow";
 import { Globe } from "lucide-react";
 import { useArchitectStore } from "@/lib/store/useArchitectStore";
+import { DynamicHandles } from "./DynamicHandles";
 
 export const ApiNode = memo(({ id, data }: NodeProps) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -42,11 +43,8 @@ export const ApiNode = memo(({ id, data }: NodeProps) => {
         boxShadow: "var(--api-shadow, 0 14px 30px -14px rgba(0,0,0,0.25))",
       }}
     >
-      <Handle
-        type="target"
-        position={Position.Left}
-        style={{ backgroundColor: "var(--api-border)" }}
-      />
+      {/* 动态双向连接点 - 所有方向都可以作为入参或出参 */}
+      <DynamicHandles color="var(--api-border)" />
 
       <span
         className="absolute left-2 top-2 h-[calc(100%-16px)] w-[5px] rounded-full opacity-80"
@@ -98,12 +96,6 @@ export const ApiNode = memo(({ id, data }: NodeProps) => {
           </div>
         </div>
       </div>
-
-      <Handle
-        type="source"
-        position={Position.Right}
-        style={{ backgroundColor: "var(--api-border)" }}
-      />
     </div>
   );
 });

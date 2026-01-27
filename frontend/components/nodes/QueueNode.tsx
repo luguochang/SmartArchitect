@@ -42,10 +42,52 @@ export const QueueNode = memo(({ id, data }: NodeProps) => {
         boxShadow: "var(--queue-shadow, 0 10px 15px -3px rgba(0,0,0,0.1))",
       }}
     >
+      {/* Input handles - Top and Left */}
       <Handle
+        id="target-top"
+        type="target"
+        position={Position.Top}
+        style={{
+          backgroundColor: "var(--queue-border)",
+          top: 0,
+          left: "50%",
+          transform: "translate(-50%, -50%)"
+        }}
+      />
+      <Handle
+        id="target-left"
         type="target"
         position={Position.Left}
-        style={{ backgroundColor: "var(--queue-border)" }}
+        style={{
+          backgroundColor: "var(--queue-border)",
+          top: "50%",
+          left: 0,
+          transform: "translate(-50%, -50%)"
+        }}
+      />
+
+      {/* Output handles - Right and Bottom */}
+      <Handle
+        id="source-right"
+        type="source"
+        position={Position.Right}
+        style={{
+          backgroundColor: "var(--queue-border)",
+          top: "50%",
+          right: 0,
+          transform: "translate(50%, -50%)"
+        }}
+      />
+      <Handle
+        id="source-bottom"
+        type="source"
+        position={Position.Bottom}
+        style={{
+          backgroundColor: "var(--queue-border)",
+          bottom: 0,
+          left: "50%",
+          transform: "translate(-50%, 50%)"
+        }}
       />
 
       <span
@@ -98,12 +140,6 @@ export const QueueNode = memo(({ id, data }: NodeProps) => {
           </div>
         </div>
       </div>
-
-      <Handle
-        type="source"
-        position={Position.Right}
-        style={{ backgroundColor: "var(--queue-border)" }}
-      />
     </div>
   );
 });

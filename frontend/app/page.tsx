@@ -5,7 +5,7 @@ import { AiControlPanel } from "@/components/AiControlPanel";
 import { Sidebar } from "@/components/Sidebar";
 import ThemeSwitcher from "@/components/ThemeSwitcher";
 import ModelPresetsManager from "@/components/ModelPresetsManager";
-import { LayoutDashboard, Settings, Sparkles, Info } from "lucide-react";
+import { LayoutDashboard, Settings, Sparkles, Info, Github } from "lucide-react";
 import { useArchitectStore } from "@/lib/store/useArchitectStore";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
@@ -49,7 +49,7 @@ export default function Home() {
             </button>
 
             {showConfigTooltip && (
-              <div className="absolute top-full mt-2 right-0 z-50 w-80 rounded-lg border border-slate-200 bg-white p-3 shadow-xl dark:border-slate-700 dark:bg-slate-800">
+              <div className="absolute top-full mt-2 right-0 z-50 w-96 rounded-lg border border-slate-200 bg-white p-3 shadow-xl dark:border-slate-700 dark:bg-slate-800">
                 <div className="space-y-2 text-xs">
                   <div>
                     <span className="font-semibold text-slate-900 dark:text-white">当前配置：</span>
@@ -73,10 +73,40 @@ export default function Home() {
                       {apiReady ? "✓ API 已配置" : "⚠ 需要配置 API Key"}
                     </span>
                   </div>
+                  <div className="border-t border-slate-200 pt-2 mt-2 dark:border-slate-700">
+                    <div className="rounded-md bg-indigo-50 p-2 dark:bg-indigo-900/20">
+                      <p className="text-xs text-indigo-700 dark:text-indigo-300 leading-relaxed">
+                        <span className="font-semibold">💡 推荐配置：</span> 使用国内中转站（Custom API）+ Claude 模型，生成效果更好，格式完全兼容。可自行配置其他中转站地址。
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
           </div>
+
+          {/* 社交链接 */}
+          <a
+            href="https://github.com/luguochang/SmartArchitect"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-slate-800 transition-colors dark:bg-slate-800 dark:hover:bg-slate-700"
+            title="访问 GitHub 仓库"
+          >
+            <Github className="h-3.5 w-3.5" />
+            <span>GitHub</span>
+          </a>
+
+          <a
+            href="https://blog.csdn.net/luguochang"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-red-500 to-red-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:from-red-600 hover:to-red-700 transition-colors"
+            title="访问 CSDN 博客"
+          >
+            <span className="text-sm font-bold">C</span>
+            <span>CSDN</span>
+          </a>
 
           {/* AI 配置按钮 - 最显眼位置 */}
           <button
