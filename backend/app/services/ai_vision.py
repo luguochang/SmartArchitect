@@ -992,7 +992,7 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
                             messages=[{"role": "user", "content": prompt}],
                             stream=True,
                             temperature=0.2,
-                            max_tokens=8192,  # Increased for complete Excalidraw JSON generation
+                            max_tokens=16384,  # Increased to 16K for complete Excalidraw JSON generation
                         )
                         logger.info("[STREAM] OpenAI stream created, starting iteration")
                         for chunk in stream:
@@ -1028,7 +1028,7 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
                         logger.info(f"[STREAM] Initiating Claude stream with model={self.model_name}")
                         with self.client.messages.stream(
                             model=self.model_name,
-                            max_tokens=8192,  # Increased for complete Excalidraw JSON generation
+                            max_tokens=16384,  # Increased to 16K for complete Excalidraw JSON generation
                             temperature=0.2,
                             messages=[{"role": "user", "content": prompt}],
                         ) as stream:
@@ -1078,7 +1078,7 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
                             temperature=0.3,
                             top_p=0.7,
                             frequency_penalty=0.5,
-                            max_tokens=8192,  # Increased for complete Excalidraw JSON generation
+                            max_tokens=16384,  # Increased to 16K for complete Excalidraw JSON generation
                         )
                         logger.info("[STREAM] SiliconFlow stream created, starting iteration")
                         for chunk in stream:
@@ -1121,7 +1121,7 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
                             model=self.model_name,  # ✅ 使用 self.model_name 而非 custom_model_name
                             messages=[{"role": "user", "content": prompt}],
                             stream=True,
-                            max_tokens=8192,  # ✅ 增加到 8192，确保 JSON 能完整生成
+                            max_tokens=16384,  # ✅ 增加到 16K，确保 JSON 能完整生成
                             temperature=0.1,  # ✅ 降低温度，更确定性的输出
                         )
                         logger.info("[STREAM] Stream created successfully, starting to iterate chunks")
@@ -1171,7 +1171,7 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
                 prompt,
                 generation_config={
                     "temperature": 0.2,
-                    "max_output_tokens": 8192  # Increased for complete Excalidraw JSON generation
+                    "max_output_tokens": 16384  # Increased to 16K for complete Excalidraw JSON generation
                 }
             )
 
@@ -1198,7 +1198,7 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
                         "content": prompt
                     }
                 ],
-                max_tokens=8192,  # Increased for complete Excalidraw JSON generation
+                max_tokens=16384,  # Increased to 16K for complete Excalidraw JSON generation
                 temperature=0.2
             )
 
@@ -1220,7 +1220,7 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
 
             response = self.client.messages.create(
                 model="claude-3-5-sonnet-20241022",
-                max_tokens=8192,  # Increased for complete Excalidraw JSON generation
+                max_tokens=16384,  # Increased to 16K for complete Excalidraw JSON generation
                 temperature=0.2,
                 messages=[
                     {
@@ -1248,7 +1248,7 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
 
             # Detect if this is an Excalidraw prompt (needs more tokens for element arrays)
             is_excalidraw = "excalidraw" in prompt.lower() or "elements" in prompt.lower()
-            max_tokens = 8192 if is_excalidraw else 2000  # Increased from 4096 to 8192 for complete generation
+            max_tokens = 16384 if is_excalidraw else 2000  # Increased to 16K for complete Excalidraw generation
 
             logger.info(f"[SILICONFLOW TEXT] Using max_tokens={max_tokens}, is_excalidraw={is_excalidraw}")
 
@@ -1330,7 +1330,7 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
                         "content": prompt
                     }
                 ],
-                max_tokens=8192,  # Increased for complete Excalidraw JSON generation
+                max_tokens=16384,  # Increased to 16K for complete Excalidraw JSON generation
                 temperature=0.2
             )
 

@@ -56,10 +56,21 @@ export default function ExcalidrawBoard() {
 
   // Update scene when scene data changes (if API is ready)
   useEffect(() => {
+    console.log(`🔔 [ExcalidrawBoard] useEffect triggered, scene elements: ${scene?.elements?.length || 0}`);
+
     if (!apiRef.current || !scene?.elements) {
+      console.log(`⏭️ [ExcalidrawBoard] Skipping update - API ready: ${!!apiRef.current}, has elements: ${!!scene?.elements}`);
       return;
     }
 
+    // 🔥 IMPORTANT: Only update if we have elements to show
+    if (scene.elements.length === 0) {
+      console.warn("[ExcalidrawBoard] ⚠️ Received scene with 0 elements, ignoring update");
+      return;
+    }
+
+    console.log(`✅ [ExcalidrawBoard] Updating Excalidraw canvas with ${scene.elements.length} elements`);
+    console.log(`   First 5 element IDs:`, scene.elements.slice(0, 5).map(e => e.id));
     updateScene(apiRef.current, scene);
   }, [scene]);
 
