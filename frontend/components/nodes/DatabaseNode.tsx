@@ -1,9 +1,10 @@
 "use client";
 
 import { memo, useState, useCallback } from "react";
-import { Handle, Position, NodeProps } from "reactflow";
+import { NodeProps } from "reactflow";
 import { Database } from "lucide-react";
 import { useArchitectStore } from "@/lib/store/useArchitectStore";
+import { DynamicHandles } from "./DynamicHandles";
 
 export const DatabaseNode = memo(({ id, data }: NodeProps) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -42,11 +43,7 @@ export const DatabaseNode = memo(({ id, data }: NodeProps) => {
         boxShadow: "var(--database-shadow, 0 14px 30px -14px rgba(0,0,0,0.25))",
       }}
     >
-      <Handle
-        type="target"
-        position={Position.Top}
-        style={{ backgroundColor: "var(--database-border)" }}
-      />
+      <DynamicHandles color="var(--database-border)" />
 
       <span
         className="absolute left-2 top-2 h-[calc(100%-16px)] w-[5px] rounded-full opacity-80"
@@ -97,12 +94,6 @@ export const DatabaseNode = memo(({ id, data }: NodeProps) => {
           </div>
         </div>
       </div>
-
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        style={{ backgroundColor: "var(--database-border)" }}
-      />
     </div>
   );
 });

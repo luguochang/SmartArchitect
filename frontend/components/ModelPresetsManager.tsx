@@ -265,14 +265,27 @@ export default function ModelPresetsManager({
 
             {showDefaults && (
               <div className="space-y-3">
-                <p className="text-sm text-emerald-700 dark:text-emerald-300 mb-3">
+                <div className="rounded-lg bg-indigo-50 p-3 border border-indigo-200 dark:bg-indigo-900/30 dark:border-indigo-700">
+                  <p className="text-sm text-indigo-800 dark:text-indigo-200 font-medium mb-1">
+                    💡 推荐配置：Custom API (推荐)
+                  </p>
+                  <p className="text-xs text-indigo-700 dark:text-indigo-300 leading-relaxed">
+                    使用国内中转站 + Claude Sonnet 4.5 模型，生成效果最好，格式完全兼容。您也可以配置其他中转站地址。
+                  </p>
+                </div>
+
+                <p className="text-sm text-emerald-700 dark:text-emerald-300">
                   以下配置已预置好测试 API Key，可直接使用。如需使用自己的 Key，请点击"使用"后修改。
                 </p>
 
                 {getAllProviderOptions().map((config) => (
                   <div
                     key={config.provider}
-                    className="rounded-lg border border-emerald-300 bg-white p-3 dark:border-emerald-700 dark:bg-slate-800"
+                    className={`rounded-lg border p-3 ${
+                      config.provider === "custom"
+                        ? "border-indigo-300 bg-indigo-50/50 dark:border-indigo-600 dark:bg-indigo-950/30"
+                        : "border-emerald-300 bg-white dark:border-emerald-700 dark:bg-slate-800"
+                    }`}
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
@@ -280,6 +293,11 @@ export default function ModelPresetsManager({
                           <h4 className="font-semibold text-slate-900 dark:text-white">
                             {config.displayName}
                           </h4>
+                          {config.provider === "custom" && (
+                            <span className="rounded bg-indigo-500 px-2 py-0.5 text-xs text-white font-medium">
+                              ⭐ 推荐
+                            </span>
+                          )}
                           {config.apiKey && (
                             <span className="rounded bg-green-500 px-2 py-0.5 text-xs text-white">
                               已配置

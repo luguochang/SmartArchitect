@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { Node, Edge, NodeChange, EdgeChange, applyNodeChanges, applyEdgeChanges } from "reactflow";
 import { PROVIDER_DEFAULTS } from "@/lib/config/providerDefaults";
+import { getLayoutedElements, estimateNodeSize } from "@/lib/utils/autoLayout";
 
 export interface PromptScenario {
   id: string;
@@ -48,6 +49,10 @@ interface ArchitectState {
   // Excalidraw scene
   excalidrawScene: ExcalidrawScene | null;
   setExcalidrawScene: (scene: ExcalidrawScene | null) => void;
+
+  // 🎬 流式渲染状态
+  _preparedNodes: Node[]; // 准备好的节点（已布局但未显示）
+  _preparedEdges: Edge[]; // 准备好的边（未显示）
 
   // 节点和边操作
   setNodes: (nodes: Node[]) => void;
@@ -335,15 +340,19 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
   generationLogs: [],
   chatHistory: [],
 
+  // 🎬 流式渲染状态初始化
+  _preparedNodes: [],
+  _preparedEdges: [],
+
   promptScenarios: DEFAULT_PROMPT_SCENARIOS,
   isExecutingPrompt: false,
   promptError: undefined,
 
   modelConfig: {
-    provider: PROVIDER_DEFAULTS.siliconflow.provider,
-    apiKey: PROVIDER_DEFAULTS.siliconflow.apiKey,
-    modelName: PROVIDER_DEFAULTS.siliconflow.modelName,
-    baseUrl: PROVIDER_DEFAULTS.siliconflow.baseUrl,
+    provider: PROVIDER_DEFAULTS.custom.provider,
+    apiKey: PROVIDER_DEFAULTS.custom.apiKey,
+    modelName: PROVIDER_DEFAULTS.custom.modelName,
+    baseUrl: PROVIDER_DEFAULTS.custom.baseUrl,
   },
 
   setCanvasMode: (mode) => set({ canvasMode: mode }),
@@ -572,15 +581,115 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
             updateJsonLog(token);
             continue;
           }
-          // Final payload is a JSON-like string; attempt to parse
+
+          // 🎬 流式渲染：布局数据
+          if (content.startsWith("[LAYOUT_DATA]")) {
+            try {
+              const layoutData = JSON.parse(content.replace("[LAYOUT_DATA]", "").trim());
+              let rawNodes = layoutData.nodes as Node[];
+              const edges = layoutData.edges as Edge[];
+              const diagramType = layoutData.diagram_type;
+              const mermaidCode = layoutData.mermaid_code;
+
+              let preparedNodes: Node[];
+
+              // 只对 flow 类型应用自动布局
+              if (diagramType === "flow") {
+                const nodesWithSize = rawNodes.map((node) => {
+                  const size = estimateNodeSize(node);
+                  return { ...node, width: size.width, height: size.height };
+                });
+
+                const layoutedNodes = getLayoutedElements(nodesWithSize, edges, {
+                  direction: "LR",
+                  ranksep: 150,
+                  nodesep: 100,
+                });
+
+                preparedNodes = addLayerFrames(layoutedNodes, diagramType);
+              } else {
+                // architecture 模式：使用原始坐标
+                preparedNodes = addLayerFrames(rawNodes, diagramType);
+              }
+
+              // 存储准备好的数据，但先清空显示
+              set({
+                _preparedNodes: preparedNodes,
+                _preparedEdges: edges,
+                nodes: [],
+                edges: [],
+                mermaidCode,
+              });
+
+              console.log(`[LAYOUT_DATA] Prepared ${preparedNodes.length} nodes, ${edges.length} edges`);
+            } catch (err) {
+              console.error("[LAYOUT_DATA] Parse failed:", err);
+            }
+            continue;
+          }
+
+          // 🎬 流式渲染：显示节点
+          if (content.startsWith("[NODE_SHOW]")) {
+            const nodeId = content.replace("[NODE_SHOW]", "").trim();
+            const preparedNodes = get()._preparedNodes;
+            const node = preparedNodes.find((n) => n.id === nodeId);
+
+            if (node) {
+              const currentNodes = get().nodes;
+              set({ nodes: [...currentNodes, node] });
+              console.log(`[NODE_SHOW] Displayed node ${nodeId}`);
+            }
+            continue;
+          }
+
+          // 🎬 流式渲染：显示边
+          if (content.startsWith("[EDGE_SHOW]")) {
+            const edgeId = content.replace("[EDGE_SHOW]", "").trim();
+            const preparedEdges = get()._preparedEdges;
+            const edge = preparedEdges.find((e) => e.id === edgeId);
+
+            if (edge) {
+              const currentEdges = get().edges;
+              set({ edges: [...currentEdges, edge] });
+              console.log(`[EDGE_SHOW] Displayed edge ${edgeId}`);
+            }
+            continue;
+          }
+
+          // Fallback: 完整JSON payload（兼容旧版本）
           if (content.startsWith("{")) {
             try {
               const data = JSON.parse(content);
               if (data?.nodes && data?.edges) {
-                const nodes = addLayerFrames(data.nodes as Node[], get().diagramType);
+                let rawNodes = data.nodes as Node[];
                 const edges = data.edges as Edge[];
+
+                let nodes: Node[];
+
+                // 只对 flow 类型应用自动布局，architecture 保持原始位置
+                if (get().diagramType === "flow") {
+                  // 🔥 应用智能布局算法
+                  const nodesWithSize = rawNodes.map((node) => {
+                    const size = estimateNodeSize(node);
+                    return { ...node, width: size.width, height: size.height };
+                  });
+
+                  const layoutedNodes = getLayoutedElements(nodesWithSize, edges, {
+                    direction: "LR",  // 默认左到右，更符合阅读习惯
+                    ranksep: 150,
+                    nodesep: 100,
+                  });
+
+                  // 添加分层框架（如果是架构图）
+                  nodes = addLayerFrames(layoutedNodes, get().diagramType);
+                } else {
+                  // architecture 模式：使用后端返回的原始坐标
+                  nodes = addLayerFrames(rawNodes, get().diagramType);
+                }
+
                 const mermaidCode = data.mermaid_code || get().mermaidCode;
-                // 立即添加所有节点和边，不使用动画避免阻塞流读取
+
+                // 直接设置（fallback兼容）
                 set({ nodes, edges, mermaidCode });
               }
             } catch {
@@ -602,11 +711,35 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
         });
         const data = await retry.json();
         if (data?.nodes && data?.edges) {
-          set({
-            nodes: addLayerFrames(data.nodes as Node[], get().diagramType),
-            edges: data.edges as Edge[],
-            mermaidCode: data.mermaid_code,
-          });
+          let rawNodes = data.nodes as Node[];
+          const edges = data.edges as Edge[];
+
+          let nodes: Node[];
+
+          // 只对 flow 类型应用自动布局，architecture 保持原始位置
+          if (get().diagramType === "flow") {
+            // 🔥 应用智能布局算法
+            const nodesWithSize = rawNodes.map((node) => {
+              const size = estimateNodeSize(node);
+              return { ...node, width: size.width, height: size.height };
+            });
+
+            const layoutedNodes = getLayoutedElements(nodesWithSize, edges, {
+              direction: "LR",  // 默认左到右
+              ranksep: 150,
+              nodesep: 100,
+            });
+
+            nodes = addLayerFrames(layoutedNodes, get().diagramType);
+          } else {
+            // architecture 模式：使用后端返回的原始坐标
+            nodes = addLayerFrames(rawNodes, get().diagramType);
+          }
+
+          const mermaidCode = data.mermaid_code;
+
+          // 直接设置（非stream fallback）
+          set({ nodes, edges, mermaidCode });
         } else {
           throw new Error(data?.message || "Generation failed");
         }
@@ -891,8 +1024,17 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
           }
 
           // Use throttled update if we found new elements
+          // ✅ Batch updates: only update every 5 elements to reduce DOM updates
           if (foundNewElement && parsedElements.length > 0) {
-            scheduleSceneUpdate([...parsedElements]);
+            const shouldUpdate = (
+              parsedElements.length === 1 ||        // First element
+              parsedElements.length % 5 === 0 ||    // Every 5 elements
+              parsedElements.length >= MAX_INCREMENTAL_ELEMENTS  // At limit
+            );
+
+            if (shouldUpdate) {
+              scheduleSceneUpdate([...parsedElements]);
+            }
           }
         } catch (e) {
           // Parsing failed, wait for more data (silent)
@@ -963,19 +1105,45 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
                   animationFrameId = null;
                 }
 
+                // 🔍 DEBUG: Compare element IDs
+                const incrementalIds = parsedElements.map((e: any) => e.id);
+                const finalIds = result.scene.elements.map((e: any) => e.id);
+                const missingIds = incrementalIds.filter((id: string) => !finalIds.includes(id));
+                const newIds = finalIds.filter((id: string) => !incrementalIds.includes(id));
+
+                if (missingIds.length > 0 || newIds.length > 0) {
+                  console.warn("⚠️ [Excalidraw] Element ID mismatch detected:");
+                  console.warn("  - Missing from final:", missingIds);
+                  console.warn("  - New in final:", newIds);
+                  console.warn("  - This causes the 'disappearing elements' bug!");
+                }
+
+                // ✅ SMART FIX: Only update if element IDs are different
+                // If IDs match perfectly, keep the incremental version (has better properties)
+                const shouldUpdate = (missingIds.length > 0 || newIds.length > 0);
+
+                let finalElements;
+                if (shouldUpdate) {
+                  console.log("🔄 [Excalidraw] Using backend elements (IDs differ)");
+                  finalElements = result.scene.elements;
+                } else {
+                  console.log("✅ [Excalidraw] Keeping incremental elements (IDs match perfectly)");
+                  finalElements = parsedElements;
+                }
+
                 // CRITICAL FIX: Always use complete RESULT elements as the final data
                 // Incremental parsing is only for intermediate display
                 const finalScene = {
-                  elements: result.scene.elements,  // Always use complete data
+                  elements: finalElements,
                   appState: result.scene.appState || { viewBackgroundColor: "#ffffff" },
                   files: result.scene.files || {}
                 };
 
                 console.log("✅ [Excalidraw] Prepared final scene:", {
-                  elementsCount: result.scene.elements.length,
+                  elementsCount: finalElements.length,
                   incrementalParsed: parsedElements.length,
-                  source: 'complete-result',
-                  firstElementIds: result.scene.elements.slice(0, 5).map((e: any) => ({ id: e.id, type: e.type }))
+                  source: shouldUpdate ? 'backend-validated' : 'incremental-kept',
+                  firstElementIds: finalElements.slice(0, 5).map((e: any) => ({ id: e.id, type: e.type }))
                 });
 
                 // 🔥 NEW: Use setTimeout to ensure this update happens AFTER any pending animation frames

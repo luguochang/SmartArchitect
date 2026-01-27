@@ -53,12 +53,22 @@ export const GatewayNode = memo(({ id, data }: NodeProps) => {
     const points = `${size / 2},${padding} ${size - padding},${size / 2} ${size / 2},${size - padding} ${padding},${size / 2}`;
 
     return (
-      <div className="relative" style={{ width: `${size}px`, height: `${size}px` }}>
+      <div
+        className="diamond-node svg-shape-node relative"
+        style={{
+          width: `${size}px`,
+          height: `${size}px`,
+          pointerEvents: 'auto',  // 确保鼠标事件正常
+        }}
+      >
         <svg
           width={size}
           height={size}
           viewBox={`0 0 ${size} ${size}`}
-          style={{ filter: "drop-shadow(0 10px 18px rgba(15, 23, 42, 0.16))" }}
+          style={{
+            filter: "drop-shadow(0 10px 18px rgba(15, 23, 42, 0.16))",
+            display: 'block',  // 避免 inline 元素的基线问题
+          }}
         >
           <polygon points={points} fill={backgroundColor} stroke={borderColor} strokeWidth={3} />
           <g stroke={borderColor} strokeWidth={3} strokeLinecap="round">
@@ -67,100 +77,68 @@ export const GatewayNode = memo(({ id, data }: NodeProps) => {
           </g>
         </svg>
 
+        {/* 判断节点专用连接点配置 - 清晰的入口和出口分离 */}
+        {/* 入口: 上方和左侧 (用于流程流入) */}
         <Handle
-          id="target-top"
+          id="in-top"
           type="target"
           position={Position.Top}
           style={{
             backgroundColor: borderColor,
             position: "absolute",
-            top: "6%",
+            top: "3%",
             left: "50%",
-            transform: "translate(-50%, 0%)",
+            transform: "translate(-50%, -50%)",
+            width: "10px",
+            height: "10px",
+            border: `2px solid ${borderColor}`,
           }}
         />
         <Handle
-          id="target-right"
-          type="target"
-          position={Position.Right}
-          style={{
-            backgroundColor: borderColor,
-            position: "absolute",
-            top: "50%",
-            right: "6%",
-            transform: "translate(0%, -50%)",
-          }}
-        />
-        <Handle
-          id="target-bottom"
-          type="target"
-          position={Position.Bottom}
-          style={{
-            backgroundColor: borderColor,
-            position: "absolute",
-            bottom: "6%",
-            left: "50%",
-            transform: "translate(-50%, 0%)",
-          }}
-        />
-        <Handle
-          id="target-left"
+          id="in-left"
           type="target"
           position={Position.Left}
           style={{
             backgroundColor: borderColor,
             position: "absolute",
             top: "50%",
-            left: "6%",
-            transform: "translate(0%, -50%)",
+            left: "3%",
+            transform: "translate(-50%, -50%)",
+            width: "10px",
+            height: "10px",
+            border: `2px solid ${borderColor}`,
           }}
         />
+
+        {/* 出口: 右侧(Yes)和下方(No) - 判断节点的标准输出 */}
         <Handle
-          id="source-top"
-          type="source"
-          position={Position.Top}
-          style={{
-            backgroundColor: borderColor,
-            position: "absolute",
-            top: "6%",
-            left: "50%",
-            transform: "translate(-50%, 0%)",
-          }}
-        />
-        <Handle
-          id="source-right"
+          id="out-right-yes"
           type="source"
           position={Position.Right}
           style={{
-            backgroundColor: borderColor,
+            backgroundColor: "#10b981",  // 绿色表示 Yes/True
             position: "absolute",
             top: "50%",
-            right: "6%",
-            transform: "translate(0%, -50%)",
+            right: "3%",
+            transform: "translate(50%, -50%)",
+            width: "10px",
+            height: "10px",
+            border: "2px solid #10b981",
           }}
         />
         <Handle
-          id="source-bottom"
+          id="out-bottom-no"
           type="source"
           position={Position.Bottom}
           style={{
-            backgroundColor: borderColor,
+            backgroundColor: "#ef4444",  // 红色表示 No/False
             position: "absolute",
-            bottom: "6%",
+            bottom: "3%",
             left: "50%",
-            transform: "translate(-50%, 0%)",
-          }}
-        />
-        <Handle
-          id="source-left"
-          type="source"
-          position={Position.Left}
-          style={{
-            backgroundColor: borderColor,
-            position: "absolute",
-            top: "50%",
-            left: "6%",
-            transform: "translate(0%, -50%)",
+            transform: "translate(-50%, 50%)",
+            width: "10px",
+            height: "10px",
+            border: "2px solid #ef4444",
           }}
         />
       </div>
@@ -169,7 +147,7 @@ export const GatewayNode = memo(({ id, data }: NodeProps) => {
 
   return (
     <div
-      className="rounded-lg border px-4 py-3 shadow-lg"
+      className="gateway-node-box glass-node rounded-lg border px-4 py-3 shadow-lg"
       style={{
         borderColor: "var(--gateway-border, var(--bpmn-gateway-ring, #fb923c))",
         backgroundColor: "var(--gateway-background, #fff7ed)",

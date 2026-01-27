@@ -112,7 +112,7 @@ export default function RootLayout({
       <body className={inter.className}>
         <ThemeProvider>
           {children}
-          <Toaster position="top-right" richColors theme="light" />
+          <Toaster position="bottom-right" richColors theme="light" />
         </ThemeProvider>
       </body>
     </html>

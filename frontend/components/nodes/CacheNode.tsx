@@ -1,9 +1,10 @@
 "use client";
 
 import { memo, useState, useCallback } from "react";
-import { Handle, Position, NodeProps } from "reactflow";
+import { NodeProps } from "reactflow";
 import { Zap } from "lucide-react";
 import { useArchitectStore } from "@/lib/store/useArchitectStore";
+import { DynamicHandles } from "./DynamicHandles";
 
 export const CacheNode = memo(({ id, data }: NodeProps) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -42,11 +43,7 @@ export const CacheNode = memo(({ id, data }: NodeProps) => {
         boxShadow: "var(--cache-shadow, 0 10px 15px -3px rgba(0,0,0,0.1))",
       }}
     >
-      <Handle
-        type="target"
-        position={Position.Left}
-        style={{ backgroundColor: "var(--cache-border)" }}
-      />
+      <DynamicHandles color="var(--cache-border)" />
 
       <span
         className="absolute left-2 top-2 h-[calc(100%-16px)] w-[5px] rounded-full opacity-80"
@@ -98,12 +95,6 @@ export const CacheNode = memo(({ id, data }: NodeProps) => {
           </div>
         </div>
       </div>
-
-      <Handle
-        type="source"
-        position={Position.Right}
-        style={{ backgroundColor: "var(--cache-border)" }}
-      />
     </div>
   );
 });
