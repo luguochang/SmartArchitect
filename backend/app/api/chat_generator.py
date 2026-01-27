@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from typing import Optional
 import logging
+import asyncio
 
 from app.models.schemas import (
     FlowTemplateList,
@@ -165,17 +166,46 @@ async def generate_flowchart_stream(request: ChatGenerationRequest):
 
                     logger.info(f"[STREAM] After normalization: {len(nodes)} nodes, {len(edges)} edges")
 
-                    # Don't replace AI result with mock - return what AI generated
-                    payload = ChatGenerationResponse(
-                        nodes=nodes,
-                        edges=edges,
-                        mermaid_code=mermaid_code,
-                        success=True,
-                        message=f"Generated via {selected_provider} (stream)",
-                    ).model_dump()
+                    # 🎬 流式发送节点和边，实现真正的流式画图效果
+                    # 1. 先发送完整数据用于前端布局计算
+                    layout_data = {
+                        "nodes": [n.model_dump() if hasattr(n, 'model_dump') else n for n in nodes],
+                        "edges": [e.model_dump() if hasattr(e, 'model_dump') else e for e in edges],
+                        "diagram_type": effective_diagram_type,
+                        "mermaid_code": mermaid_code
+                    }
+                    yield f"data: [LAYOUT_DATA] {json.dumps(layout_data, ensure_ascii=False)}\n\n"
+                    logger.info(f"[STREAM] Sent LAYOUT_DATA with {len(nodes)} nodes")
+
+                    # 2. 短暂等待，让前端完成布局计算
+                    await asyncio.sleep(0.15)
+
+                    # 3. 逐个发送节点显示指令
                     yield f"data: [RESULT] nodes={len(nodes)}, edges={len(edges)}\n\n"
-                    yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                    for i, node in enumerate(nodes):
+                        node_data = node.model_dump() if hasattr(node, 'model_dump') else node
+                        node_id = node_data.get('id')
+                        yield f"data: [NODE_SHOW] {node_id}\n\n"
+                        logger.info(f"[STREAM] Sent NODE_SHOW {i+1}/{len(nodes)}: {node_id}")
+                        # 控制显示速度：200ms/节点
+                        if i < len(nodes) - 1:
+                            await asyncio.sleep(0.2)
+
+                    # 4. 短暂延迟后开始显示边
+                    await asyncio.sleep(0.3)
+
+                    # 5. 逐个发送边显示指令
+                    for i, edge in enumerate(edges):
+                        edge_data = edge.model_dump() if hasattr(edge, 'model_dump') else edge
+                        edge_id = edge_data.get('id')
+                        yield f"data: [EDGE_SHOW] {edge_id}\n\n"
+                        logger.info(f"[STREAM] Sent EDGE_SHOW {i+1}/{len(edges)}: {edge_id}")
+                        # 控制显示速度：100ms/边
+                        if i < len(edges) - 1:
+                            await asyncio.sleep(0.1)
+
                     yield "data: [END] done\n\n"
+                    logger.info("[STREAM] Completed progressive rendering")
                     return
                 except Exception as parse_err:
                     logger.warning(f"[STREAM] JSON parse failed; falling back to non-stream: {parse_err}")
@@ -191,9 +221,36 @@ async def generate_flowchart_stream(request: ChatGenerationRequest):
                 base_url=request.base_url,
                 model_name=request.model_name
             )
+
+            # 🎬 同样使用流式发送
+            # 1. 先发送布局数据
+            layout_data = {
+                "nodes": [n.model_dump() if hasattr(n, 'model_dump') else n for n in result.nodes],
+                "edges": [e.model_dump() if hasattr(e, 'model_dump') else e for e in result.edges],
+                "diagram_type": effective_diagram_type,
+                "mermaid_code": result.mermaid_code
+            }
+            yield f"data: [LAYOUT_DATA] {json.dumps(layout_data, ensure_ascii=False)}\n\n"
+            await asyncio.sleep(0.15)
+
+            # 2. 逐个发送节点
             yield f"data: [RESULT] nodes={len(result.nodes)}, edges={len(result.edges)}\n\n"
-            payload = result.model_dump()
-            yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+            for i, node in enumerate(result.nodes):
+                node_data = node.model_dump() if hasattr(node, 'model_dump') else node
+                node_id = node_data.get('id')
+                yield f"data: [NODE_SHOW] {node_id}\n\n"
+                if i < len(result.nodes) - 1:
+                    await asyncio.sleep(0.2)
+
+            # 3. 延迟后发送边
+            await asyncio.sleep(0.3)
+            for i, edge in enumerate(result.edges):
+                edge_data = edge.model_dump() if hasattr(edge, 'model_dump') else edge
+                edge_id = edge_data.get('id')
+                yield f"data: [EDGE_SHOW] {edge_id}\n\n"
+                if i < len(result.edges) - 1:
+                    await asyncio.sleep(0.1)
+
             yield "data: [END] done\n\n"
         except Exception as e:
             logger.error(f"Stream generation failed: {e}", exc_info=True)

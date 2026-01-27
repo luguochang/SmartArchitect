@@ -86,6 +86,17 @@
   background: transparent !important;
   /* 移除默认内边距 */
   padding: 0 !important;
+  /* 添加淡入动画 */
+  animation: fadeInNode 0.3s ease-out;
+}
+
+@keyframes fadeInNode {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 /* 非圆形节点才添加圆角和阴影 */
@@ -131,7 +142,8 @@
 
 /* SVG 节点不需要边框 - 使用 :has() 选择器匹配包含 svg-shape-node 的节点 */
 .react-flow__node:has(.svg-shape-node),
-.react-flow__node-default:has(.svg-shape-node) {
+.react-flow__node-default:has(.svg-shape-node),
+.react-flow__node-gateway:has(.svg-shape-node) {
   border: none !important;
   border-width: 0 !important;
   border-style: none !important;
@@ -141,6 +153,79 @@
   border-radius: 0 !important;
   padding: 0 !important;
   width: auto !important;
+  outline: none !important;
+}
+
+/* 判断节点（菱形）专用规则 - 确保外层容器完全透明且稳定 */
+.react-flow__node:has(.diamond-node),
+.react-flow__node-default:has(.diamond-node),
+.react-flow__node-gateway:has(.diamond-node) {
+  border: none !important;
+  border-width: 0 !important;
+  border-style: none !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  outline: none !important;
+  width: auto !important;
+  height: auto !important;
+  /* ⚠️ 不能禁用 transform，会破坏节点定位！ */
+  /* transform 用于节点的位置定位，必须保留 */
+}
+
+/* 判断节点选中状态 - 也不显示边框 */
+.react-flow__node.selected:has(.diamond-node),
+.react-flow__node-default.selected:has(.diamond-node),
+.react-flow__node-gateway.selected:has(.diamond-node) {
+  border: none !important;
+  border-width: 0 !important;
+  border-style: none !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+/* 判断节点 hover 状态 - 不添加额外动画，保留定位 */
+.react-flow__node:has(.diamond-node):hover,
+.react-flow__node-default:has(.diamond-node):hover,
+.react-flow__node-gateway:has(.diamond-node):hover {
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  /* React Flow 的定位 transform 会自动保留 */
+}
+
+/* 判断节点的连接点 - 完全禁用 hover 放大，只改变透明度 */
+.react-flow__node:has(.diamond-node) .react-flow__handle,
+.react-flow__node-gateway .react-flow__handle {
+  transition: opacity 0.2s ease-out !important;
+}
+
+.react-flow__node:has(.diamond-node) .react-flow__handle:hover,
+.react-flow__node-gateway .react-flow__handle:hover {
+  transform: none !important;  /* 完全禁用放大 */
+  opacity: 1 !important;
+  box-shadow: 0 6px 14px -6px rgba(15, 23, 42, 0.5) !important;
+}
+
+/* 兜底规则：所有 gateway 类型的节点容器都透明 */
+.react-flow__node-gateway,
+.react-flow__node[data-id*="gateway"] {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+}
+
+.react-flow__node-gateway.selected,
+.react-flow__node[data-id*="gateway"].selected {
+  background: transparent !important;
+  border: none !important;
+  outline: 2px solid rgba(99, 102, 241, 0.5) !important;
+  outline-offset: 4px !important;
 }
 
 /* CSS 节点（glass-node）也不需要外层边框 - 让内部元素自己控制边框 */
@@ -155,6 +240,11 @@
 }
 
 .react-flow__node:hover {
+  /* 判断节点不应用位移动画 */
+}
+
+/* 只对非判断节点应用 hover 位移效果 */
+.react-flow__node:not(:has(.diamond-node)):not(:has(.svg-shape-node)):hover {
   transform: translateY(-2px);
 }
 
@@ -184,6 +274,78 @@
 
 .react-flow__edge-path {
   @apply stroke-2;
+  cursor: pointer !important;  /* 明确指针光标 */
+  /* 添加淡入动画 */
+  animation: fadeInEdge 0.3s ease-out;
+}
+
+@keyframes fadeInEdge {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 增加边的点击热区 */
+.react-flow__edge {
+  cursor: pointer !important;
+}
+
+/* 边的交互路径 - 增加热区宽度 */
+.react-flow__edge-interaction {
+  stroke-width: 20px !important;  /* 增大到 20px，更容易点击 */
+  cursor: pointer !important;
+}
+
+/* 选中的边 - 高亮显示 */
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: #6366f1 !important;  /* 蓝紫色 */
+  stroke-width: 3px !important;
+  filter: drop-shadow(0 0 8px rgba(99, 102, 241, 0.6));
+}
+
+/* 选中的边的交互提示 - 固定在画布顶部中央 */
+.react-flow__edge.selected::after {
+  content: "✓ 已选中连线 - 按 Delete 或 Backspace 删除";
+  position: fixed;
+  top: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(99, 102, 241, 0.95);
+  color: white;
+  padding: 8px 20px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  pointer-events: none;
+  white-space: nowrap;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  z-index: 9999;
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+/* 边的 hover 效果 */
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke-width: 3px !important;
+  filter: drop-shadow(0 0 4px rgba(99, 102, 241, 0.3));
 }
 
 .react-flow__handle {
