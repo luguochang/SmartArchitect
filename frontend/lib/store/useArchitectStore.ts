@@ -744,22 +744,40 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
       // Accumulate JSON tokens for display in logs
       let jsonBuffer = "";
       let parsedElements: any[] = []; // Track already parsed elements for incremental rendering
+      let hasReceivedFinalResult = false; // 🔥 Flag to prevent incremental updates after receiving final result
+      const MAX_INCREMENTAL_ELEMENTS = 50; // ✅ Match backend's max_elems limit
 
       // Throttle scene updates using requestAnimationFrame
       let pendingSceneUpdate: any = null;
       let animationFrameId: number | null = null;
 
       const scheduleSceneUpdate = (elements: any[]) => {
+        // 🔥 NEW: Don't schedule updates if we already have the final result
+        if (hasReceivedFinalResult) {
+          console.log(`⛔ [Excalidraw INCREMENTAL] Blocked incremental update (${elements.length} elements) - already have final result`);
+          return;
+        }
+
+        console.log(`📊 [Excalidraw INCREMENTAL] Scheduling update with ${elements.length} elements`);
         pendingSceneUpdate = elements;
 
         if (animationFrameId === null) {
           animationFrameId = requestAnimationFrame(() => {
+            // 🔥 NEW: Double-check flag before actually updating
+            if (hasReceivedFinalResult) {
+              console.log(`⛔ [Excalidraw INCREMENTAL] Cancelled scheduled update (had ${pendingSceneUpdate?.length} elements) - final result received`);
+              animationFrameId = null;
+              pendingSceneUpdate = null;
+              return;
+            }
+
             if (pendingSceneUpdate && pendingSceneUpdate.length > 0) {
               const partialScene = {
                 elements: pendingSceneUpdate,
                 appState: { viewBackgroundColor: "#ffffff" },
                 files: {}
               };
+              console.log(`✏️ [Excalidraw INCREMENTAL] Applying incremental update: ${pendingSceneUpdate.length} elements`);
               set({ excalidrawScene: partialScene });
             }
             animationFrameId = null;
@@ -848,8 +866,10 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
                 const elementText = currentElement.trim();
                 const element = JSON.parse(elementText);
 
-                // Only add new elements (check if ID already exists)
-                if (element.id && !parsedElements.some(e => e.id === element.id)) {
+                // ✅ Only add new elements (check if ID already exists) and respect max limit
+                if (element.id &&
+                    !parsedElements.some(e => e.id === element.id) &&
+                    parsedElements.length < MAX_INCREMENTAL_ELEMENTS) {
                   parsedElements.push(element);
                   foundNewElement = true;
 
@@ -857,6 +877,9 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
                   if (parsedElements.length % 5 === 0 || parsedElements.length === 1) {
                     console.log(`[Excalidraw INCREMENTAL] ✅ Parsed ${parsedElements.length} elements`);
                   }
+                } else if (parsedElements.length >= MAX_INCREMENTAL_ELEMENTS) {
+                  // ⚠️ Stop parsing when we hit the limit (matches backend behavior)
+                  console.warn(`[Excalidraw INCREMENTAL] ⚠️ Reached max limit of ${MAX_INCREMENTAL_ELEMENTS} elements`);
                 }
               } catch (e) {
                 // Element not yet complete or invalid JSON, continue silently
@@ -920,16 +943,22 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
 
             try {
               const result = JSON.parse(resultContent);
-              console.log("[Excalidraw] Parsed RESULT:", {
+              console.log("🔍 [Excalidraw] Received [RESULT]:", {
                 hasScene: !!result.scene,
-                elementsCount: result.scene?.elements?.length,
-                incrementalCount: parsedElements.length,
-                success: result.success
+                rawElementsCount: result.scene?.elements?.length || 0,
+                incrementalParsedCount: parsedElements.length,
+                success: result.success,
+                message: result.message
               });
 
               if (result.scene?.elements) {
+                // 🔥 CRITICAL FIX: Set flag FIRST to prevent race conditions
+                hasReceivedFinalResult = true;
+                console.log("🚫 [Excalidraw] hasReceivedFinalResult = true, blocking incremental updates");
+
                 // Cancel any pending animation frame
                 if (animationFrameId !== null) {
+                  console.log("❌ [Excalidraw] Cancelling pending animation frame");
                   cancelAnimationFrame(animationFrameId);
                   animationFrameId = null;
                 }
@@ -942,12 +971,19 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
                   files: result.scene.files || {}
                 };
 
-                console.log("[Excalidraw] Final scene:", {
+                console.log("✅ [Excalidraw] Prepared final scene:", {
                   elementsCount: result.scene.elements.length,
                   incrementalParsed: parsedElements.length,
-                  source: 'complete-result'
+                  source: 'complete-result',
+                  firstElementIds: result.scene.elements.slice(0, 5).map((e: any) => ({ id: e.id, type: e.type }))
                 });
-                set({ excalidrawScene: finalScene });
+
+                // 🔥 NEW: Use setTimeout to ensure this update happens AFTER any pending animation frames
+                setTimeout(() => {
+                  console.log("📝 [Excalidraw] Setting final scene in store NOW");
+                  set({ excalidrawScene: finalScene });
+                  console.log("✅ [Excalidraw] Final scene set, incremental updates blocked");
+                }, 0);
 
                 const successMsg = result.success
                   ? `✅ Excalidraw 场景生成完成\n- 元素数量: ${result.scene.elements.length}\n- 增量解析: ${parsedElements.length} 个元素\n- 生成方式: ${parsedElements.length > 0 ? 'AI 实时流式生成' : 'AI 智能生成'}`

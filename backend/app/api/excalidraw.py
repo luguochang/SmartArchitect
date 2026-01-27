@@ -133,8 +133,25 @@ async def generate_excalidraw_scene_stream(request: ExcalidrawGenerateRequest):
                 logger.info(f"[EXCALIDRAW-STREAM] Streaming completed: {len(accumulated)} characters, {token_count} tokens")
 
                 # Parse and validate the accumulated JSON
+                logger.info(f"[EXCALIDRAW-STREAM] 🔍 Starting JSON parsing...")
                 ai_data = service._safe_json(accumulated)
+
+                if ai_data is None:
+                    logger.error(f"[EXCALIDRAW-STREAM] ❌ JSON parsing returned None!")
+                    raise ValueError("JSON parsing failed, got None")
+
+                logger.info(f"[EXCALIDRAW-STREAM] ✅ JSON parsed, raw elements count: {len(ai_data.get('elements', []))}")
+
+                # Validate scene (this may filter elements)
                 scene = service._validate_scene(ai_data, request.width or 1200, request.height or 800)
+
+                logger.info(f"[EXCALIDRAW-STREAM] ✅ Scene validated, final elements count: {len(scene.elements)}")
+                # ✅ FIX: scene.elements is a list of dicts, not objects with .id attribute
+                try:
+                    element_summary = [{'id': e.get('id', 'unknown'), 'type': e.get('type', 'unknown')} for e in scene.elements[:10]]
+                    logger.info(f"[EXCALIDRAW-STREAM] Element details: {element_summary}")
+                except Exception as log_error:
+                    logger.warning(f"[EXCALIDRAW-STREAM] Could not log element details: {log_error}")
 
                 # Determine success based on message (mock scenes have specific messages)
                 message = scene.appState.get("message", "")
