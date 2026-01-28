@@ -516,8 +516,8 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
         """
         prompt = self._build_flowchart_prompt(preserve_layout, fast_mode)
 
-        # 根据 fast_mode 设置 max_tokens（进一步优化）
-        max_tokens = 1500 if fast_mode else 4096
+        # 根据 fast_mode 设置 max_tokens（足够大以避免JSON截断）
+        max_tokens = 4096 if fast_mode else 8192
 
         # 设置超时时间
         self._flowchart_timeout = 240.0 if fast_mode else 300.0
@@ -722,7 +722,7 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
             raise
 
     async def _analyze_with_custom(self, image_data: bytes, prompt: str, max_tokens: int = 4096) -> ImageAnalysisResponse:
-        """使用自定义 provider 分析（OpenAI 兼容 API）"""
+        """使用自定义 provider 分析（支持 OpenAI 和 Claude 格式）"""
         try:
             logger.info(f"[CUSTOM] Starting vision analysis, max_tokens: {max_tokens}")
             image_b64 = base64.b64encode(image_data).decode("utf-8")
@@ -732,27 +732,75 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
 
             logger.info(f"[CUSTOM] Using model: {model}, base_url: {self.custom_base_url}")
 
-            # 使用 asyncio.to_thread 包装同步调用
-            response = await asyncio.to_thread(
-                self.client.chat.completions.create,
-                model=model,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/jpeg;base64,{image_b64}"
+            # 检测是否是 Claude 模型（检查模型名是否包含 claude）
+            is_claude_model = "claude" in model.lower()
+
+            if is_claude_model:
+                # Claude API 使用 Anthropic 格式
+                logger.info("[CUSTOM] Detected Claude model, using Anthropic image format")
+
+                # 检测图片类型
+                import imghdr
+                media_type = imghdr.what(None, h=image_data)
+                if media_type == "jpeg":
+                    media_type = "image/jpeg"
+                elif media_type == "png":
+                    media_type = "image/png"
+                elif media_type == "webp":
+                    media_type = "image/webp"
+                elif media_type == "gif":
+                    media_type = "image/gif"
+                else:
+                    media_type = "image/jpeg"  # 默认 JPEG
+
+                logger.info(f"[CUSTOM] Image media type: {media_type}")
+
+                # 使用 Anthropic 消息格式
+                response = await asyncio.to_thread(
+                    self.client.chat.completions.create,
+                    model=model,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "image",
+                                    "source": {
+                                        "type": "base64",
+                                        "media_type": media_type,
+                                        "data": image_b64
+                                    }
+                                },
+                                {"type": "text", "text": prompt}
+                            ]
+                        }
+                    ],
+                    max_tokens=max_tokens,
+                    temperature=0.2
+                )
+            else:
+                # OpenAI 格式（默认）
+                logger.info("[CUSTOM] Using OpenAI image_url format")
+                response = await asyncio.to_thread(
+                    self.client.chat.completions.create,
+                    model=model,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/jpeg;base64,{image_b64}"
+                                    }
                                 }
-                            }
-                        ]
-                    }
-                ],
-                max_tokens=max_tokens,
-                temperature=0.2
-            )
+                            ]
+                        }
+                    ],
+                    max_tokens=max_tokens,
+                    temperature=0.2
+                )
 
             logger.info(f"[CUSTOM] Response type: {type(response)}")
 
@@ -831,15 +879,58 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
                     logger.error(f"[CUSTOM] Response dump: {response.model_dump()}")
                 raise ValueError("Unable to extract content from API response")
 
-            result_json = self._extract_json_from_response(content)
+            # 检查是否因为长度限制被截断
+            is_truncated = False
+            if hasattr(response, 'choices') and response.choices:
+                finish_reason = response.choices[0].finish_reason
+                is_truncated = finish_reason == 'length'
+                if is_truncated:
+                    logger.warning(f"[CUSTOM] Response was truncated due to max_tokens limit (finish_reason='length')")
+
+            result_json = self._extract_json_from_response(content, is_truncated=is_truncated)
             return self._build_response(result_json)
 
         except Exception as e:
             logger.error(f"Custom provider analysis failed: {e}")
             raise
 
-    def _extract_json_from_response(self, text: str) -> Dict[str, Any]:
+    def _extract_json_from_response(self, text: str, is_truncated: bool = False) -> Dict[str, Any]:
         """Extract JSON from AI response with aggressive cleaning and multiple fallback strategies."""
+
+        def _repair_truncated_json(raw: str) -> str:
+            """尝试修复被截断的JSON"""
+            # 移除markdown代码块标记
+            cleaned = re.sub(r"```(?:json)?", "", raw).strip()
+
+            # 提取JSON边界
+            start = cleaned.find("{")
+            if start != -1:
+                cleaned = cleaned[start:]
+
+            # 检查并修复截断的字符串
+            # 如果最后一个字符不是闭合的，尝试补全
+            if cleaned and not cleaned.endswith("}"):
+                # 查找最后一个完整的结构
+                # 尝试找到最后一个完整的数组或对象
+
+                # 统计未闭合的括号
+                open_brackets = cleaned.count("[") - cleaned.count("]")
+                open_braces = cleaned.count("{") - cleaned.count("}")
+                open_quotes = cleaned.count('"') - cleaned.count('\\"')
+
+                # 如果有未闭合的引号，先闭合它
+                if open_quotes % 2 != 0:
+                    cleaned += '"'
+
+                # 闭合未闭合的数组
+                cleaned += "]" * open_brackets
+
+                # 闭合未闭合的对象
+                cleaned += "}" * open_braces
+
+                logger.info(f"[JSON REPAIR] Fixed {open_quotes % 2} quotes, {open_brackets} brackets, {open_braces} braces")
+
+            return cleaned
 
         def _sanitize_json(raw: str) -> str:
             """Aggressive JSON sanitization with multiple repair strategies."""
@@ -859,6 +950,18 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
             cleaned = cleaned.replace("\n", " ")  # Remove newlines
 
             return cleaned
+
+        # Strategy 0: If truncated, try to repair first
+        if is_truncated:
+            try:
+                logger.info("[JSON REPAIR] Attempting to repair truncated JSON")
+                repaired = _repair_truncated_json(text)
+                result = json.loads(repaired)
+                logger.info("[JSON REPAIR] Successfully parsed repaired truncated JSON")
+                return result
+            except json.JSONDecodeError as e:
+                logger.warning(f"[JSON REPAIR] Failed to parse repaired JSON: {e}")
+                # Continue to other strategies
 
         # Strategy 1: Try direct JSON parse of full text
         try:
@@ -1248,86 +1351,36 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
                     if chunk.text:
                         yield chunk.text
 
-            elif self.provider == "siliconflow":
-                # SiliconFlow (OpenAI-compatible) - use queue for real-time streaming
-                logger.info(f"[STREAM] SiliconFlow streaming with model: {self.model_name}")
+            elif self.provider == "siliconflow" or self.provider == "custom":
+                # SiliconFlow/Custom (OpenAI-compatible) - use queue for real-time streaming
+                logger.info(f"[STREAM] {self.provider} streaming with model: {self.model_name}")
                 q = queue.Queue()
 
-                def _siliconflow_stream():
+                def _compatible_stream():
                     try:
-                        logger.info(f"[STREAM] Initiating SiliconFlow stream with model={self.model_name}")
+                        logger.info(f"[STREAM] Initiating {self.provider} stream")
                         stream = self.client.chat.completions.create(
                             model=self.model_name,
                             messages=[{"role": "user", "content": prompt}],
                             stream=True,
-                            temperature=0.3,
-                            top_p=0.7,
-                            frequency_penalty=0.5,
-                            max_tokens=16384,  # Increased to 16K for complete Excalidraw JSON generation
+                            max_tokens=16384,
+                            temperature=0.2,
                         )
-                        logger.info("[STREAM] SiliconFlow stream created, starting iteration")
+                        logger.info(f"[STREAM] {self.provider} stream created, iterating chunks")
                         for chunk in stream:
-                            # Some providers emit empty heartbeat chunks - guard against missing choices
-                            if not getattr(chunk, "choices", None):
-                                continue
-                            if not chunk.choices:
+                            if not getattr(chunk, "choices", None) or not chunk.choices:
                                 continue
                             delta = chunk.choices[0].delta.content if chunk.choices[0].delta else None
-                            if not delta:
-                                continue
-                            q.put(("data", delta))
-                        logger.info("[STREAM] SiliconFlow stream completed successfully")
+                            if delta:
+                                q.put(("data", delta))
+                        logger.info(f"[STREAM] {self.provider} stream completed")
                         q.put(("done", None))
                     except Exception as e:
-                        logger.error(f"[STREAM] Exception in _siliconflow_stream: {e}", exc_info=True)
+                        logger.error(f"[STREAM] Exception in {self.provider}_stream: {e}", exc_info=True)
                         q.put(("error", e))
 
                 loop = asyncio.get_event_loop()
-                loop.run_in_executor(None, _siliconflow_stream)
-
-                while True:
-                    msg_type, data = await loop.run_in_executor(None, q.get)
-                    if msg_type == "error":
-                        raise data
-                    elif msg_type == "done":
-                        break
-                    else:
-                        yield data
-
-            elif self.provider == "custom":
-                # Custom provider (OpenAI-compatible) - use queue for real-time streaming
-                logger.info(f"[STREAM] Custom provider streaming with model: {self.model_name}")
-                q = queue.Queue()
-
-                def _custom_stream():
-                    try:
-                        logger.info(f"[STREAM] Initiating stream with base_url={self.custom_base_url}, model={self.model_name}")
-                        stream = self.client.chat.completions.create(
-                            model=self.model_name,  # ✅ 使用 self.model_name 而非 custom_model_name
-                            messages=[{"role": "user", "content": prompt}],
-                            stream=True,
-                            max_tokens=16384,  # ✅ 增加到 16K，确保 JSON 能完整生成
-                            temperature=0.1,  # ✅ 降低温度，更确定性的输出
-                        )
-                        logger.info("[STREAM] Stream created successfully, starting to iterate chunks")
-                        for chunk in stream:
-                            # Some providers emit empty heartbeat chunks - guard against missing choices
-                            if not getattr(chunk, "choices", None):
-                                continue
-                            if not chunk.choices:
-                                continue
-                            delta = chunk.choices[0].delta.content if chunk.choices[0].delta else None
-                            if not delta:
-                                continue
-                            q.put(("data", delta))
-                        logger.info("[STREAM] Stream iteration completed successfully")
-                        q.put(("done", None))
-                    except Exception as e:
-                        logger.error(f"[STREAM] Exception in _custom_stream: {e}", exc_info=True)
-                        q.put(("error", e))
-
-                loop = asyncio.get_event_loop()
-                loop.run_in_executor(None, _custom_stream)
+                loop.run_in_executor(None, _compatible_stream)
 
                 while True:
                     msg_type, data = await loop.run_in_executor(None, q.get)
@@ -1339,10 +1392,152 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
                         yield data
 
             else:
-                raise ValueError(f"Unsupported provider for streaming: {self.provider}")
+                raise ValueError(f"Streaming not supported for provider: {self.provider}")
 
         except Exception as e:
             logger.error(f"Streaming failed for {self.provider}: {e}", exc_info=True)
+            raise
+
+    async def generate_with_vision_stream(self, image_data: bytes, prompt: str):
+        """
+        🔥 NEW: Streaming vision generation supporting image + text input.
+        Uses multimodal streaming APIs (Claude/GPT-4 Vision support streaming).
+        Yields tokens as they are generated.
+        """
+        import queue
+        import threading
+
+        try:
+            if self.provider == "claude":
+                # Claude Vision streaming with multimodal content
+                logger.info(f"[VISION-STREAM] Claude streaming with model: {self.model_name}")
+                q = queue.Queue()
+
+                def _claude_vision_stream():
+                    try:
+                        import base64
+                        # Detect image format
+                        image_b64 = base64.b64encode(image_data).decode('utf-8')
+
+                        # Determine media type from image bytes
+                        media_type = "image/jpeg"
+                        if image_data.startswith(b'\x89PNG'):
+                            media_type = "image/png"
+                        elif image_data.startswith(b'GIF'):
+                            media_type = "image/gif"
+                        elif image_data.startswith(b'\xff\xd8\xff'):
+                            media_type = "image/jpeg"
+                        elif image_data.startswith(b'RIFF') and b'WEBP' in image_data[:20]:
+                            media_type = "image/webp"
+
+                        # Build multimodal content
+                        content = [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": media_type,
+                                    "data": image_b64,
+                                },
+                            },
+                            {
+                                "type": "text",
+                                "text": prompt,
+                            }
+                        ]
+
+                        logger.info(f"[VISION-STREAM] Starting Claude vision stream")
+                        with self.client.messages.stream(
+                            model=self.model_name,
+                            max_tokens=16384,
+                            temperature=0.2,
+                            messages=[{"role": "user", "content": content}],
+                        ) as stream:
+                            for text in stream.text_stream:
+                                q.put(("data", text))
+                        logger.info("[VISION-STREAM] Claude stream completed")
+                        q.put(("done", None))
+                    except Exception as e:
+                        logger.error(f"[VISION-STREAM] Exception: {e}", exc_info=True)
+                        q.put(("error", e))
+
+                loop = asyncio.get_event_loop()
+                loop.run_in_executor(None, _claude_vision_stream)
+
+                while True:
+                    msg_type, data = await loop.run_in_executor(None, q.get)
+                    if msg_type == "error":
+                        raise data
+                    elif msg_type == "done":
+                        break
+                    else:
+                        yield data
+
+            elif self.provider == "openai" or self.provider == "custom":
+                # OpenAI GPT-4 Vision streaming
+                logger.info(f"[VISION-STREAM] OpenAI streaming with model: {self.model_name}")
+                q = queue.Queue()
+
+                def _openai_vision_stream():
+                    try:
+                        import base64
+                        image_b64 = base64.b64encode(image_data).decode('utf-8')
+
+                        # Detect format
+                        if image_data.startswith(b'\x89PNG'):
+                            data_url = f"data:image/png;base64,{image_b64}"
+                        elif image_data.startswith(b'\xff\xd8\xff'):
+                            data_url = f"data:image/jpeg;base64,{image_b64}"
+                        else:
+                            data_url = f"data:image/jpeg;base64,{image_b64}"
+
+                        content = [
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": data_url}
+                            },
+                            {
+                                "type": "text",
+                                "text": prompt
+                            }
+                        ]
+
+                        logger.info("[VISION-STREAM] Starting OpenAI vision stream")
+                        stream = self.client.chat.completions.create(
+                            model=self.model_name,
+                            messages=[{"role": "user", "content": content}],
+                            stream=True,
+                            temperature=0.2,
+                            max_tokens=16384,
+                        )
+
+                        for chunk in stream:
+                            delta = chunk.choices[0].delta.content
+                            if delta:
+                                q.put(("data", delta))
+                        logger.info("[VISION-STREAM] OpenAI stream completed")
+                        q.put(("done", None))
+                    except Exception as e:
+                        logger.error(f"[VISION-STREAM] Exception: {e}", exc_info=True)
+                        q.put(("error", e))
+
+                loop = asyncio.get_event_loop()
+                loop.run_in_executor(None, _openai_vision_stream)
+
+                while True:
+                    msg_type, data = await loop.run_in_executor(None, q.get)
+                    if msg_type == "error":
+                        raise data
+                    elif msg_type == "done":
+                        break
+                    else:
+                        yield data
+
+            else:
+                raise ValueError(f"Streaming vision not supported for provider: {self.provider}")
+
+        except Exception as e:
+            logger.error(f"Vision stream failed: {e}", exc_info=True)
             raise
 
     # ========== Phase 3: Text-only Prompt Methods (for Prompter System) ==========

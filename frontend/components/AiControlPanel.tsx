@@ -24,6 +24,7 @@ import { SelectedDetailsPanel } from "./SelectedDetailsPanel";
 import { FlowchartUploader } from "./FlowchartUploader";
 import { DocumentUploader } from "./DocumentUploader";
 import { ImageUploader } from "./ImageUploader";
+import { ExcalidrawUploader } from "./ExcalidrawUploader";
 
 const CATEGORY_ICONS = {
   refactoring: Sparkles,
@@ -186,6 +187,7 @@ export function AiControlPanel() {
   const [showUploader, setShowUploader] = useState(false);
   const [showDocUploader, setShowDocUploader] = useState(false);
   const [showImageUploader, setShowImageUploader] = useState(false);
+  const [showExcalidrawUploader, setShowExcalidrawUploader] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false); // Templates 默认折叠
   const [diagramType, setDiagramType] = useState<DiagramType>("flow");
   const [templateFilter, setTemplateFilter] = useState<"flow" | "architecture">("flow");
@@ -299,12 +301,13 @@ export function AiControlPanel() {
           {/* Row 1: Config + Main Actions */}
           <div className="flex items-center gap-1.5 flex-wrap">
           {/* Back to Chat Button - Only show when any uploader is active */}
-          {(showUploader || showImageUploader || showDocUploader) && (
+          {(showUploader || showImageUploader || showDocUploader || showExcalidrawUploader) && (
             <button
               onClick={() => {
                 setShowUploader(false);
                 setShowImageUploader(false);
                 setShowDocUploader(false);
+                setShowExcalidrawUploader(false);
               }}
               className="flex-shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium shadow-sm transition bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:from-emerald-600 hover:to-teal-600"
               title="返回聊天界面"
@@ -313,66 +316,93 @@ export function AiControlPanel() {
               Back to Chat
             </button>
           )}
-          <button
-            onClick={() => {
-              // Toggle off if already active, otherwise activate and deactivate others
-              if (showUploader) {
-                setShowUploader(false);
-              } else {
-                setShowUploader(true);
-                setShowDocUploader(false);
-                setShowImageUploader(false);
-              }
-            }}
-            className={`flex-shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium shadow-sm transition ${
-              showUploader
-                ? "bg-indigo-500 text-white hover:bg-indigo-600"
-                : "bg-white text-slate-700 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-            }`}
-          >
-            <Upload className="mr-1 inline-block h-3.5 w-3.5" />
-            Flowchart
-          </button>
-          <button
-            onClick={() => {
-              // Toggle off if already active, otherwise activate and deactivate others
-              if (showImageUploader) {
-                setShowImageUploader(false);
-              } else {
-                setShowImageUploader(true);
-                setShowUploader(false);
-                setShowDocUploader(false);
-              }
-            }}
-            className={`flex-shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium shadow-sm transition ${
-              showImageUploader
-                ? "bg-indigo-500 text-white hover:bg-indigo-600"
-                : "bg-white text-slate-700 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-            }`}
-          >
-            <Grid3x3 className="mr-1 inline-block h-3.5 w-3.5" />
-            Architecture
-          </button>
-          <button
-            onClick={() => {
-              // Toggle off if already active, otherwise activate and deactivate others
-              if (showDocUploader) {
-                setShowDocUploader(false);
-              } else {
-                setShowDocUploader(true);
-                setShowUploader(false);
-                setShowImageUploader(false);
-              }
-            }}
-            className={`flex-shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium shadow-sm transition ${
-              showDocUploader
-                ? "bg-indigo-500 text-white hover:bg-indigo-600"
-                : "bg-white text-slate-700 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-            }`}
-          >
-            <FileText className="mr-1 inline-block h-3.5 w-3.5" />
-            Docs
-          </button>
+
+          {/* Upload Buttons - Only show in ReactFlow mode */}
+          {canvasMode === "reactflow" && (
+            <>
+              <button
+                onClick={() => {
+                  // Toggle off if already active, otherwise activate and deactivate others
+                  if (showUploader) {
+                    setShowUploader(false);
+                  } else {
+                    setShowUploader(true);
+                    setShowDocUploader(false);
+                    setShowImageUploader(false);
+                  }
+                }}
+                className={`flex-shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium shadow-sm transition ${
+                  showUploader
+                    ? "bg-indigo-500 text-white hover:bg-indigo-600"
+                    : "bg-white text-slate-700 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                }`}
+              >
+                <Upload className="mr-1 inline-block h-3.5 w-3.5" />
+                Flowchart
+              </button>
+              <button
+                onClick={() => {
+                  // Toggle off if already active, otherwise activate and deactivate others
+                  if (showImageUploader) {
+                    setShowImageUploader(false);
+                  } else {
+                    setShowImageUploader(true);
+                    setShowUploader(false);
+                    setShowDocUploader(false);
+                  }
+                }}
+                className={`flex-shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium shadow-sm transition ${
+                  showImageUploader
+                    ? "bg-indigo-500 text-white hover:bg-indigo-600"
+                    : "bg-white text-slate-700 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                }`}
+              >
+                <Grid3x3 className="mr-1 inline-block h-3.5 w-3.5" />
+                Architecture
+              </button>
+              <button
+                onClick={() => {
+                  // Toggle off if already active, otherwise activate and deactivate others
+                  if (showDocUploader) {
+                    setShowDocUploader(false);
+                  } else {
+                    setShowDocUploader(true);
+                    setShowUploader(false);
+                    setShowImageUploader(false);
+                  }
+                }}
+                className={`flex-shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium shadow-sm transition ${
+                  showDocUploader
+                    ? "bg-indigo-500 text-white hover:bg-indigo-600"
+                    : "bg-white text-slate-700 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                }`}
+              >
+                <FileText className="mr-1 inline-block h-3.5 w-3.5" />
+                Docs
+              </button>
+            </>
+          )}
+
+          {/* Upload Button - Only show in Excalidraw mode */}
+          {canvasMode === "excalidraw" && (
+            <button
+              onClick={() => {
+                if (showExcalidrawUploader) {
+                  setShowExcalidrawUploader(false);
+                } else {
+                  setShowExcalidrawUploader(true);
+                }
+              }}
+              className={`flex-shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium shadow-sm transition ${
+                showExcalidrawUploader
+                  ? "bg-purple-500 text-white hover:bg-purple-600"
+                  : "bg-white text-slate-700 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+              }`}
+            >
+              <Upload className="mr-1 inline-block h-3.5 w-3.5" />
+              Upload Image
+            </button>
+          )}
         </div>
         </div>
       </div>
@@ -381,8 +411,20 @@ export function AiControlPanel() {
 
       {/* Main Content - Full Height */}
       <div className="flex min-h-0 flex-1 flex-col gap-4">
-        {/* Flowchart Uploader Section */}
-        {showUploader ? (
+        {/* Excalidraw Uploader Section */}
+        {showExcalidrawUploader ? (
+          <section className="flex min-h-0 flex-1 flex-col rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 p-4 overflow-y-auto">
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                🎨 图片转 Excalidraw
+              </h3>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                上传架构图或流程图图片，AI 将实时流式转换为 Excalidraw 手绘风格，元素逐个显示。
+              </p>
+            </div>
+            <ExcalidrawUploader />
+          </section>
+        ) : showUploader ? (
           <section className="flex min-h-0 flex-1 flex-col rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 p-4 overflow-y-auto">
             <div className="mb-4">
               <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
