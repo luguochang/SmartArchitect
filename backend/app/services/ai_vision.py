@@ -966,6 +966,191 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
             logger.error(f"Failed to build response: {e}")
             raise ValueError(f"Invalid response structure: {str(e)}")
 
+    # ========== Vision-to-Text Generation (for Excalidraw/ReactFlow) ==========
+
+    async def generate_with_vision(self, image_data: bytes, prompt: str) -> str:
+        """
+        Generate text response from image using vision AI.
+        Returns raw text output (typically JSON) for diagram generation.
+
+        Args:
+            image_data: Image bytes
+            prompt: Text prompt with instructions
+
+        Returns:
+            Raw text response from AI model
+        """
+        try:
+            logger.info(f"[VISION GEN] Generating with {self.provider}")
+
+            if self.provider == "gemini":
+                return await self._generate_with_gemini_vision(image_data, prompt)
+            elif self.provider == "openai":
+                return await self._generate_with_openai_vision(image_data, prompt)
+            elif self.provider == "claude":
+                return await self._generate_with_claude_vision(image_data, prompt)
+            elif self.provider == "siliconflow":
+                return await self._generate_with_siliconflow_vision(image_data, prompt)
+            elif self.provider == "custom":
+                return await self._generate_with_custom_vision(image_data, prompt)
+            else:
+                raise ValueError(f"Unsupported provider: {self.provider}")
+
+        except Exception as e:
+            logger.error(f"Vision generation failed: {e}", exc_info=True)
+            raise
+
+    async def _generate_with_gemini_vision(self, image_data: bytes, prompt: str) -> str:
+        """Gemini vision generation"""
+        import PIL.Image
+        import io
+
+        image = PIL.Image.open(io.BytesIO(image_data))
+        response = self.client.generate_content([prompt, image])
+        return response.text
+
+    async def _generate_with_openai_vision(self, image_data: bytes, prompt: str) -> str:
+        """OpenAI vision generation"""
+        import base64
+
+        base64_image = base64.b64encode(image_data).decode()
+
+        response = self.client.chat.completions.create(
+            model=self.model_name,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{base64_image}"}
+                    }
+                ]
+            }],
+            max_tokens=16384,
+            temperature=0.7
+        )
+
+        return response.choices[0].message.content
+
+    async def _generate_with_claude_vision(self, image_data: bytes, prompt: str) -> str:
+        """Claude vision generation"""
+        import base64
+
+        base64_image = base64.b64encode(image_data).decode()
+
+        response = self.client.messages.create(
+            model=self.model_name,
+            max_tokens=16384,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "image/png",
+                            "data": base64_image
+                        }
+                    }
+                ]
+            }]
+        )
+
+        return response.content[0].text
+
+    async def _generate_with_siliconflow_vision(self, image_data: bytes, prompt: str) -> str:
+        """SiliconFlow vision generation"""
+        import base64
+
+        base64_image = base64.b64encode(image_data).decode()
+
+        response = self.client.chat.completions.create(
+            model=self.model_name,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{base64_image}"}
+                    }
+                ]
+            }],
+            max_tokens=16384,
+            temperature=0.7
+        )
+
+        return response.choices[0].message.content
+
+    async def _generate_with_custom_vision(self, image_data: bytes, prompt: str) -> str:
+        """Custom provider vision generation (auto-detect Claude vs OpenAI format)"""
+        import base64
+
+        base64_image = base64.b64encode(image_data).decode()
+
+        # Check if this is a Claude-native endpoint (linkflow, anthropic)
+        is_claude_format = (
+            self.custom_base_url and
+            ("linkflow" in self.custom_base_url.lower() or
+             "anthropic" in self.custom_base_url.lower())
+        )
+
+        if is_claude_format:
+            # Use Anthropic's native API format
+            from anthropic import Anthropic
+
+            # Remove /v1 suffix from base_url if present (Anthropic SDK adds it automatically)
+            anthropic_base_url = self.custom_base_url.rstrip("/")
+            if anthropic_base_url.endswith("/v1"):
+                anthropic_base_url = anthropic_base_url[:-3]
+
+            client = Anthropic(
+                api_key=self.custom_api_key,
+                base_url=anthropic_base_url
+            )
+
+            response = client.messages.create(
+                model=self.model_name,
+                max_tokens=16384,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/png",
+                                "data": base64_image
+                            }
+                        }
+                    ]
+                }]
+            )
+
+            return response.content[0].text
+        else:
+            # Use OpenAI-compatible format
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{base64_image}"}
+                        }
+                    ]
+                }],
+                max_tokens=16384,
+                temperature=0.7
+            )
+
+            return response.choices[0].message.content
+
     # ========== Unified Streaming Methods (for SSE streaming to frontend) ==========
 
     async def generate_with_stream(self, prompt: str):

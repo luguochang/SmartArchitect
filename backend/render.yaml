@@ -1,0 +1,15 @@
+# Render 部署配置
+# 文档: https://render.com/docs/deploy-fastapi
+
+services:
+  - type: web
+    name: archboard-backend
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      - key: PORT
+        value: 8000
