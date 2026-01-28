@@ -427,3 +427,77 @@ class EnhancedSpeechScriptRequest(BaseModel):
     edges: List[Edge]
     duration: Literal["30s", "2min", "5min"]
     options: ScriptOptions = Field(default_factory=ScriptOptions)
+
+
+# ========== Vision to Diagram: 图片转流程图/架构图 ==========
+
+# Vision to Excalidraw request
+class VisionToExcalidrawRequest(BaseModel):
+    image_data: str = Field(..., description="Base64 encoded image (with data:image prefix or without)")
+    prompt: Optional[str] = Field(None, description="Additional context or instructions")
+    provider: Literal["gemini", "openai", "claude", "siliconflow", "custom"] = "custom"
+    api_key: Optional[str] = Field(None, description="API key for the provider")
+    base_url: Optional[str] = Field(None, description="Base URL for custom provider")
+    model_name: Optional[str] = Field(None, description="Model name (e.g., claude-sonnet-4-5-20250929)")
+    width: Optional[int] = Field(1200, description="Canvas width")
+    height: Optional[int] = Field(800, description="Canvas height")
+
+
+# Vision to React Flow request
+class VisionToReactFlowRequest(BaseModel):
+    image_data: str = Field(..., description="Base64 encoded image (with data:image prefix or without)")
+    prompt: Optional[str] = Field(None, description="Additional context or instructions")
+    provider: Literal["gemini", "openai", "claude", "siliconflow", "custom"] = "custom"
+    api_key: Optional[str] = Field(None, description="API key for the provider")
+    base_url: Optional[str] = Field(None, description="Base URL for custom provider")
+    model_name: Optional[str] = Field(None, description="Model name")
+
+
+# Excalidraw element (simplified, compatible with Excalidraw JSON format)
+class ExcalidrawElement(BaseModel):
+    id: str
+    type: Literal["rectangle", "ellipse", "diamond", "arrow", "line", "text", "freedraw", "image"]
+    x: float
+    y: float
+    width: Optional[float] = None
+    height: Optional[float] = None
+    angle: Optional[float] = 0
+    strokeColor: Optional[str] = "#000000"
+    backgroundColor: Optional[str] = "#ffffff"
+    fillStyle: Optional[str] = "hachure"
+    strokeWidth: Optional[int] = 1
+    strokeStyle: Optional[str] = "solid"
+    roughness: Optional[int] = 1
+    opacity: Optional[int] = 100
+    points: Optional[List[List[float]]] = None  # For arrows and lines
+    text: Optional[str] = None  # For text elements
+    fontSize: Optional[int] = 20
+    fontFamily: Optional[int] = 1
+    textAlign: Optional[str] = "center"
+    verticalAlign: Optional[str] = "middle"
+    startBinding: Optional[dict] = None
+    endBinding: Optional[dict] = None
+
+
+# Excalidraw scene
+class ExcalidrawScene(BaseModel):
+    elements: List[dict]  # Use dict to allow flexible Excalidraw schema
+    appState: Optional[dict] = Field(default_factory=lambda: {"viewBackgroundColor": "#ffffff"})
+    files: Optional[dict] = Field(default_factory=dict)
+
+
+# Vision to Excalidraw response
+class VisionToExcalidrawResponse(BaseModel):
+    success: bool
+    scene: Optional[ExcalidrawScene] = None
+    message: Optional[str] = None
+    raw_response: Optional[str] = None  # For debugging
+
+
+# Vision to React Flow response
+class VisionToReactFlowResponse(BaseModel):
+    success: bool
+    nodes: Optional[List[Node]] = None
+    edges: Optional[List[Edge]] = None
+    message: Optional[str] = None
+    raw_response: Optional[str] = None  # For debugging

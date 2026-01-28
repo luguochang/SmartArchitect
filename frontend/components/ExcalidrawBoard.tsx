@@ -2,8 +2,12 @@
 
 import dynamic from "next/dynamic";
 import "@excalidraw/excalidraw/index.css";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useArchitectStore } from "@/lib/store/useArchitectStore";
+import { ImageIcon } from "lucide-react";
+import { ImageConversionModal } from "./ImageConversionModal";
+import { toast } from "sonner";
+import type { ExcalidrawScene } from "@/lib/utils/imageConversion";
 
 // Type import - using any to avoid build-time type errors
 type ExcalidrawImperativeAPI = any;
@@ -16,7 +20,9 @@ const Excalidraw = dynamic(
 export default function ExcalidrawBoard() {
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const scene = useArchitectStore((s) => s.excalidrawScene);
+  const setExcalidrawScene = useArchitectStore((s) => s.setExcalidrawScene);
   const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [showImportModal, setShowImportModal] = useState(false);
 
   // Function to update scene - can be called from multiple places
   const updateScene = (api: ExcalidrawImperativeAPI, sceneData: typeof scene) => {
@@ -54,6 +60,21 @@ export default function ExcalidrawBoard() {
     }
   };
 
+  // Handle successful image conversion
+  const handleImportSuccess = (result: ExcalidrawScene) => {
+    console.log("[ExcalidrawBoard] Import success, elements:", result.elements.length);
+
+    // Update Zustand store
+    setExcalidrawScene(result);
+
+    // If API is ready, update immediately
+    if (apiRef.current) {
+      updateScene(apiRef.current, result);
+    }
+
+    toast.success(`Imported ${result.elements.length} elements to Excalidraw!`);
+  };
+
   // Update scene when scene data changes (if API is ready)
   useEffect(() => {
     console.log(`🔔 [ExcalidrawBoard] useEffect triggered, scene elements: ${scene?.elements?.length || 0}`);
@@ -75,7 +96,20 @@ export default function ExcalidrawBoard() {
   }, [scene]);
 
   return (
-    <div className="h-full w-full bg-white dark:bg-slate-900">
+    <div className="relative h-full w-full bg-white dark:bg-slate-900">
+      {/* Import from Image Button */}
+      <div className="absolute top-4 right-4 z-10">
+        <button
+          onClick={() => setShowImportModal(true)}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-lg transition-colors"
+          title="Import diagram from image"
+        >
+          <ImageIcon className="h-4 w-4" />
+          Import from Image
+        </button>
+      </div>
+
+      {/* Excalidraw Canvas */}
       <Excalidraw
         excalidrawAPI={(api) => {
           apiRef.current = api;
@@ -90,6 +124,14 @@ export default function ExcalidrawBoard() {
           elements: [],
           appState: { viewBackgroundColor: "#ffffff" }
         }}
+      />
+
+      {/* Image Conversion Modal */}
+      <ImageConversionModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        mode="excalidraw"
+        onSuccess={handleImportSuccess}
       />
     </div>
   );

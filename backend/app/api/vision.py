@@ -2,7 +2,13 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Query
 from typing import Optional
 import logging
 
-from app.models.schemas import ImageAnalysisResponse
+from app.models.schemas import (
+    ImageAnalysisResponse,
+    VisionToExcalidrawRequest,
+    VisionToExcalidrawResponse,
+    VisionToReactFlowRequest,
+    VisionToReactFlowResponse
+)
 from app.services.ai_vision import create_vision_service
 
 router = APIRouter()
@@ -307,3 +313,358 @@ async def vision_health_check():
         "max_file_size_mb": MAX_FILE_SIZE / 1024 / 1024,
         "allowed_formats": ALLOWED_CONTENT_TYPES
     }
+
+
+@router.post("/vision/generate-excalidraw", response_model=VisionToExcalidrawResponse)
+async def generate_excalidraw_from_image(request: VisionToExcalidrawRequest):
+    """
+    Generate Excalidraw scene from image using Vision AI.
+
+    **Request Body:**
+    - image_data: Base64 encoded image (with or without data:image prefix)
+    - prompt: Additional instructions (optional)
+    - provider: AI provider (gemini, openai, claude, siliconflow, custom)
+    - api_key: API key (required)
+    - base_url: Base URL (required for custom provider)
+    - model_name: Model name (required for custom provider)
+    - width: Canvas width (default: 1200)
+    - height: Canvas height (default: 800)
+
+    **Response:**
+    - success: Whether generation succeeded
+    - scene: Excalidraw scene object with elements, appState, files
+    - message: Error message if failed
+    - raw_response: Raw AI response for debugging
+
+    **Example:**
+    ```json
+    {
+        "image_data": "data:image/png;base64,iVBORw0KG...",
+        "prompt": "Convert this flowchart to Excalidraw format",
+        "provider": "custom",
+        "api_key": "sk-...",
+        "base_url": "https://api.example.com/v1",
+        "model_name": "claude-sonnet-4-5-20250929"
+    }
+    ```
+    """
+    import json
+    import re
+
+    try:
+        # Create vision service
+        vision_service = create_vision_service(
+            request.provider,
+            api_key=request.api_key,
+            base_url=request.base_url,
+            model_name=request.model_name
+        )
+
+        # Build prompt for Excalidraw generation
+        excalidraw_prompt = f"""
+Analyze the uploaded image and convert it to Excalidraw JSON format.
+
+Output a valid JSON object with this structure:
+{{
+    "elements": [
+        {{
+            "id": "unique-id",
+            "type": "rectangle" | "ellipse" | "diamond" | "arrow" | "text",
+            "x": number,
+            "y": number,
+            "width": number,
+            "height": number,
+            "strokeColor": "#000000",
+            "backgroundColor": "#ffffff",
+            "fillStyle": "hachure",
+            "strokeWidth": 1,
+            "roughness": 1,
+            "opacity": 100,
+            "text": "label" (for shapes with labels),
+            "fontSize": 20,
+            "fontFamily": 1,
+            "textAlign": "center"
+        }}
+    ],
+    "appState": {{
+        "viewBackgroundColor": "#ffffff"
+    }}
+}}
+
+Rules:
+1. For each shape in the image, create a corresponding element
+2. For boxes/rectangles: use type="rectangle"
+3. For circles: use type="ellipse"
+4. For diamonds: use type="diamond"
+5. For arrows/connections: use type="arrow" with points array [[x1,y1], [x2,y2]]
+6. For text labels: either embed text in shapes or create separate text elements
+7. Preserve spatial layout (x, y coordinates relative to canvas size {request.width}x{request.height})
+8. Use unique IDs (e.g., "rect-1", "arrow-2", "text-3")
+9. Output ONLY the JSON, no explanatory text
+
+Canvas dimensions: {request.width}px width, {request.height}px height
+
+{request.prompt or ''}
+"""
+
+        # Call AI service
+        logger.info(f"Generating Excalidraw scene with {request.provider}")
+
+        # Extract base64 data
+        image_data = request.image_data
+        if "base64," in image_data:
+            image_data = image_data.split("base64,")[1]
+
+        import base64
+        image_bytes = base64.b64decode(image_data)
+
+        # Call AI vision service
+        raw_response = await vision_service.generate_with_vision(
+            image_data=image_bytes,
+            prompt=excalidraw_prompt
+        )
+
+        logger.info(f"Raw AI response received (length: {len(raw_response)})")
+
+        # Extract JSON from response
+        json_pattern = r'```json\s*(.*?)\s*```'
+        match = re.search(json_pattern, raw_response, re.DOTALL)
+
+        if match:
+            json_str = match.group(1)
+        else:
+            # Try to find JSON object directly
+            json_obj_pattern = r'\{.*\}'
+            match = re.search(json_obj_pattern, raw_response, re.DOTALL)
+            if match:
+                json_str = match.group(0)
+            else:
+                return VisionToExcalidrawResponse(
+                    success=False,
+                    message="Failed to extract JSON from AI response",
+                    raw_response=raw_response[:500]
+                )
+
+        # Parse JSON
+        try:
+            scene_data = json.loads(json_str)
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON parse error: {e}")
+            return VisionToExcalidrawResponse(
+                success=False,
+                message=f"Invalid JSON: {str(e)}",
+                raw_response=json_str[:500]
+            )
+
+        # Validate structure
+        if "elements" not in scene_data:
+            return VisionToExcalidrawResponse(
+                success=False,
+                message="Response missing 'elements' field",
+                raw_response=json_str[:500]
+            )
+
+        # Ensure appState exists
+        if "appState" not in scene_data:
+            scene_data["appState"] = {"viewBackgroundColor": "#ffffff"}
+
+        logger.info(f"Successfully generated Excalidraw scene with {len(scene_data['elements'])} elements")
+
+        return VisionToExcalidrawResponse(
+            success=True,
+            scene=scene_data
+        )
+
+    except Exception as e:
+        logger.error(f"Excalidraw generation failed: {e}", exc_info=True)
+        return VisionToExcalidrawResponse(
+            success=False,
+            message=f"Generation failed: {str(e)}"
+        )
+
+
+@router.post("/vision/generate-reactflow", response_model=VisionToReactFlowResponse)
+async def generate_reactflow_from_image(request: VisionToReactFlowRequest):
+    """
+    Generate React Flow diagram from image using Vision AI.
+
+    **Request Body:**
+    - image_data: Base64 encoded image
+    - prompt: Additional instructions (optional)
+    - provider: AI provider
+    - api_key: API key
+    - base_url: Base URL (for custom provider)
+    - model_name: Model name (for custom provider)
+
+    **Response:**
+    - success: Whether generation succeeded
+    - nodes: List of React Flow nodes
+    - edges: List of React Flow edges
+    - message: Error message if failed
+
+    **Supported node types:**
+    - api: API services
+    - service: Backend services
+    - database: Databases
+    - cache: Cache systems
+    - client: Client applications
+    - queue: Message queues
+    - gateway: API gateways
+    - container: Generic containers
+    - default: Default nodes
+    """
+    import json
+    import re
+    from app.models.schemas import Node, Edge, Position, NodeData
+
+    try:
+        # Create vision service
+        vision_service = create_vision_service(
+            request.provider,
+            api_key=request.api_key,
+            base_url=request.base_url,
+            model_name=request.model_name
+        )
+
+        # Build prompt for React Flow generation
+        reactflow_prompt = f"""
+Analyze the uploaded diagram and convert it to SmartArchitect React Flow format.
+
+Output a JSON object with this structure:
+{{
+    "nodes": [
+        {{
+            "id": "1",
+            "type": "api" | "service" | "database" | "cache" | "client" | "queue" | "gateway" | "container" | "default",
+            "position": {{"x": 100, "y": 100}},
+            "data": {{
+                "label": "Node Label",
+                "shape": "rectangle" | "circle" | "diamond" | "hexagon" | "start-event" | "end-event",
+                "iconType": "server" | "database" | "zap" | "monitor" | "list" | "cloud" | "package",
+                "color": "#3b82f6"
+            }}
+        }}
+    ],
+    "edges": [
+        {{
+            "id": "e1-2",
+            "source": "1",
+            "target": "2",
+            "label": "HTTP"
+        }}
+    ]
+}}
+
+Available node types:
+- api: API services (iconType: server, shape: rectangle)
+- service: Backend services (iconType: settings, shape: rectangle)
+- database: Databases (iconType: database, shape: circle or rectangle)
+- cache: Cache systems (iconType: zap, shape: rectangle)
+- client: Client applications (iconType: monitor, shape: rectangle)
+- queue: Message queues (iconType: list, shape: rectangle)
+- gateway: API gateways (iconType: cloud, shape: hexagon)
+- container: Generic containers (iconType: package, shape: rectangle)
+- default: Default nodes (shape: rectangle)
+
+Available shapes:
+- rectangle: Standard boxes
+- circle: Circular nodes
+- diamond: Decision/gateway nodes
+- hexagon: Integration points
+- start-event: BPMN start (green circle)
+- end-event: BPMN end (red circle)
+
+Rules:
+1. Analyze each component and map to appropriate node type
+2. Use descriptive labels
+3. Preserve spatial layout with x, y coordinates
+4. Ensure all edge source/target IDs match node IDs
+5. Output ONLY the JSON, no extra text
+
+{request.prompt or ''}
+"""
+
+        # Call AI service
+        logger.info(f"Generating React Flow diagram with {request.provider}")
+
+        # Extract base64 data
+        image_data = request.image_data
+        if "base64," in image_data:
+            image_data = image_data.split("base64,")[1]
+
+        import base64
+        image_bytes = base64.b64decode(image_data)
+
+        # Call AI vision service
+        raw_response = await vision_service.generate_with_vision(
+            image_data=image_bytes,
+            prompt=reactflow_prompt
+        )
+
+        logger.info(f"Raw AI response received (length: {len(raw_response)})")
+
+        # Extract JSON from response
+        json_pattern = r'```json\s*(.*?)\s*```'
+        match = re.search(json_pattern, raw_response, re.DOTALL)
+
+        if match:
+            json_str = match.group(1)
+        else:
+            # Try to find JSON object directly
+            json_obj_pattern = r'\{.*\}'
+            match = re.search(json_obj_pattern, raw_response, re.DOTALL)
+            if match:
+                json_str = match.group(0)
+            else:
+                return VisionToReactFlowResponse(
+                    success=False,
+                    message="Failed to extract JSON from AI response",
+                    raw_response=raw_response[:500]
+                )
+
+        # Parse JSON
+        try:
+            diagram_data = json.loads(json_str)
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON parse error: {e}")
+            return VisionToReactFlowResponse(
+                success=False,
+                message=f"Invalid JSON: {str(e)}",
+                raw_response=json_str[:500]
+            )
+
+        # Validate structure
+        if "nodes" not in diagram_data or "edges" not in diagram_data:
+            return VisionToReactFlowResponse(
+                success=False,
+                message="Response missing 'nodes' or 'edges' field",
+                raw_response=json_str[:500]
+            )
+
+        # Validate nodes using Pydantic models
+        try:
+            nodes = [Node(**node_data) for node_data in diagram_data["nodes"]]
+            edges = [Edge(**edge_data) for edge_data in diagram_data["edges"]]
+        except Exception as e:
+            logger.error(f"Data validation error: {e}")
+            return VisionToReactFlowResponse(
+                success=False,
+                message=f"Invalid node/edge data: {str(e)}",
+                raw_response=json_str[:500]
+            )
+
+        logger.info(f"Successfully generated React Flow diagram: {len(nodes)} nodes, {len(edges)} edges")
+
+        return VisionToReactFlowResponse(
+            success=True,
+            nodes=[n.dict() for n in nodes],
+            edges=[e.dict() for e in edges]
+        )
+
+    except Exception as e:
+        logger.error(f"React Flow generation failed: {e}", exc_info=True)
+        return VisionToReactFlowResponse(
+            success=False,
+            message=f"Generation failed: {str(e)}"
+        )
+
