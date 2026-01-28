@@ -15,8 +15,10 @@ interface ImageConversionModalProps {
   onClose: () => void;
   mode: "excalidraw" | "reactflow";
   onSuccess: (result: ExcalidrawScene | ReactFlowDiagram) => void;
+  onStreamElement?: (element: any) => void; // For streaming mode
   title?: string;
   description?: string;
+  enableStreaming?: boolean; // Enable streaming mode for Excalidraw
 }
 
 export function ImageConversionModal({
@@ -24,8 +26,10 @@ export function ImageConversionModal({
   onClose,
   mode,
   onSuccess,
+  onStreamElement,
   title,
   description,
+  enableStreaming = true, // Default to streaming for Excalidraw
 }: ImageConversionModalProps) {
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -92,7 +96,7 @@ export function ImageConversionModal({
 
     try {
       // 动态导入转换函数
-      const { convertImageToExcalidraw, convertImageToReactFlow } = await import(
+      const { convertImageToExcalidraw, convertImageToExcalidrawStreaming, convertImageToReactFlow } = await import(
         "@/lib/utils/imageConversion"
       );
 
@@ -100,18 +104,44 @@ export function ImageConversionModal({
 
       let result: ExcalidrawScene | ReactFlowDiagram;
 
-      if (mode === "excalidraw") {
+      if (mode === "excalidraw" && enableStreaming && onStreamElement) {
+        // Use streaming mode for Excalidraw
+        const elements: any[] = [];
+        let appState: any = {};
+
+        try {
+          for await (const chunk of convertImageToExcalidrawStreaming(file, (msg) => setProgress(msg))) {
+            if (chunk.type === "start_streaming") {
+              appState = chunk.appState;
+              setProgress(`Streaming ${chunk.total} elements...`);
+            } else if (chunk.type === "element") {
+              elements.push(chunk.element);
+              onStreamElement(chunk.element); // Stream element to parent
+            } else if (chunk.type === "complete") {
+              setProgress("Done!");
+            }
+          }
+        } catch (streamError: any) {
+          console.error("Streaming failed:", streamError);
+          toast.error(streamError.message || "Streaming failed");
+          throw streamError;
+        }
+
+        result = { elements, appState, files: {} };
+        toast.success(`Successfully streamed ${elements.length} elements to Excalidraw!`);
+      } else if (mode === "excalidraw") {
+        // Non-streaming Excalidraw
         result = await convertImageToExcalidraw(file);
         setProgress("Generating Excalidraw scene...");
+        toast.success(`Successfully converted to Excalidraw format!`);
       } else {
+        // ReactFlow mode
         result = await convertImageToReactFlow(file);
         setProgress("Creating React Flow nodes...");
+        toast.success(`Successfully converted to React Flow format!`);
       }
 
-      setProgress("Done!");
-      toast.success(`Successfully converted to ${mode === "excalidraw" ? "Excalidraw" : "React Flow"} format!`);
-
-      // 通知父组件
+      // 通知父组件 (final result)
       onSuccess(result);
 
       // 延迟关闭以显示成功状态
@@ -126,7 +156,7 @@ export function ImageConversionModal({
     } finally {
       setConverting(false);
     }
-  }, [file, mode, onSuccess, onClose]);
+  }, [file, mode, enableStreaming, onStreamElement, onSuccess, onClose]);
 
   // 重置状态
   const resetState = useCallback(() => {

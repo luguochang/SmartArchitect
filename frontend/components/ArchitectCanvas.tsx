@@ -44,6 +44,24 @@ function ArchitectCanvasInner() {
   const [layoutDirection, setLayoutDirection] = useState<LayoutDirection>("LR"); // 默认左到右
   const [showImportModal, setShowImportModal] = useState(false);
 
+  // 监听流程图导入事件
+  useEffect(() => {
+    const handleFlowchartImport = () => {
+      console.log("[ArchitectCanvas] Flowchart imported, fitting view...");
+      setTimeout(() => {
+        fitView({ padding: 0.2, duration: 400 });
+      }, 150);
+    };
+
+    window.addEventListener('flowchart-imported', handleFlowchartImport);
+    return () => window.removeEventListener('flowchart-imported', handleFlowchartImport);
+  }, [fitView]);
+
+  // 当nodes改变时也记录日志
+  useEffect(() => {
+    console.log("[ArchitectCanvas] Nodes updated:", nodes.length);
+  }, [nodes]);
+
   // 注册自定义节点类型
   const nodeTypes = useMemo(
     () => ({

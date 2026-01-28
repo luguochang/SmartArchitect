@@ -23,7 +23,7 @@ export function FlowchartUploader() {
   const [error, setError] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
 
-  const { modelConfig, setNodes, setEdges } = useArchitectStore();
+  const { modelConfig, setNodes, setEdges, canvasMode, setCanvasMode } = useArchitectStore();
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -86,11 +86,35 @@ export function FlowchartUploader() {
 
         const data: UploadResult = await response.json();
 
+        console.log("[FlowchartUploader] Received data:", {
+          nodes: data.nodes.length,
+          edges: data.edges.length,
+          sampleNode: data.nodes[0],
+        });
+
         setResult(data);
 
+        // 检查当前画布模式
+        if (canvasMode !== "reactflow") {
+          console.log("[FlowchartUploader] Switching to ReactFlow canvas mode");
+          setCanvasMode("reactflow");
+          toast.info("已自动切换到 React Flow 画布模式");
+
+          // 等待模式切换完成
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+
         // 应用到画布
+        console.log("[FlowchartUploader] Calling setNodes and setEdges...");
         setNodes(data.nodes);
         setEdges(data.edges);
+
+        // 延迟fitView以确保节点已渲染
+        setTimeout(() => {
+          console.log("[FlowchartUploader] Nodes should be visible now");
+          // 触发一个事件通知画布刷新
+          window.dispatchEvent(new CustomEvent('flowchart-imported'));
+        }, 100);
 
         // 成功提示
         toast.success(
@@ -109,7 +133,7 @@ export function FlowchartUploader() {
         setUploading(false);
       }
     },
-    [modelConfig, setNodes, setEdges]
+    [modelConfig, setNodes, setEdges, canvasMode, setCanvasMode]
   );
 
   const handleDrop = useCallback(
