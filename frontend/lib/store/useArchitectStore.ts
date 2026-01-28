@@ -72,10 +72,10 @@ interface ArchitectState {
 
   // AI 模型配置
   modelConfig: {
-    provider: "gemini" | "openai" | "claude" | "siliconflow" | "custom";
+    provider: "custom";
     apiKey: string;
     modelName: string;
-    baseUrl?: string;
+    baseUrl: string;
   };
   setModelConfig: (config: Partial<ArchitectState["modelConfig"]>) => void;
 
@@ -349,10 +349,10 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
   promptError: undefined,
 
   modelConfig: {
-    provider: PROVIDER_DEFAULTS.custom.provider,
-    apiKey: PROVIDER_DEFAULTS.custom.apiKey,
-    modelName: PROVIDER_DEFAULTS.custom.modelName,
-    baseUrl: PROVIDER_DEFAULTS.custom.baseUrl,
+    provider: "custom",
+    apiKey: "sk-7Vm4JJgG9J7ghGWdtxH4vOqyVgpMcPs9zgeBLj9RqHhCswlh",
+    modelName: "claude-sonnet-4-5-20250929",
+    baseUrl: "https://www.linkflow.run/v1",
   },
 
   setCanvasMode: (mode) => set({ canvasMode: mode }),

@@ -2,12 +2,9 @@
 
 import dynamic from "next/dynamic";
 import "@excalidraw/excalidraw/index.css";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import { useArchitectStore } from "@/lib/store/useArchitectStore";
-import { ImageIcon } from "lucide-react";
-import { ImageConversionModal } from "./ImageConversionModal";
 import { toast } from "sonner";
-import type { ExcalidrawScene } from "@/lib/utils/imageConversion";
 
 // Type import - using any to avoid build-time type errors
 type ExcalidrawImperativeAPI = any;
@@ -22,15 +19,21 @@ export default function ExcalidrawBoard() {
   const scene = useArchitectStore((s) => s.excalidrawScene);
   const setExcalidrawScene = useArchitectStore((s) => s.setExcalidrawScene);
   const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const [showImportModal, setShowImportModal] = useState(false);
+
+  // Note: Image upload button removed from ExcalidrawBoard
+  // Now located in AiControlPanel for Excalidraw mode
 
   // Function to update scene - can be called from multiple places
   const updateScene = (api: ExcalidrawImperativeAPI, sceneData: typeof scene) => {
     if (!sceneData?.elements || sceneData.elements.length === 0) {
+      console.warn("[ExcalidrawBoard] Cannot update scene - no elements");
       return;
     }
 
     try {
+      console.log("[ExcalidrawBoard] Updating scene with elements:", sceneData.elements.length);
+      console.log("[ExcalidrawBoard] First element sample:", JSON.stringify(sceneData.elements[0], null, 2));
+
       // 设置完整的 appState
       const appState = {
         viewBackgroundColor: "#ffffff",
@@ -40,10 +43,13 @@ export default function ExcalidrawBoard() {
         ...sceneData.appState
       };
 
+      console.log("[ExcalidrawBoard] Calling api.updateScene...");
       api.updateScene({
         elements: sceneData.elements,
         appState
       });
+
+      console.log("[ExcalidrawBoard] ✅ api.updateScene completed");
 
       // 只在完成时滚动一次，使用防抖
       if (updateTimeoutRef.current) {
@@ -51,6 +57,7 @@ export default function ExcalidrawBoard() {
       }
       updateTimeoutRef.current = setTimeout(() => {
         if (apiRef.current) {
+          console.log("[ExcalidrawBoard] Scrolling to content...");
           apiRef.current.scrollToContent();
         }
       }, 150);
@@ -62,18 +69,46 @@ export default function ExcalidrawBoard() {
 
   // Handle successful image conversion
   const handleImportSuccess = (result: ExcalidrawScene) => {
-    console.log("[ExcalidrawBoard] Import success, elements:", result.elements.length);
+    console.log("[ExcalidrawBoard] Import success (final), elements:", result.elements.length);
 
-    // Update Zustand store
+    // Update Zustand store with final result
     setExcalidrawScene(result);
-
-    // If API is ready, update immediately
-    if (apiRef.current) {
-      updateScene(apiRef.current, result);
-    }
 
     toast.success(`Imported ${result.elements.length} elements to Excalidraw!`);
   };
+
+  // Handle streaming element (called during progressive rendering)
+  const handleStreamElement = useCallback((element: any) => {
+    console.log("[ExcalidrawBoard] Streaming element:", element.id);
+
+    if (!apiRef.current) {
+      console.warn("[ExcalidrawBoard] API not ready, cannot stream element");
+      return;
+    }
+
+    // Get current scene from API
+    const currentElements = apiRef.current.getSceneElements();
+
+    // Add new element
+    const updatedElements = [...currentElements, element];
+
+    // Update scene incrementally
+    apiRef.current.updateScene({
+      elements: updatedElements
+    });
+  }, []);
+
+  // Expose streaming function to parent via store or window
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__excalidrawStreamElement = handleStreamElement;
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        delete (window as any).__excalidrawStreamElement;
+      }
+    };
+  }, [handleStreamElement]);
 
   // Update scene when scene data changes (if API is ready)
   useEffect(() => {
@@ -97,19 +132,7 @@ export default function ExcalidrawBoard() {
 
   return (
     <div className="relative h-full w-full bg-white dark:bg-slate-900">
-      {/* Import from Image Button */}
-      <div className="absolute top-4 right-4 z-10">
-        <button
-          onClick={() => setShowImportModal(true)}
-          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-lg transition-colors"
-          title="Import diagram from image"
-        >
-          <ImageIcon className="h-4 w-4" />
-          Import from Image
-        </button>
-      </div>
-
-      {/* Excalidraw Canvas */}
+      {/* Excalidraw Canvas - Upload button moved to AiControlPanel */}
       <Excalidraw
         excalidrawAPI={(api) => {
           apiRef.current = api;
@@ -124,14 +147,6 @@ export default function ExcalidrawBoard() {
           elements: [],
           appState: { viewBackgroundColor: "#ffffff" }
         }}
-      />
-
-      {/* Image Conversion Modal */}
-      <ImageConversionModal
-        isOpen={showImportModal}
-        onClose={() => setShowImportModal(false)}
-        mode="excalidraw"
-        onSuccess={handleImportSuccess}
       />
     </div>
   );

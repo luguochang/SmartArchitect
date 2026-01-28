@@ -468,7 +468,59 @@ Canvas dimensions: {request.width}px width, {request.height}px height
         if "appState" not in scene_data:
             scene_data["appState"] = {"viewBackgroundColor": "#ffffff"}
 
-        logger.info(f"Successfully generated Excalidraw scene with {len(scene_data['elements'])} elements")
+        # Normalize Excalidraw elements - add required fields
+        import random
+        import time
+        timestamp = int(time.time() * 1000)
+
+        for element in scene_data["elements"]:
+            # Add required Excalidraw fields if missing
+            if "version" not in element:
+                element["version"] = 1
+            if "versionNonce" not in element:
+                element["versionNonce"] = random.randint(1000000000, 9999999999)
+            if "isDeleted" not in element:
+                element["isDeleted"] = False
+            if "groupIds" not in element:
+                element["groupIds"] = []
+            if "boundElements" not in element:
+                element["boundElements"] = None
+            if "updated" not in element:
+                element["updated"] = timestamp
+            if "link" not in element:
+                element["link"] = None
+            if "locked" not in element:
+                element["locked"] = False
+
+            # For arrow elements, add required binding fields
+            if element.get("type") == "arrow":
+                if "startBinding" not in element:
+                    element["startBinding"] = None
+                if "endBinding" not in element:
+                    element["endBinding"] = None
+                if "lastCommittedPoint" not in element:
+                    element["lastCommittedPoint"] = None
+                if "startArrowhead" not in element:
+                    element["startArrowhead"] = None
+                if "endArrowhead" not in element:
+                    element["endArrowhead"] = "arrow"
+
+            # For text elements
+            if element.get("type") == "text" or "text" in element:
+                if "lineHeight" not in element:
+                    element["lineHeight"] = 1.25
+                if "verticalAlign" not in element:
+                    element["verticalAlign"] = "top"
+
+            # Ensure angle exists
+            if "angle" not in element:
+                element["angle"] = 0
+
+            # Ensure strokeStyle exists
+            if "strokeStyle" not in element:
+                element["strokeStyle"] = "solid"
+
+        logger.info(f"Successfully generated Excalidraw scene with {len(scene_data['elements'])} elements (normalized)")
 
         return VisionToExcalidrawResponse(
             success=True,
@@ -481,6 +533,292 @@ Canvas dimensions: {request.width}px width, {request.height}px height
             success=False,
             message=f"Generation failed: {str(e)}"
         )
+
+
+@router.post("/vision/generate-excalidraw-stream")
+async def generate_excalidraw_from_image_stream(request: VisionToExcalidrawRequest):
+    """
+    🔥 Generate Excalidraw scene from image using Vision AI with TRUE streaming.
+    Uses multimodal streaming APIs to yield elements as they are generated in real-time.
+    """
+    from fastapi.responses import StreamingResponse
+    import json
+    import re
+    import random
+    import time
+
+    def normalize_element(element: dict, timestamp: int) -> dict:
+        """Normalize Excalidraw element by adding required fields"""
+        # Required base fields
+        if "version" not in element:
+            element["version"] = 1
+        if "versionNonce" not in element:
+            element["versionNonce"] = random.randint(1000000000, 9999999999)
+        if "isDeleted" not in element:
+            element["isDeleted"] = False
+        if "groupIds" not in element:
+            element["groupIds"] = []
+        if "boundElements" not in element:
+            element["boundElements"] = None
+        if "updated" not in element:
+            element["updated"] = timestamp
+        if "link" not in element:
+            element["link"] = None
+        if "locked" not in element:
+            element["locked"] = False
+        if "angle" not in element:
+            element["angle"] = 0
+        if "strokeStyle" not in element:
+            element["strokeStyle"] = "solid"
+
+        # Arrow-specific fields
+        if element.get("type") == "arrow":
+            if "startBinding" not in element:
+                element["startBinding"] = None
+            if "endBinding" not in element:
+                element["endBinding"] = None
+            if "lastCommittedPoint" not in element:
+                element["lastCommittedPoint"] = None
+            if "startArrowhead" not in element:
+                element["startArrowhead"] = None
+            if "endArrowhead" not in element:
+                element["endArrowhead"] = "arrow"
+
+        # Text-specific fields
+        if element.get("type") == "text" or "text" in element:
+            if "lineHeight" not in element:
+                element["lineHeight"] = 1.25
+            if "verticalAlign" not in element:
+                element["verticalAlign"] = "top"
+
+        return element
+
+    def try_parse_incremental_elements(json_buffer: str, parsed_ids: set) -> list:
+        """
+        🔥 Incrementally parse JSON buffer to extract completed elements.
+        Returns list of newly completed elements (not previously parsed).
+        """
+        # Try to extract elements array even from incomplete JSON
+        # Pattern: "elements": [ {...}, {...}, ... ]
+        elements_pattern = r'"elements"\s*:\s*\[\s*(.*?)(?:\]|$)'
+        match = re.search(elements_pattern, json_buffer, re.DOTALL)
+
+        if not match:
+            return []
+
+        elements_str = match.group(1)
+
+        # Find all complete element objects (balanced braces)
+        new_elements = []
+        brace_count = 0
+        start_idx = -1
+        i = 0
+
+        while i < len(elements_str):
+            char = elements_str[i]
+
+            if char == '{':
+                if brace_count == 0:
+                    start_idx = i
+                brace_count += 1
+            elif char == '}':
+                brace_count -= 1
+                if brace_count == 0 and start_idx != -1:
+                    # Found a complete element
+                    element_str = elements_str[start_idx:i+1]
+                    try:
+                        element = json.loads(element_str)
+                        # Only return if not already parsed
+                        element_id = element.get("id", "")
+                        if element_id and element_id not in parsed_ids:
+                            new_elements.append(element)
+                            parsed_ids.add(element_id)
+                    except json.JSONDecodeError:
+                        pass  # Incomplete element, wait for more tokens
+                    start_idx = -1
+
+            i += 1
+
+        return new_elements
+
+    async def generate():
+        try:
+            yield f"data: {json.dumps({'type': 'init', 'message': 'Starting real-time Excalidraw generation...'})}\n\n"
+
+            # Create vision service
+            vision_service = create_vision_service(
+                request.provider,
+                api_key=request.api_key,
+                base_url=request.base_url,
+                model_name=request.model_name
+            )
+
+            yield f"data: {json.dumps({'type': 'progress', 'message': 'Analyzing image...'})}\n\n"
+
+            # Build prompt
+            excalidraw_prompt = f"""
+Analyze the uploaded image and convert it to Excalidraw JSON format.
+
+Output a valid JSON object with this structure:
+{{
+    "elements": [
+        {{
+            "id": "unique-id",
+            "type": "rectangle" | "ellipse" | "diamond" | "arrow" | "text",
+            "x": number,
+            "y": number,
+            "width": number,
+            "height": number,
+            "strokeColor": "#000000",
+            "backgroundColor": "#ffffff",
+            "fillStyle": "hachure",
+            "strokeWidth": 1,
+            "roughness": 1,
+            "opacity": 100,
+            "text": "label" (for shapes with labels),
+            "fontSize": 20,
+            "fontFamily": 1,
+            "textAlign": "center"
+        }}
+    ],
+    "appState": {{
+        "viewBackgroundColor": "#ffffff"
+    }}
+}}
+
+Rules:
+1. For each shape in the image, create a corresponding element
+2. For boxes/rectangles: use type="rectangle"
+3. For circles: use type="ellipse"
+4. For diamonds: use type="diamond"
+5. For arrows/connections: use type="arrow" with points array [[x1,y1], [x2,y2]]
+6. For text labels: either embed text in shapes or create separate text elements
+7. Preserve spatial layout (x, y coordinates relative to canvas size {request.width}x{request.height})
+8. Use unique IDs (e.g., "rect-1", "arrow-2", "text-3")
+9. Output ONLY the JSON, no explanatory text
+
+Canvas dimensions: {request.width}px width, {request.height}px height
+
+{request.prompt or ''}
+"""
+
+            # Extract base64 data
+            image_data = request.image_data
+            if "base64," in image_data:
+                image_data = image_data.split("base64,")[1]
+
+            import base64
+            image_bytes = base64.b64decode(image_data)
+
+            # 🔥 Use real streaming with multimodal API
+            yield f"data: {json.dumps({'type': 'progress', 'message': 'Starting real-time generation...'})}\n\n"
+
+            json_buffer = ""
+            parsed_ids = set()  # Track which elements we've already sent
+            timestamp = int(time.time() * 1000)
+            element_count = 0
+
+            # Stream tokens in real-time
+            async for token in vision_service.generate_with_vision_stream(image_bytes, excalidraw_prompt):
+                json_buffer += token
+
+                # Try to parse new complete elements from the buffer
+                new_elements = try_parse_incremental_elements(json_buffer, parsed_ids)
+
+                # Yield each new element immediately
+                for element in new_elements:
+                    normalized = normalize_element(element, timestamp)
+                    element_count += 1
+                    yield f"data: {json.dumps({'type': 'element', 'element': normalized})}\n\n"
+                    logger.info(f"[REAL STREAM] Yielded element {element_count}: {element.get('id')}")
+
+            # Send completion
+            yield f"data: {json.dumps({'type': 'complete', 'message': f'Generated {element_count} elements in real-time'})}\n\n"
+            logger.info(f"[REAL STREAM] Completed with {element_count} elements")
+
+        except Exception as e:
+            logger.error(f"Excalidraw real streaming failed: {e}", exc_info=True)
+            yield f"data: {json.dumps({'type': 'error', 'message': f'Generation failed: {str(e)}'})}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@router.get("/vision/test-stream")
+async def test_stream():
+    """Simple test streaming endpoint"""
+    from fastapi.responses import StreamingResponse
+    import json
+    import asyncio
+
+    async def generate():
+        yield f"data: {json.dumps({'test': 'hello'})}\n\n"
+        await asyncio.sleep(0.1)
+        yield f"data: {json.dumps({'test': 'world'})}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@router.post("/vision/generate-excalidraw-stream-mock")
+async def generate_excalidraw_stream_mock():
+    """
+    Mock streaming endpoint for testing frontend without AI delays.
+    Streams 5 test elements progressively.
+    """
+    from fastapi.responses import StreamingResponse
+    import json
+    import random
+    import asyncio
+    import time
+
+    async def generate():
+        try:
+            yield f"data: {json.dumps({'type': 'init', 'message': 'Starting mock generation...'})}\n\n"
+            await asyncio.sleep(0.1)
+
+            # Mock elements
+            elements = [
+                {"id": "rect-1", "type": "rectangle", "x": 100, "y": 100, "width": 200, "height": 100, "strokeColor": "#000000", "backgroundColor": "#ffffff", "fillStyle": "hachure", "strokeWidth": 2, "roughness": 1, "opacity": 100, "text": "User Input", "fontSize": 20, "fontFamily": 1, "textAlign": "center"},
+                {"id": "arrow-1", "type": "arrow", "x": 200, "y": 210, "width": 0, "height": 80, "points": [[0, 0], [0, 80]], "strokeColor": "#000000"},
+                {"id": "diamond-1", "type": "diamond", "x": 150, "y": 300, "width": 150, "height": 150, "strokeColor": "#000000", "backgroundColor": "#ffeb3b", "fillStyle": "hachure", "text": "Valid?"},
+                {"id": "arrow-2", "type": "arrow", "x": 225, "y": 460, "width": 200, "height": 0, "points": [[0, 0], [200, 0]], "strokeColor": "#000000", "text": "Yes"},
+                {"id": "rect-2", "type": "rectangle", "x": 450, "y": 410, "width": 180, "height": 100, "strokeColor": "#000000", "backgroundColor": "#4caf50", "fillStyle": "hachure", "text": "Success"}
+            ]
+
+            appState = {"viewBackgroundColor": "#ffffff"}
+
+            yield f"data: {json.dumps({'type': 'start_streaming', 'total': len(elements), 'appState': appState})}\n\n"
+            await asyncio.sleep(0.1)
+
+            timestamp = int(time.time() * 1000)
+
+            for idx, element in enumerate(elements):
+                # Add required fields
+                element["version"] = 1
+                element["versionNonce"] = random.randint(1000000000, 9999999999)
+                element["isDeleted"] = False
+                element["groupIds"] = []
+                element["boundElements"] = None
+                element["updated"] = timestamp
+                element["link"] = None
+                element["locked"] = False
+                element["angle"] = 0
+                element["strokeStyle"] = "solid"
+
+                if element.get("type") == "arrow":
+                    element["startBinding"] = None
+                    element["endBinding"] = None
+                    element["endArrowhead"] = "arrow"
+
+                yield f"data: {json.dumps({'type': 'element', 'element': element, 'index': idx, 'total': len(elements)})}\n\n"
+                await asyncio.sleep(0.3)  # 300ms delay per element for visual effect
+
+            yield f"data: {json.dumps({'type': 'complete', 'message': 'Mock generation complete'})}\n\n"
+
+        except Exception as e:
+            logger.error(f"Mock streaming failed: {e}", exc_info=True)
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 @router.post("/vision/generate-reactflow", response_model=VisionToReactFlowResponse)
