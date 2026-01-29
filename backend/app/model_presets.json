@@ -20,8 +20,19 @@
       "base_url": "https://www.linkflow.run/v1",
       "is_default": true,
       "created_at": "2026-01-20T20:06:28.922566",
-      "updated_at": "2026-01-28T22:35:04.284855"
+      "updated_at": "2026-01-29T20:17:17.231078"
+    },
+    {
+      "id": "ikun-1769673359",
+      "name": "ikun",
+      "provider": "custom",
+      "api_key": "sk-W2kDwFOuLFphSoUBrfnf7U413DsO6ktxYCGKCoL2Gm55rLGC",
+      "model_name": "claude-sonnet-4-5-20250929",
+      "base_url": "https://api.ikuncode.cc/v1",
+      "is_default": false,
+      "created_at": "2026-01-29T15:55:59.491532",
+      "updated_at": "2026-01-29T18:18:30.829612"
     }
   ],
-  "last_updated": "2026-01-28T22:35:04.285856"
+  "last_updated": "2026-01-29T20:17:17.231078"
 }

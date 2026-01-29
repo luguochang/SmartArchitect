@@ -118,21 +118,43 @@ class AIVisionService:
                 logger.info(f"SiliconFlow client initialized with base_url: {base_url}")
 
             elif self.provider == "custom":
-                # 自定义 provider 使用 OpenAI SDK（支持 OpenAI 兼容的 API）
-                if not OpenAI:
-                    raise ImportError("openai not installed")
+                # 自定义 provider
+                # 如果模型名称包含 claude，使用 Anthropic SDK（兼容 Claude API 代理）
+                # 否则使用 OpenAI SDK（兼容 OpenAI API）
                 if not self.custom_api_key:
                     raise ValueError("Custom API key not provided")
                 if not self.custom_base_url:
                     raise ValueError("Custom base URL not provided")
 
-                self.client = OpenAI(
-                    api_key=self.custom_api_key,
-                    base_url=self.custom_base_url,
-                    timeout=120.0,  # 2 minutes timeout for streaming responses
-                    max_retries=2   # Limit retries to fail fast on errors
-                )
-                logger.info(f"Custom provider initialized with base_url: {self.custom_base_url}")
+                # 检测是否是 Claude 模型
+                is_claude_model = "claude" in self.model_name.lower()
+
+                if is_claude_model:
+                    # 使用 Anthropic SDK 处理 Claude 代理（如 linkflow.run）
+                    if not Anthropic:
+                        raise ImportError("anthropic not installed")
+
+                    # Anthropic SDK 会自动添加 /v1 路径，所以需要去掉 base_url 中的 /v1
+                    clean_base_url = self.custom_base_url.rstrip('/')
+                    if clean_base_url.endswith('/v1'):
+                        clean_base_url = clean_base_url[:-3]
+
+                    self.client = Anthropic(
+                        api_key=self.custom_api_key,
+                        base_url=clean_base_url
+                    )
+                    logger.info(f"Custom Claude provider initialized with base_url: {clean_base_url} (original: {self.custom_base_url})")
+                else:
+                    # 使用 OpenAI SDK 处理 OpenAI 兼容的 API
+                    if not OpenAI:
+                        raise ImportError("openai not installed")
+                    self.client = OpenAI(
+                        api_key=self.custom_api_key,
+                        base_url=self.custom_base_url,
+                        timeout=120.0,
+                        max_retries=2
+                    )
+                    logger.info(f"Custom provider initialized with base_url: {self.custom_base_url}")
 
             else:
                 raise ValueError(f"Unsupported provider: {self.provider}")
@@ -757,7 +779,7 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
 
                 # 使用 Anthropic 消息格式
                 response = await asyncio.to_thread(
-                    self.client.chat.completions.create,
+                    self.client.messages.create,
                     model=model,
                     messages=[
                         {
@@ -826,8 +848,21 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
             # 处理不同的响应格式
             content = None
 
+            # Anthropic SDK 标准格式：response.content[0].text
+            if is_claude_model and hasattr(response, 'content') and response.content:
+                logger.info("[CUSTOM] Using Anthropic 'content' format")
+                for content_block in response.content:
+                    if hasattr(content_block, 'text'):
+                        content = content_block.text
+                        logger.info(f"[CUSTOM] Extracted from Anthropic format, length: {len(content)}")
+                        break
+                    elif isinstance(content_block, dict) and 'text' in content_block:
+                        content = content_block['text']
+                        logger.info(f"[CUSTOM] Extracted from Anthropic dict format, length: {len(content)}")
+                        break
+
             # 某些中转站的格式：response.output[0].content[0].text
-            if hasattr(response, 'output') and response.output:
+            elif hasattr(response, 'output') and response.output:
                 logger.info("[CUSTOM] Using 'output' format")
                 output_item = response.output[0]
                 logger.info(f"[CUSTOM] output_item type: {type(output_item)}")
@@ -1408,7 +1443,13 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
         import threading
 
         try:
-            if self.provider == "claude":
+            # 检查是否是 Claude 模型（官方或 custom）
+            is_claude_model = (
+                self.provider == "claude" or
+                (self.provider == "custom" and "claude" in self.model_name.lower())
+            )
+
+            if is_claude_model:
                 # Claude Vision streaming with multimodal content
                 logger.info(f"[VISION-STREAM] Claude streaming with model: {self.model_name}")
                 q = queue.Queue()

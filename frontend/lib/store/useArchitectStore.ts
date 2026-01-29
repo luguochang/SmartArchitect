@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { Node, Edge, NodeChange, EdgeChange, applyNodeChanges, applyEdgeChanges } from "reactflow";
 import { PROVIDER_DEFAULTS } from "@/lib/config/providerDefaults";
 import { getLayoutedElements, estimateNodeSize } from "@/lib/utils/autoLayout";
+import { API_ENDPOINTS, API_BASE_URL } from "@/lib/api-config";
 
 export interface PromptScenario {
   id: string;
@@ -350,9 +351,9 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
 
   modelConfig: {
     provider: "custom",
-    apiKey: "sk-7Vm4JJgG9J7ghGWdtxH4vOqyVgpMcPs9zgeBLj9RqHhCswlh",
-    modelName: "claude-sonnet-4-5-20250929",
-    baseUrl: "https://www.linkflow.run/v1",
+    apiKey: "", // 🔧 从配置管理中加载，不使用硬编码
+    modelName: "",
+    baseUrl: "",
   },
 
   setCanvasMode: (mode) => set({ canvasMode: mode }),
@@ -437,7 +438,7 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
 
   loadFlowTemplates: async () => {
     try {
-      const res = await fetch("/api/chat-generator/templates");
+      const res = await fetch(API_ENDPOINTS.chatTemplates);
       if (!res.ok) {
         throw new Error(`Failed to load templates: ${res.status}`);
       }
@@ -474,7 +475,7 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
       };
 
       // Stream events to show progress and avoid spinner-only UX
-      const response = await fetch("/api/chat-generator/generate-stream", {
+      const response = await fetch(API_ENDPOINTS.chatGeneratorStream, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
         body: JSON.stringify(body),
@@ -704,7 +705,7 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
 
       // Fallback: if streaming didn't deliver nodes, retry non-stream
       if (get().nodes.length === 0) {
-        const retry = await fetch("/api/chat-generator/generate", {
+        const retry = await fetch(API_ENDPOINTS.chatGenerator, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
@@ -765,7 +766,7 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
         model_name: modelConfig.modelName,
       };
 
-      const response = await fetch("/api/excalidraw/generate", {
+      const response = await fetch(API_ENDPOINTS.excalidrawGenerate, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -825,8 +826,7 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
       };
 
       // IMPORTANT: Connect directly to backend to avoid Next.js proxy buffering
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
-      const response = await fetch(`${backendUrl}/api/excalidraw/generate-stream`, {
+      const response = await fetch(`${API_BASE_URL}/api/excalidraw/generate-stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
         body: JSON.stringify(body),
@@ -1193,7 +1193,7 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
 
   loadPromptScenarios: async () => {
     try {
-      const res = await fetch("/api/prompter/scenarios");
+      const res = await fetch(`${API_BASE_URL}/api/prompter/scenarios`);
       if (!res.ok) {
         throw new Error(`Failed to load prompt scenarios: ${res.status}`);
       }
@@ -1226,7 +1226,7 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
       if (modelConfig.baseUrl) params.set("base_url", modelConfig.baseUrl);
       if (modelConfig.modelName) params.set("model_name", modelConfig.modelName);
 
-      const res = await fetch(`/api/prompter/execute?${params.toString()}`, {
+      const res = await fetch(`${API_BASE_URL}/api/prompter/execute?${params.toString()}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Query
 from typing import Optional
 import logging
+import asyncio
 
 from app.models.schemas import (
     ImageAnalysisResponse,
@@ -10,6 +11,7 @@ from app.models.schemas import (
     VisionToReactFlowResponse
 )
 from app.services.ai_vision import create_vision_service
+from app.services.model_presets import get_model_presets_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -103,26 +105,47 @@ async def analyze_architecture_image(
             detail="SiliconFlow is currently supported for text-only. Choose gemini/openai/claude/custom for image analysis."
         )
 
+    # 获取有效配置（优先使用传入参数，否则使用默认预设）
+    presets_service = get_model_presets_service()
+    config = presets_service.get_active_config(
+        provider=provider,
+        api_key=api_key,
+        base_url=base_url,
+        model_name=model_name
+    )
+
+    if not config:
+        raise HTTPException(
+            status_code=400,
+            detail="No AI configuration found. Please configure AI model in settings or provide API key."
+        )
+
+    # 使用配置中的值
+    effective_provider = config["provider"]
+    effective_api_key = config["api_key"]
+    effective_base_url = config.get("base_url")
+    effective_model_name = config.get("model_name")
+
     # 验证自定义 provider 的必需参数
-    if provider == "custom":
-        if not base_url:
+    if effective_provider == "custom":
+        if not effective_base_url:
             raise HTTPException(
                 status_code=400,
                 detail="base_url is required for custom provider"
             )
-        if not model_name:
+        if not effective_model_name:
             raise HTTPException(
                 status_code=400,
                 detail="model_name is required for custom provider"
             )
 
-    # 创建 Vision Service（所有 provider 都传递 api_key）
+    # 创建 Vision Service
     try:
         vision_service = create_vision_service(
-            provider,
-            api_key=api_key,
-            base_url=base_url,
-            model_name=model_name
+            effective_provider,
+            api_key=effective_api_key,
+            base_url=effective_base_url,
+            model_name=effective_model_name
         )
     except Exception as e:
         logger.error(f"Failed to initialize {provider} service: {e}")
@@ -242,20 +265,40 @@ async def analyze_flowchart_screenshot(
             detail=f"Unsupported provider: {provider}. Allowed: gemini, openai, claude, siliconflow, custom"
         )
 
+    # 获取有效配置
+    presets_service = get_model_presets_service()
+    config = presets_service.get_active_config(
+        provider=provider,
+        api_key=api_key,
+        base_url=base_url,
+        model_name=model_name
+    )
+
+    if not config:
+        raise HTTPException(
+            status_code=400,
+            detail="No AI configuration found. Please configure AI model in settings or provide API key."
+        )
+
+    effective_provider = config["provider"]
+    effective_api_key = config["api_key"]
+    effective_base_url = config.get("base_url")
+    effective_model_name = config.get("model_name")
+
     # 验证自定义 provider
-    if provider == "custom":
-        if not base_url:
+    if effective_provider == "custom":
+        if not effective_base_url:
             raise HTTPException(status_code=400, detail="base_url required for custom provider")
-        if not model_name:
+        if not effective_model_name:
             raise HTTPException(status_code=400, detail="model_name required for custom provider")
 
     # 创建 Vision Service
     try:
         vision_service = create_vision_service(
-            provider,
-            api_key=api_key,
-            base_url=base_url,
-            model_name=model_name
+            effective_provider,
+            api_key=effective_api_key,
+            base_url=effective_base_url,
+            model_name=effective_model_name
         )
     except Exception as e:
         logger.error(f"Failed to initialize {provider} service: {e}")
@@ -297,6 +340,160 @@ async def analyze_flowchart_screenshot(
             status_code=500,
             detail=f"Flowchart analysis failed: {str(e)}"
         )
+
+
+@router.post("/vision/analyze-flowchart-stream-v2")
+async def analyze_flowchart_screenshot_stream_v2(request: VisionToReactFlowRequest):
+    """
+    🔥 Stream-enabled flowchart analysis - shows real-time AI processing progress
+
+    Returns Server-Sent Events (SSE) with progress updates and final result.
+
+    **Request Body (JSON):**
+    - image_data: Base64 encoded image
+    - provider: AI provider (gemini, openai, claude, siliconflow, custom)
+    - api_key: Optional API key
+    - preserve_layout: Preserve original positions (default: true)
+    - fast_mode: Use fast mode (default: true)
+
+    **Event Types:**
+    - init: Analysis started
+    - progress: Status update with message
+    - complete: Analysis finished with nodes/edges/mermaid_code
+    - error: Error occurred
+    """
+    from fastapi.responses import StreamingResponse
+    import json
+    import base64
+
+    async def generate():
+        try:
+            # Initial event
+            yield f"data: {json.dumps({'type': 'init', 'message': '开始分析流程图...'})}\n\n"
+
+            # Extract base64 data
+            image_data_str = request.image_data
+            if "base64," in image_data_str:
+                image_data_str = image_data_str.split("base64,")[1]
+
+            try:
+                image_data = base64.b64decode(image_data_str)
+                file_size = len(image_data)
+                logger.info(f"[FLOWCHART STREAM] Decoded image: {file_size} bytes")
+            except Exception as e:
+                yield f"data: {json.dumps({'type': 'error', 'message': f'图片解码失败: {str(e)}'})}\n\n"
+                return
+
+            # Validate file size
+            MAX_SIZE = 10 * 1024 * 1024
+            if file_size > MAX_SIZE:
+                yield f"data: {json.dumps({'type': 'error', 'message': f'文件过大: {file_size / 1024 / 1024:.2f}MB (最大 10MB)'})}\n\n"
+                return
+
+            if file_size == 0:
+                yield f"data: {json.dumps({'type': 'error', 'message': '文件为空'})}\n\n"
+                return
+
+            # Get configuration
+            yield f"data: {json.dumps({'type': 'progress', 'message': '正在配置 AI 模型...'})}\n\n"
+
+            presets_service = get_model_presets_service()
+            config = presets_service.get_active_config(
+                provider=request.provider,
+                api_key=request.api_key,
+                base_url=request.base_url,
+                model_name=request.model_name
+            )
+
+            if not config:
+                yield f"data: {json.dumps({'type': 'error', 'message': '未找到 AI 配置，请先在设置中配置 AI 模型'})}\n\n"
+                return
+
+            # Create vision service
+            provider_name = config["provider"]
+            yield f"data: {json.dumps({'type': 'progress', 'message': f'正在初始化 {provider_name} 服务...'})}\n\n"
+
+            try:
+                vision_service = create_vision_service(
+                    config["provider"],
+                    api_key=config["api_key"],
+                    base_url=config.get("base_url"),
+                    model_name=config.get("model_name")
+                )
+            except Exception as e:
+                yield f"data: {json.dumps({'type': 'error', 'message': f'初始化 AI 服务失败: {str(e)}'})}\n\n"
+                return
+
+            # Analysis progress messages
+            yield f"data: {json.dumps({'type': 'progress', 'message': '🔍 正在分析图片结构...'})}\n\n"
+            await asyncio.sleep(0.1)
+
+            yield f"data: {json.dumps({'type': 'progress', 'message': '📊 正在识别节点形状（开始/结束/任务/判断）...'})}\n\n"
+            await asyncio.sleep(0.1)
+
+            yield f"data: {json.dumps({'type': 'progress', 'message': '✏️ 正在提取文本标签...'})}\n\n"
+            await asyncio.sleep(0.1)
+
+            yield f"data: {json.dumps({'type': 'progress', 'message': '🔗 正在识别连线关系...'})}\n\n"
+            await asyncio.sleep(0.1)
+
+            yield f"data: {json.dumps({'type': 'progress', 'message': '⚡ 正在生成 Mermaid 代码...'})}\n\n"
+
+            # Perform actual analysis
+            try:
+                result = await vision_service.analyze_flowchart(
+                    image_data=image_data,
+                    preserve_layout=request.preserve_layout,
+                    fast_mode=request.fast_mode
+                )
+
+                logger.info(f"[FLOWCHART STREAM] Analysis complete: {len(result.nodes)} nodes, {len(result.edges)} edges")
+
+                # Convert result to dict for JSON serialization
+                result_dict = {
+                    "nodes": [
+                        {
+                            "id": node.id,
+                            "type": node.type,
+                            "position": {"x": node.position.x, "y": node.position.y},
+                            "data": {
+                                "label": node.data.label,
+                                "shape": node.data.shape
+                            }
+                        }
+                        for node in result.nodes
+                    ],
+                    "edges": [
+                        {
+                            "id": edge.id,
+                            "source": edge.source,
+                            "target": edge.target,
+                            "label": edge.label
+                        }
+                        for edge in result.edges
+                    ],
+                    "mermaid_code": result.mermaid_code,
+                    "warnings": result.warnings if result.warnings else [],
+                    "flowchart_analysis": result.flowchart_analysis if result.flowchart_analysis else {}
+                }
+
+                # Send completion event with full result
+                yield f"data: {json.dumps({'type': 'complete', 'message': f'✅ 识别完成！共 {len(result.nodes)} 个节点，{len(result.edges)} 条连线', 'result': result_dict})}\n\n"
+
+            except ValueError as e:
+                logger.error(f"[FLOWCHART STREAM] Parsing error: {e}")
+                yield f"data: {json.dumps({'type': 'error', 'message': f'AI 响应解析失败: {str(e)}'})}\n\n"
+            except Exception as e:
+                logger.error(f"[FLOWCHART STREAM] Analysis failed: {e}", exc_info=True)
+                yield f"data: {json.dumps({'type': 'error', 'message': f'分析失败: {str(e)}'})}\n\n"
+
+        except Exception as e:
+            logger.error(f"[FLOWCHART STREAM] Unexpected error: {e}", exc_info=True)
+            yield f"data: {json.dumps({'type': 'error', 'message': f'处理失败: {str(e)}'})}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
 
 
 @router.get("/vision/health")
@@ -352,12 +549,27 @@ async def generate_excalidraw_from_image(request: VisionToExcalidrawRequest):
     import re
 
     try:
-        # Create vision service
-        vision_service = create_vision_service(
-            request.provider,
+        # 获取有效配置
+        presets_service = get_model_presets_service()
+        config = presets_service.get_active_config(
+            provider=request.provider,
             api_key=request.api_key,
             base_url=request.base_url,
             model_name=request.model_name
+        )
+
+        if not config:
+            return VisionToExcalidrawResponse(
+                success=False,
+                message="No AI configuration found. Please configure AI model in settings or provide API key."
+            )
+
+        # Create vision service
+        vision_service = create_vision_service(
+            config["provider"],
+            api_key=config["api_key"],
+            base_url=config.get("base_url"),
+            model_name=config.get("model_name")
         )
 
         # Build prompt for Excalidraw generation
@@ -645,12 +857,25 @@ async def generate_excalidraw_from_image_stream(request: VisionToExcalidrawReque
         try:
             yield f"data: {json.dumps({'type': 'init', 'message': 'Starting real-time Excalidraw generation...'})}\n\n"
 
-            # Create vision service
-            vision_service = create_vision_service(
-                request.provider,
+            # 获取有效配置
+            presets_service = get_model_presets_service()
+            config = presets_service.get_active_config(
+                provider=request.provider,
                 api_key=request.api_key,
                 base_url=request.base_url,
                 model_name=request.model_name
+            )
+
+            if not config:
+                yield f"data: {json.dumps({'type': 'error', 'message': 'No AI configuration found. Please configure AI model in settings.'})}\n\n"
+                return
+
+            # Create vision service
+            vision_service = create_vision_service(
+                config["provider"],
+                api_key=config["api_key"],
+                base_url=config.get("base_url"),
+                model_name=config.get("model_name")
             )
 
             yield f"data: {json.dumps({'type': 'progress', 'message': 'Analyzing image...'})}\n\n"
@@ -856,12 +1081,27 @@ async def generate_reactflow_from_image(request: VisionToReactFlowRequest):
     from app.models.schemas import Node, Edge, Position, NodeData
 
     try:
-        # Create vision service
-        vision_service = create_vision_service(
-            request.provider,
+        # 获取有效配置
+        presets_service = get_model_presets_service()
+        config = presets_service.get_active_config(
+            provider=request.provider,
             api_key=request.api_key,
             base_url=request.base_url,
             model_name=request.model_name
+        )
+
+        if not config:
+            return VisionToReactFlowResponse(
+                success=False,
+                message="No AI configuration found. Please configure AI model in settings or provide API key."
+            )
+
+        # Create vision service
+        vision_service = create_vision_service(
+            config["provider"],
+            api_key=config["api_key"],
+            base_url=config.get("base_url"),
+            model_name=config.get("model_name")
         )
 
         # Build prompt for React Flow generation

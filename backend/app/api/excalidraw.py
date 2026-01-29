@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse
 from app.models.schemas import ExcalidrawGenerateRequest, ExcalidrawGenerateResponse
 from app.services.excalidraw_generator import create_excalidraw_service
 from app.services.ai_vision import create_vision_service
+from app.services.model_presets import get_model_presets_service
 import logging
 import json
 
@@ -21,9 +22,25 @@ async def generate_excalidraw_scene(request: ExcalidrawGenerateRequest):
     try:
         logger.info(f"Excalidraw generation request: provider={request.provider}, prompt={request.prompt[:50]}...")
 
-        # Validate provider and API key
-        if not request.api_key and request.provider != "mock":
-            logger.warning("No API key provided, will use mock fallback")
+        # 获取有效配置
+        presets_service = get_model_presets_service()
+        config = presets_service.get_active_config(
+            provider=request.provider,
+            api_key=request.api_key,
+            base_url=request.base_url,
+            model_name=request.model_name
+        )
+
+        if not config:
+            logger.warning("No AI configuration found, will use mock fallback")
+            service = create_excalidraw_service()
+            mock_scene = service._mock_scene()
+            mock_scene.appState["message"] = "No AI configuration found. Please configure AI model in settings."
+            return ExcalidrawGenerateResponse(
+                scene=mock_scene,
+                success=False,
+                message="No AI configuration found. Using mock scene."
+            )
 
         service = create_excalidraw_service()
         scene = await service.generate_scene(
@@ -31,10 +48,10 @@ async def generate_excalidraw_scene(request: ExcalidrawGenerateRequest):
             style=request.style,
             width=request.width or 1200,
             height=request.height or 800,
-            provider=request.provider,
-            api_key=request.api_key,
-            base_url=request.base_url,
-            model_name=request.model_name,
+            provider=config["provider"],
+            api_key=config["api_key"],
+            base_url=config.get("base_url"),
+            model_name=config.get("model_name"),
         )
 
         success = not scene.appState.get("message", "").startswith("Fallback mock:")
@@ -77,15 +94,40 @@ async def generate_excalidraw_scene_stream(request: ExcalidrawGenerateRequest):
             logger.info(f"[EXCALIDRAW-STREAM] Provider: {request.provider}, Model: {request.model_name}")
             logger.info(f"[EXCALIDRAW-STREAM] Prompt: {request.prompt[:100]}...")
 
+            # 获取有效配置
+            presets_service = get_model_presets_service()
+            config = presets_service.get_active_config(
+                provider=request.provider,
+                api_key=request.api_key,
+                base_url=request.base_url,
+                model_name=request.model_name
+            )
+
+            if not config:
+                # 没有配置，返回 mock 场景
+                logger.warning(f"[EXCALIDRAW-STREAM] No AI configuration found")
+                yield "data: [START] No AI configuration, using mock scene...\n\n"
+                service = create_excalidraw_service()
+                mock_scene = service._mock_scene()
+                mock_scene.appState["message"] = "No AI configuration found. Please configure AI model in settings."
+                response_data = {
+                    "scene": mock_scene.model_dump(),
+                    "success": False,
+                    "message": "No AI configuration found"
+                }
+                yield f"data: [RESULT] {json.dumps(response_data)}\n\n"
+                yield "data: [END] done\n\n"
+                return
+
             # CRITICAL: Create services BEFORE yielding any data
             # If this fails, we want to return HTTP error instead of hanging stream
             service = create_excalidraw_service()
             try:
                 vision_service = create_vision_service(
-                    provider=request.provider or "siliconflow",
-                    api_key=request.api_key,
-                    base_url=request.base_url,
-                    model_name=request.model_name,
+                    provider=config["provider"],
+                    api_key=config["api_key"],
+                    base_url=config.get("base_url"),
+                    model_name=config.get("model_name"),
                 )
             except ValueError as ve:
                 # API key missing or invalid - send mock scene immediately

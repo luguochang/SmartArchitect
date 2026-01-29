@@ -14,6 +14,7 @@ from app.models.schemas import (
     Edge,
 )
 from app.services.ai_vision import create_vision_service
+from app.services.model_presets import get_model_presets_service
 
 logger = logging.getLogger(__name__)
 
@@ -731,11 +732,29 @@ Generate a well-laid-out flowchart. Focus on clarity and visual balance. Return 
 
             logger.info(f"[CHAT-GEN] Effective diagram type: {effective_diagram_type}")
 
-            vision_service = create_vision_service(
+            # 获取有效配置（优先使用传入参数，否则使用默认预设）
+            presets_service = get_model_presets_service()
+            config = presets_service.get_active_config(
                 provider=selected_provider,
                 api_key=api_key or request.api_key,
                 base_url=base_url or request.base_url,
-                model_name=model_name or request.model_name,
+                model_name=model_name or request.model_name
+            )
+
+            if not config:
+                return ChatGenerationResponse(
+                    success=False,
+                    nodes=[],
+                    edges=[],
+                    mermaid_code="",
+                    message="No AI configuration found. Please configure AI model in settings or provide API key."
+                )
+
+            vision_service = create_vision_service(
+                provider=config["provider"],
+                api_key=config["api_key"],
+                base_url=config.get("base_url"),
+                model_name=config.get("model_name"),
             )
 
             prompt_request = request.model_copy(update={"diagram_type": effective_diagram_type})

@@ -66,14 +66,22 @@ export function ExcalidrawUploader() {
             await new Promise(resolve => setTimeout(resolve, 0));
           } else if (chunk.type === "complete") {
             setProgress("Done!");
+          } else if (chunk.type === "error") {
+            // 处理流式错误
+            const errorMsg = chunk.message || "Stream generation failed";
+            const errorDetails = chunk.details ? `\n\n详细信息:\n${JSON.stringify(chunk.details, null, 2)}` : '';
+            throw new Error(errorMsg + errorDetails);
           }
         }
 
         toast.success(`Successfully streamed ${elements.length} elements to Excalidraw!`);
       } catch (err: any) {
         console.error("Upload error:", err);
-        setError(err.message || "识别失败");
-        toast.error(err.message || "Recognition failed, please try again");
+        const errorMessage = err.message || "识别失败";
+        const errorStack = err.stack ? `\n\n堆栈跟踪:\n${err.stack}` : '';
+        const fullError = errorMessage + errorStack;
+        setError(fullError);
+        toast.error("识别失败，请查看详细错误信息");
       } finally {
         setUploading(false);
         setTimeout(() => {
@@ -118,6 +126,8 @@ export function ExcalidrawUploader() {
       if (files && files[0]) {
         handleFile(files[0]);
       }
+      // 重置input value，确保可以重新上传同一个文件
+      e.target.value = '';
     },
     [handleFile]
   );
@@ -212,16 +222,18 @@ export function ExcalidrawUploader() {
       {/* 错误提示 */}
       {error && (
         <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950">
-          <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
-          <div className="flex-1">
+          <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-red-900 dark:text-red-100">
               Recognition Failed
             </p>
-            <p className="mt-1 text-xs text-red-700 dark:text-red-300">{error}</p>
+            <pre className="mt-2 text-xs text-red-700 dark:text-red-300 whitespace-pre-wrap break-words font-mono bg-red-100 dark:bg-red-900/30 p-2 rounded max-h-60 overflow-y-auto">
+{error}
+            </pre>
           </div>
           <button
             onClick={() => setError(null)}
-            className="text-red-600 hover:text-red-800 dark:text-red-400"
+            className="text-red-600 hover:text-red-800 dark:text-red-400 flex-shrink-0"
           >
             <X className="h-4 w-4" />
           </button>
