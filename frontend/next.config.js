@@ -2,7 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   async rewrites() {
-    const origin = process.env.BACKEND_ORIGIN || 'http://localhost:8000';
+    const origin = process.env.BACKEND_ORIGIN || 'http://localhost:8003';
     return [
       {
         source: '/api/:path*',

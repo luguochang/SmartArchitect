@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import ScriptGenerator from "./ScriptGenerator";
 import ScriptEditor from "./ScriptEditor";
 import type { ScriptContent, ScriptDuration } from "@/types/script";
+import { API_ENDPOINTS } from "@/lib/api-config";
 
 export default function ExportMenu() {
   const { nodes, edges, mermaidCode, modelConfig } = useArchitectStore();
@@ -26,7 +27,7 @@ export default function ExportMenu() {
     setExportType("ppt");
 
     try {
-      const response = await fetch("/api/export/ppt", {
+      const response = await fetch(API_ENDPOINTS.exportPPT, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -70,7 +71,7 @@ export default function ExportMenu() {
     setExportType("slidev");
 
     try {
-      const response = await fetch("/api/export/slidev", {
+      const response = await fetch(API_ENDPOINTS.exportSlidev, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

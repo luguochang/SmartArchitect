@@ -28,13 +28,11 @@ import { FrameNode } from "./nodes/FrameNode";
 import { LayerFrameNode } from "./nodes/LayerFrameNode";
 import { GlowEdge } from "./edges/GlowEdge";
 import ExportMenu from "./ExportMenu";
-import { Network, Sparkles, ArrowDown, ArrowRight, ArrowUp, ArrowLeft, Github, ImageIcon } from "lucide-react";
+import { Network, Sparkles, ArrowDown, ArrowRight, ArrowUp, ArrowLeft, Github } from "lucide-react";
 import ExcalidrawBoard from "./ExcalidrawBoard";
 import { getLayoutedElements, estimateNodeSize, LayoutOptions } from "@/lib/utils/autoLayout";
 import { useState } from "react";
-import { ImageConversionModal } from "./ImageConversionModal";
 import { toast } from "sonner";
-import type { ReactFlowDiagram } from "@/lib/utils/imageConversion";
 
 type LayoutDirection = "TB" | "LR" | "BT" | "RL";
 
@@ -42,7 +40,6 @@ function ArchitectCanvasInner() {
   const { nodes, edges, onNodesChange, onEdgesChange, setEdges, setNodes, diagramType } = useArchitectStore();
   const { fitView } = useReactFlow();
   const [layoutDirection, setLayoutDirection] = useState<LayoutDirection>("LR"); // 默认左到右
-  const [showImportModal, setShowImportModal] = useState(false);
 
   // 监听流程图导入事件
   useEffect(() => {
@@ -182,24 +179,8 @@ function ArchitectCanvasInner() {
   // 处理边的点击事件 - 提供额外的交互反馈
   const handleEdgeClick = useCallback((event: React.MouseEvent, edge: Edge) => {
     console.log("Edge clicked:", edge.id);
-    // 边会自动被选中，用户可以按 Delete 删除
+    // 边会自动被选中,用户可以按 Delete 删除
   }, []);
-
-  // 处理图片导入成功
-  const handleImportSuccess = useCallback((result: ReactFlowDiagram) => {
-    console.log("[ArchitectCanvas] Import success, nodes:", result.nodes.length, "edges:", result.edges.length);
-
-    // 更新节点和边
-    setNodes(result.nodes);
-    setEdges(result.edges);
-
-    // 等待渲染完成后自动布局
-    setTimeout(() => {
-      fitView({ padding: 0.2, duration: 400 });
-    }, 100);
-
-    toast.success(`Imported ${result.nodes.length} nodes and ${result.edges.length} edges to canvas!`);
-  }, [setNodes, setEdges, fitView]);
 
   return (
     <div className="relative h-full w-full">
@@ -248,16 +229,6 @@ function ArchitectCanvasInner() {
 
         {/* 工具栏 */}
         <Panel position="top-right" className="flex gap-2">
-          {/* Import from Image 按钮 */}
-          <button
-            onClick={() => setShowImportModal(true)}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-md transition-colors"
-            title="Import diagram from image"
-          >
-            <ImageIcon className="h-4 w-4" />
-            Import from Image
-          </button>
-
           {/* 布局方向选择器 - 只在 flow 模式显示 */}
           {diagramType === "flow" && (
             <>
@@ -322,14 +293,6 @@ function ArchitectCanvasInner() {
           <ExportMenu />
         </Panel>
       </ReactFlow>
-
-      {/* Image Conversion Modal */}
-      <ImageConversionModal
-        isOpen={showImportModal}
-        onClose={() => setShowImportModal(false)}
-        mode="reactflow"
-        onSuccess={handleImportSuccess}
-      />
     </div>
   );
 }

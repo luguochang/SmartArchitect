@@ -22,8 +22,6 @@ import { useArchitectStore, PromptScenario, DiagramType } from "@/lib/store/useA
 import { toast } from "sonner";
 import { SelectedDetailsPanel } from "./SelectedDetailsPanel";
 import { FlowchartUploader } from "./FlowchartUploader";
-import { DocumentUploader } from "./DocumentUploader";
-import { ImageUploader } from "./ImageUploader";
 import { ExcalidrawUploader } from "./ExcalidrawUploader";
 
 const CATEGORY_ICONS = {
@@ -185,10 +183,8 @@ export function AiControlPanel() {
   const [selectedScenario, setSelectedScenario] = useState<string | null>(null);
   const [scenarioInput, setScenarioInput] = useState("");
   const [showUploader, setShowUploader] = useState(false);
-  const [showDocUploader, setShowDocUploader] = useState(false);
-  const [showImageUploader, setShowImageUploader] = useState(false);
   const [showExcalidrawUploader, setShowExcalidrawUploader] = useState(false);
-  const [showTemplates, setShowTemplates] = useState(false); // Templates 默认折叠
+  const [showTemplates, setShowTemplates] = useState(true); // Templates 默认展开
   const [diagramType, setDiagramType] = useState<DiagramType>("flow");
   const [templateFilter, setTemplateFilter] = useState<"flow" | "architecture">("flow");
 
@@ -301,12 +297,10 @@ export function AiControlPanel() {
           {/* Row 1: Config + Main Actions */}
           <div className="flex items-center gap-1.5 flex-wrap">
           {/* Back to Chat Button - Only show when any uploader is active */}
-          {(showUploader || showImageUploader || showDocUploader || showExcalidrawUploader) && (
+          {(showUploader || showExcalidrawUploader) && (
             <button
               onClick={() => {
                 setShowUploader(false);
-                setShowImageUploader(false);
-                setShowDocUploader(false);
                 setShowExcalidrawUploader(false);
               }}
               className="flex-shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium shadow-sm transition bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:from-emerald-600 hover:to-teal-600"
@@ -316,94 +310,41 @@ export function AiControlPanel() {
               Back to Chat
             </button>
           )}
-
-          {/* Upload Buttons - Only show in ReactFlow mode */}
-          {canvasMode === "reactflow" && (
-            <>
-              <button
-                onClick={() => {
-                  // Toggle off if already active, otherwise activate and deactivate others
-                  if (showUploader) {
-                    setShowUploader(false);
-                  } else {
-                    setShowUploader(true);
-                    setShowDocUploader(false);
-                    setShowImageUploader(false);
-                  }
-                }}
-                className={`flex-shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium shadow-sm transition ${
-                  showUploader
-                    ? "bg-indigo-500 text-white hover:bg-indigo-600"
-                    : "bg-white text-slate-700 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                }`}
-              >
-                <Upload className="mr-1 inline-block h-3.5 w-3.5" />
-                Flowchart
-              </button>
-              <button
-                onClick={() => {
-                  // Toggle off if already active, otherwise activate and deactivate others
-                  if (showImageUploader) {
-                    setShowImageUploader(false);
-                  } else {
-                    setShowImageUploader(true);
-                    setShowUploader(false);
-                    setShowDocUploader(false);
-                  }
-                }}
-                className={`flex-shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium shadow-sm transition ${
-                  showImageUploader
-                    ? "bg-indigo-500 text-white hover:bg-indigo-600"
-                    : "bg-white text-slate-700 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                }`}
-              >
-                <Grid3x3 className="mr-1 inline-block h-3.5 w-3.5" />
-                Architecture
-              </button>
-              <button
-                onClick={() => {
-                  // Toggle off if already active, otherwise activate and deactivate others
-                  if (showDocUploader) {
-                    setShowDocUploader(false);
-                  } else {
-                    setShowDocUploader(true);
-                    setShowUploader(false);
-                    setShowImageUploader(false);
-                  }
-                }}
-                className={`flex-shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium shadow-sm transition ${
-                  showDocUploader
-                    ? "bg-indigo-500 text-white hover:bg-indigo-600"
-                    : "bg-white text-slate-700 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                }`}
-              >
-                <FileText className="mr-1 inline-block h-3.5 w-3.5" />
-                Docs
-              </button>
-            </>
-          )}
-
-          {/* Upload Button - Only show in Excalidraw mode */}
-          {canvasMode === "excalidraw" && (
-            <button
-              onClick={() => {
-                if (showExcalidrawUploader) {
-                  setShowExcalidrawUploader(false);
-                } else {
-                  setShowExcalidrawUploader(true);
-                }
-              }}
-              className={`flex-shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium shadow-sm transition ${
-                showExcalidrawUploader
-                  ? "bg-purple-500 text-white hover:bg-purple-600"
-                  : "bg-white text-slate-700 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-              }`}
-            >
-              <Upload className="mr-1 inline-block h-3.5 w-3.5" />
-              Upload Image
-            </button>
-          )}
         </div>
+
+        {/* 图片上传按钮卡片 - 只在未激活上传界面时显示 */}
+        {!showUploader && !showExcalidrawUploader && (
+          <button
+            onClick={() => {
+              if (canvasMode === "excalidraw") {
+                setShowExcalidrawUploader(true);
+              } else {
+                setShowUploader(true);
+              }
+            }}
+            className="w-full rounded-lg bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 p-3 border border-blue-100 dark:border-blue-900/50 hover:from-blue-100 hover:to-indigo-100 dark:hover:from-blue-950/50 dark:hover:to-indigo-950/50 transition-all text-left"
+          >
+            <div className="flex items-start gap-2">
+              <Upload className="h-4 w-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <p className="text-xs font-semibold text-blue-900 dark:text-blue-100">
+                    💡 图片上传
+                  </p>
+                  <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-gradient-to-r from-purple-500 to-pink-500 text-white">
+                    ⭐ 特色
+                  </span>
+                </div>
+                <p className="text-xs text-blue-700 dark:text-blue-300 leading-relaxed">
+                  {canvasMode === "reactflow"
+                    ? "上传流程图/架构图截图，AI自动识别转为可编辑节点"
+                    : "上传任意图片，AI实时流式转换为Excalidraw手绘风格"
+                  }
+                </p>
+              </div>
+            </div>
+          </button>
+        )}
         </div>
       </div>
 
@@ -428,37 +369,13 @@ export function AiControlPanel() {
           <section className="flex min-h-0 flex-1 flex-col rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 p-4 overflow-y-auto">
             <div className="mb-4">
               <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
-                📸 流程图截图识别
+                📸 图片识别
               </h3>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                上传流程图截图，AI 将自动识别并转换为可编辑的节点结构。支持手绘图、Visio、ProcessOn 等各类流程图。
+                上传流程图或架构图截图，AI 自动识别转换为可编辑的节点结构。支持手绘图、Visio、ProcessOn、Draw.io 等各类图表。
               </p>
             </div>
             <FlowchartUploader />
-          </section>
-        ) : showImageUploader ? (
-          <section className="flex min-h-0 flex-1 flex-col rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 p-4 overflow-y-auto">
-            <div className="mb-4">
-              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
-                🏗️ 架构图 AI 分析
-              </h3>
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                上传系统架构图，AI 将分析组件、服务、数据流等架构要素。支持微服务架构、系统拓扑、部署架构等。
-              </p>
-            </div>
-            <ImageUploader />
-          </section>
-        ) : showDocUploader ? (
-          <section className="flex min-h-0 flex-1 flex-col rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 p-4 overflow-y-auto">
-            <div className="mb-4">
-              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
-                📚 RAG 知识库文档
-              </h3>
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                上传技术文档、API 手册、设计规范等，构建知识库以增强 AI 生成效果。支持 PDF、Markdown、Word 格式。
-              </p>
-            </div>
-            <DocumentUploader />
           </section>
         ) : (
           <>

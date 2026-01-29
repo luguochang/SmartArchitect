@@ -119,29 +119,51 @@ async def generate_flowchart_stream(request: ChatGenerationRequest):
                     accumulated = ""
                     logger.info(f"[STREAM] Creating streaming request to {selected_provider} with model {vision_service.model_name}")
 
-                    stream = vision_service.client.chat.completions.create(
-                        model=vision_service.model_name,
-                        messages=[{"role": "user", "content": prompt}],
-                        max_tokens=4096,
-                        temperature=0.2,
-                        stream=True,
-                    )
+                    # 检测是否是 Claude 模型
+                    is_claude_model = selected_provider == "custom" and vision_service.model_name and "claude" in vision_service.model_name.lower()
+
+                    if is_claude_model:
+                        # 使用 Anthropic streaming API
+                        logger.info("[STREAM] Using Anthropic streaming API")
+                        stream = vision_service.client.messages.stream(
+                            model=vision_service.model_name,
+                            messages=[{"role": "user", "content": prompt}],
+                            max_tokens=4096,
+                            temperature=0.2,
+                        )
+                    else:
+                        # 使用 OpenAI streaming API
+                        stream = vision_service.client.chat.completions.create(
+                            model=vision_service.model_name,
+                            messages=[{"role": "user", "content": prompt}],
+                            max_tokens=4096,
+                            temperature=0.2,
+                            stream=True,
+                        )
                 except Exception as init_error:
                     logger.error(f"[STREAM] Failed to initialize streaming: {init_error}", exc_info=True)
                     yield f"data: [ERROR] Failed to initialize AI streaming: {str(init_error)}\n\n"
                     return
 
                 try:
-                    for chunk in stream:
-                        # Some providers may emit empty heartbeats; guard against missing choices
-                        if not getattr(chunk, "choices", None):
-                            continue
-                        delta = chunk.choices[0].delta.content if chunk.choices[0].delta else None
-                        if not delta:
-                            continue
-                        text = "".join(delta)
-                        accumulated += text
-                        yield f"data: [TOKEN] {text}\n\n"
+                    if is_claude_model:
+                        # Anthropic streaming API使用context manager
+                        with stream as s:
+                            for text in s.text_stream:
+                                accumulated += text
+                                yield f"data: [TOKEN] {text}\n\n"
+                    else:
+                        # OpenAI streaming API
+                        for chunk in stream:
+                            # Some providers may emit empty heartbeats; guard against missing choices
+                            if not getattr(chunk, "choices", None):
+                                continue
+                            delta = chunk.choices[0].delta.content if chunk.choices[0].delta else None
+                            if not delta:
+                                continue
+                            text = "".join(delta)
+                            accumulated += text
+                            yield f"data: [TOKEN] {text}\n\n"
                 except Exception as stream_error:
                     logger.error(f"[STREAM] Error during streaming: {stream_error}", exc_info=True)
                     yield f"data: [ERROR] Streaming interrupted: {str(stream_error)}\n\n"

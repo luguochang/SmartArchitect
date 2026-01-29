@@ -25,6 +25,7 @@ from app.models.schemas import (
 from app.services.ppt_exporter import create_ppt_exporter
 from app.services.slidev_exporter import create_slidev_exporter
 from app.services.ai_vision import create_vision_service
+from app.services.model_presets import get_model_presets_service
 from app.services.speech_script_rag import get_rag_speech_script_generator
 from app.services.script_editor import get_script_editor_service
 
@@ -120,10 +121,25 @@ async def generate_script(
     try:
         logger.info(f"Generating {request.duration} speech script")
 
-        # Create AI vision service
-        vision_service = create_vision_service(
+        # 获取有效配置
+        presets_service = get_model_presets_service()
+        config = presets_service.get_active_config(
             provider=provider,
             api_key=api_key
+        )
+
+        if not config:
+            raise HTTPException(
+                status_code=400,
+                detail="No AI configuration found. Please configure AI model in settings or provide API key."
+            )
+
+        # Create AI vision service
+        vision_service = create_vision_service(
+            provider=config["provider"],
+            api_key=config["api_key"],
+            base_url=config.get("base_url"),
+            model_name=config.get("model_name")
         )
 
         # Generate script
@@ -222,16 +238,31 @@ async def generate_script_stream(
             """Async generator for SSE events"""
             try:
                 # Phase 1: 发送开始事件
-                yield f"data: {json.dumps({'type': 'GENERATION_START', 'data': {'message': 'AI正在创作演讲稿...'}}, ensure_ascii=False)}\n\n"
+                start_data = {'type': 'GENERATION_START', 'data': {'message': 'AI正在创作演讲稿...'}}
+                yield f"data: {json.dumps(start_data, ensure_ascii=False)}\n\n"
                 logger.info("[SCRIPT-STREAM] Sent GENERATION_START event")
 
-                # Create AI service directly for streaming
-                from app.services.ai_vision import create_vision_service
-                ai_service = create_vision_service(
+                # 获取有效配置
+                presets_service = get_model_presets_service()
+                config = presets_service.get_active_config(
                     provider=provider,
                     api_key=api_key,
                     base_url=base_url,
                     model_name=model_name
+                )
+
+                if not config:
+                    error_data = {'type': 'ERROR', 'data': {'message': 'No AI configuration found. Please configure AI model in settings.'}}
+                    yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
+                    return
+
+                # Create AI service for streaming
+                from app.services.ai_vision import create_vision_service
+                ai_service = create_vision_service(
+                    provider=config["provider"],
+                    api_key=config["api_key"],
+                    base_url=config.get("base_url"),
+                    model_name=config.get("model_name")
                 )
 
                 # Build prompt
@@ -295,7 +326,8 @@ async def generate_script_stream(
                         text = delta
                         accumulated += text
                         # 立即yield - 不要任何延迟
-                        yield f"data: {json.dumps({'type': 'TOKEN', 'data': {'token': text}}, ensure_ascii=False)}\n\n"
+                        token_data = {'type': 'TOKEN', 'data': {'token': text}}
+                        yield f"data: {json.dumps(token_data, ensure_ascii=False)}\n\n"
 
                     # 完成后发送COMPLETE事件
                     logger.info(f"[SCRIPT-STREAM] Streaming completed, total length: {len(accumulated)}")
@@ -304,14 +336,41 @@ async def generate_script_stream(
                         "body": accumulated[len(accumulated)//3:len(accumulated)*2//3] if accumulated else "",
                         "conclusion": accumulated[len(accumulated)*2//3:] if accumulated else ""
                     }
-                    yield f"data: {json.dumps({'type': 'COMPLETE', 'data': {'script': {'intro': sections['intro'], 'body': sections['body'], 'conclusion': sections['conclusion'], 'full_text': accumulated}, 'word_count': len(accumulated), 'estimated_seconds': int(len(accumulated) / 2.5)}}, ensure_ascii=False)}\n\n"
+                    complete_data = {
+                        'type': 'COMPLETE',
+                        'data': {
+                            'script': {
+                                'intro': sections['intro'],
+                                'body': sections['body'],
+                                'conclusion': sections['conclusion'],
+                                'full_text': accumulated
+                            },
+                            'word_count': len(accumulated),
+                            'estimated_seconds': int(len(accumulated) / 2.5)
+                        }
+                    }
+                    yield f"data: {json.dumps(complete_data, ensure_ascii=False)}\n\n"
                 else:
                     # 降级到非流式
                     logger.info(f"[SCRIPT-STREAM] Provider {provider} doesn't support streaming, using non-streaming")
                     result = await ai_service.generate_speech_script(request.nodes, request.edges, request.duration)
-                    yield f"data: {json.dumps({'type': 'TOKEN', 'data': {'token': result}}, ensure_ascii=False)}\n\n"
+                    token_data = {'type': 'TOKEN', 'data': {'token': result}}
+                    yield f"data: {json.dumps(token_data, ensure_ascii=False)}\n\n"
                     sections = {"intro": result[:len(result)//3], "body": result[len(result)//3:len(result)*2//3], "conclusion": result[len(result)*2//3:]}
-                    yield f"data: {json.dumps({'type': 'COMPLETE', 'data': {'script': {'intro': sections['intro'], 'body': sections['body'], 'conclusion': sections['conclusion'], 'full_text': result}, 'word_count': len(result), 'estimated_seconds': int(len(result) / 2.5)}}, ensure_ascii=False)}\n\n"
+                    complete_data = {
+                        'type': 'COMPLETE',
+                        'data': {
+                            'script': {
+                                'intro': sections['intro'],
+                                'body': sections['body'],
+                                'conclusion': sections['conclusion'],
+                                'full_text': result
+                            },
+                            'word_count': len(result),
+                            'estimated_seconds': int(len(result) / 2.5)
+                        }
+                    }
+                    yield f"data: {json.dumps(complete_data, ensure_ascii=False)}\n\n"
 
             except Exception as e:
                 logger.error(f"[SCRIPT-STREAM] Stream generation error: {e}", exc_info=True)

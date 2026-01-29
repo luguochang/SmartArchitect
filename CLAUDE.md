@@ -23,8 +23,8 @@ pip install -r requirements.txt
 
 # Run development server
 python -m app.main
-# Server runs on http://localhost:8000
-# API docs available at http://localhost:8000/docs
+# Server runs on http://localhost:8003
+# API docs available at http://localhost:8003/docs
 
 # Run all tests
 "venv\Scripts\python.exe" -m pytest tests/ -v --tb=short
@@ -351,7 +351,7 @@ SILICONFLOW_BASE_URL = "https://api.siliconflow.cn/v1"
 ```
 
 **Frontend Port:** 3000 (configurable, auto-discovery in production)
-**Backend Port:** 8000
+**Backend Port:** 8003
 
 ## Phase History & Features
 
@@ -479,7 +479,7 @@ async def generate_with_streaming(self, user_input: str):
 **API Communication:**
 ```typescript
 // Fetch pattern used throughout
-const response = await fetch('http://localhost:8000/api/endpoint', {
+const response = await fetch('http://localhost:8003/api/endpoint', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify(data)
@@ -573,4 +573,4 @@ The application uses a sophisticated CSS system to style React Flow nodes. Key p
 - `SYSTEM_REVIEW.md` - Comprehensive production readiness assessment
 - `TEST_COVERAGE_REPORT.md` - Detailed test results and recommendations
 - `README.md` - Project overview and quick start (Chinese)
-- `http://localhost:8000/docs` - Interactive OpenAPI documentation (when backend running)
+- `http://localhost:8003/docs` - Interactive OpenAPI documentation (when backend running)

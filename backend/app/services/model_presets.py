@@ -29,6 +29,7 @@ class ModelPresetsService:
         self.config_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), config_file)
         self.presets: Dict[str, ModelPreset] = {}
         self._load_presets()
+        self._ensure_default_preset()
 
     def _load_presets(self):
         """从 JSON 文件加载预设配置"""
@@ -210,6 +211,86 @@ class ModelPresetsService:
         for preset in self.presets.values():
             if preset.is_default:
                 return preset
+        return None
+
+    def _ensure_default_preset(self):
+        """确保系统有默认配置，如果没有则创建"""
+        from app.core.config import settings
+
+        # 检查是否已有默认配置
+        if self.get_default_preset():
+            logger.info("Default preset already exists")
+            return
+
+        # 如果没有任何配置，创建默认配置
+        if not self.presets:
+            logger.info("No presets found, creating default custom preset")
+
+            # 从环境变量或配置读取默认值
+            default_api_key = settings.SILICONFLOW_API_KEY or ""
+            default_base_url = settings.SILICONFLOW_BASE_URL or "https://api.siliconflow.cn/v1"
+            default_model_name = "Qwen/Qwen2.5-14B-Instruct"
+
+            # 创建默认配置
+            try:
+                now = datetime.now().isoformat()
+                default_preset = ModelPreset(
+                    id="default-custom",
+                    name="Default Custom",
+                    provider="custom",
+                    api_key=default_api_key,
+                    model_name=default_model_name,
+                    base_url=default_base_url,
+                    is_default=True,
+                    created_at=now,
+                    updated_at=now
+                )
+
+                self.presets["default-custom"] = default_preset
+                self._save_presets()
+                logger.info(f"Created default preset: {default_preset.name}")
+            except Exception as e:
+                logger.error(f"Failed to create default preset: {e}")
+
+    def get_active_config(self,
+                         provider: Optional[str] = None,
+                         api_key: Optional[str] = None,
+                         base_url: Optional[str] = None,
+                         model_name: Optional[str] = None) -> Optional[dict]:
+        """获取有效的 AI 配置
+
+        优先级：
+        1. 如果提供了完整的参数，直接使用
+        2. 否则使用默认预设配置
+
+        Args:
+            provider: AI 提供商
+            api_key: API 密钥
+            base_url: API 基础 URL
+            model_name: 模型名称
+
+        Returns:
+            包含配置信息的字典，如果没有有效配置则返回 None
+        """
+        # 如果提供了 api_key，优先使用传入的参数
+        if api_key:
+            return {
+                "provider": provider or "custom",
+                "api_key": api_key,
+                "base_url": base_url,
+                "model_name": model_name
+            }
+
+        # 否则尝试使用默认预设
+        default_preset = self.get_default_preset()
+        if default_preset:
+            return {
+                "provider": default_preset.provider,
+                "api_key": default_preset.api_key,
+                "base_url": default_preset.base_url,
+                "model_name": default_preset.model_name
+            }
+
         return None
 
 

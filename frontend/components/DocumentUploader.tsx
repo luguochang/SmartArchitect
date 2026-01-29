@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { FileText, Upload, CheckCircle, Trash2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { API_ENDPOINTS, API_BASE_URL } from "@/lib/api-config";
 
 export function DocumentUploader() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -14,7 +15,7 @@ export function DocumentUploader() {
   const loadDocuments = useCallback(async () => {
     setIsLoadingDocs(true);
     try {
-      const response = await fetch("/api/rag/documents");
+      const response = await fetch(`${API_BASE_URL}/api/rag/documents`);
       if (response.ok) {
         const data = await response.json();
         setDocuments(data.documents || []);
@@ -51,7 +52,7 @@ export function DocumentUploader() {
       const formData = new FormData();
       formData.append("file", selectedFile);
 
-      const response = await fetch("/api/rag/upload", {
+      const response = await fetch(API_ENDPOINTS.ragUpload, {
         method: "POST",
         body: formData,
       });
@@ -83,7 +84,7 @@ export function DocumentUploader() {
 
   const handleDelete = useCallback(async (documentId: string) => {
     try {
-      const response = await fetch(`/api/rag/documents/${documentId}`, {
+      const response = await fetch(`${API_BASE_URL}/api/rag/documents/${documentId}`, {
         method: "DELETE",
       });
 
