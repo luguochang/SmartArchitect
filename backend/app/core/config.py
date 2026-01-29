@@ -14,8 +14,8 @@ class Settings(BaseSettings):
     # 支持从环境变量读取多个域名（用逗号分隔）
     CORS_ORIGINS: List[str] = os.getenv(
         "CORS_ORIGINS",
-        "http://localhost:3000,http://127.0.0.1:3000"
-    ).split(",") if os.getenv("CORS_ORIGINS") else ["http://localhost:3000", "http://127.0.0.1:3000"]
+        "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001"
+    ).split(",") if os.getenv("CORS_ORIGINS") else ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001", "http://127.0.0.1:3001"]
 
     # Logging Configuration
     LOG_LEVEL: str = "INFO"              # 日志级别 (DEBUG, INFO, WARNING, ERROR, CRITICAL)

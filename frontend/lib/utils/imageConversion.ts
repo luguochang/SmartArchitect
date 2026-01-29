@@ -226,3 +226,141 @@ export function formatFileSize(bytes: number): string {
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 }
+
+/**
+ * 流式图片转Excalidraw格式
+ * 支持实时接收元素并更新画板
+ */
+export async function* convertImageToExcalidrawStreaming(
+  file: File,
+  onProgress?: (message: string) => void
+): AsyncGenerator<{
+  type: "start_streaming" | "element" | "complete";
+  total?: number;
+  appState?: any;
+  element?: ExcalidrawElement;
+  message?: string;
+}> {
+  // 转换为base64
+  const base64Image = await fileToBase64(file);
+
+  if (onProgress) {
+    onProgress("Uploading image...");
+  }
+
+  // 从localStorage获取默认配置
+  const defaultProvider = localStorage.getItem("selectedProvider") || "custom";
+  const modelConfig = localStorage.getItem("modelConfig");
+  let config: any = {};
+
+  if (modelConfig) {
+    try {
+      config = JSON.parse(modelConfig);
+    } catch (e) {
+      console.error("Failed to parse model config:", e);
+    }
+  }
+
+  // 构造请求
+  const requestData = {
+    image_data: base64Image,
+    prompt: "Convert this diagram to Excalidraw format. Preserve layout and all connections.",
+    provider: config.provider || defaultProvider,
+    api_key: config.apiKey,
+    base_url: config.baseUrl,
+    model_name: config.modelName,
+    width: 1400,
+    height: 900,
+  };
+
+  // 调用流式API
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const response = await fetch(`${apiUrl}/api/vision/generate-excalidraw-stream`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(requestData),
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
+  if (!response.body) {
+    throw new Error("Response body is null");
+  }
+
+  // 解析SSE流
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let elementCount = 0;
+  let totalElements = 0;
+  let appState: any = null;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || ""; // 保留最后一个不完整的行
+
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          try {
+            const data = JSON.parse(line.slice(6));
+
+            if (data.type === "init") {
+              if (onProgress) {
+                onProgress(data.message || "Starting...");
+              }
+            } else if (data.type === "progress") {
+              if (onProgress) {
+                onProgress(data.message || "Processing...");
+              }
+            } else if (data.type === "element") {
+              // 第一个元素时发送 start_streaming
+              if (elementCount === 0 && !appState) {
+                appState = { viewBackgroundColor: "#ffffff" };
+                // 预估总元素数（后端会在完成时告诉我们实际数量）
+                totalElements = 50; // 暂时估算
+                yield {
+                  type: "start_streaming",
+                  total: totalElements,
+                  appState,
+                };
+              }
+
+              elementCount++;
+              if (onProgress) {
+                onProgress(`Processing element ${elementCount}...`);
+              }
+
+              yield {
+                type: "element",
+                element: data.element,
+              };
+            } else if (data.type === "complete") {
+              if (onProgress) {
+                onProgress(data.message || "Done!");
+              }
+
+              yield {
+                type: "complete",
+                message: data.message,
+              };
+            }
+          } catch (e) {
+            console.error("Failed to parse SSE data:", e, line);
+          }
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
