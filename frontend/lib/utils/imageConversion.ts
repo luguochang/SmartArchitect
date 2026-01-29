@@ -3,6 +3,8 @@
  * 支持图片转Excalidraw和React Flow格式
  */
 
+import { API_BASE_URL } from "@/lib/api-config";
+
 export interface ExcalidrawElement {
   id: string;
   type: string;
@@ -102,8 +104,7 @@ export async function convertImageToExcalidraw(
   };
 
   // 调用API
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-  const response = await fetch(`${apiUrl}/api/vision/generate-excalidraw`, {
+  const response = await fetch(`${API_BASE_URL}/api/vision/generate-excalidraw`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -165,8 +166,7 @@ export async function convertImageToReactFlow(
   };
 
   // 调用API
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-  const response = await fetch(`${apiUrl}/api/vision/generate-reactflow`, {
+  const response = await fetch(`${API_BASE_URL}/api/vision/generate-reactflow`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -235,11 +235,12 @@ export async function* convertImageToExcalidrawStreaming(
   file: File,
   onProgress?: (message: string) => void
 ): AsyncGenerator<{
-  type: "start_streaming" | "element" | "complete";
+  type: "start_streaming" | "element" | "complete" | "error";
   total?: number;
   appState?: any;
   element?: ExcalidrawElement;
   message?: string;
+  details?: any;
 }> {
   // 转换为base64
   const base64Image = await fileToBase64(file);
@@ -274,8 +275,7 @@ export async function* convertImageToExcalidrawStreaming(
   };
 
   // 调用流式API
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-  const response = await fetch(`${apiUrl}/api/vision/generate-excalidraw-stream`, {
+  const response = await fetch(`${API_BASE_URL}/api/vision/generate-excalidraw-stream`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -284,7 +284,10 @@ export async function* convertImageToExcalidrawStreaming(
   });
 
   if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`);
+    const errorData = await response.json().catch(() => ({}));
+    const errorMessage = errorData.detail || errorData.message || `HTTP ${response.status}: ${response.statusText}`;
+    const errorDetails = JSON.stringify(errorData, null, 2);
+    throw new Error(`${errorMessage}\n\n详细信息:\n${errorDetails}`);
   }
 
   if (!response.body) {
@@ -317,6 +320,17 @@ export async function* convertImageToExcalidrawStreaming(
               if (onProgress) {
                 onProgress(data.message || "Starting...");
               }
+            } else if (data.type === "error") {
+              // 处理流式错误
+              if (onProgress) {
+                onProgress("Error occurred");
+              }
+              yield {
+                type: "error",
+                message: data.message || "Stream error occurred",
+                details: data.details || data,
+              };
+              return; // 终止流
             } else if (data.type === "progress") {
               if (onProgress) {
                 onProgress(data.message || "Processing...");

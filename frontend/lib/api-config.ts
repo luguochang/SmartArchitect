@@ -4,7 +4,7 @@
  */
 
 // 从环境变量获取后端 URL，如果没有则使用默认值
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8003';
 
 // API 端点
 export const API_ENDPOINTS = {

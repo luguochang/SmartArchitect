@@ -451,6 +451,9 @@ class VisionToReactFlowRequest(BaseModel):
     api_key: Optional[str] = Field(None, description="API key for the provider")
     base_url: Optional[str] = Field(None, description="Base URL for custom provider")
     model_name: Optional[str] = Field(None, description="Model name")
+    preserve_layout: bool = Field(True, description="Preserve original node positions")
+    fast_mode: bool = Field(True, description="Use fast mode (simplified prompt)")
+
 
 
 # Excalidraw element (simplified, compatible with Excalidraw JSON format)

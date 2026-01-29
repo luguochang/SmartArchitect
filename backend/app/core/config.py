@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     # API Configuration
     API_HOST: str = "0.0.0.0"
     # 支持 Railway/Render 的 PORT 环境变量
-    API_PORT: int = int(os.getenv("PORT", 8000))
+    API_PORT: int = int(os.getenv("PORT", 8003))
     API_RELOAD: bool = True
 
     # CORS Configuration

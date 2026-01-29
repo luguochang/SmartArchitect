@@ -191,8 +191,8 @@ npm run dev
 ### Access the Application
 
 - **Frontend**: [http://localhost:3000](http://localhost:3000)
-- **Backend API**: [http://localhost:8000](http://localhost:8000)
-- **API Documentation**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- **Backend API**: [http://localhost:8003](http://localhost:8003)
+- **API Documentation**: [http://localhost:8003/docs](http://localhost:8003/docs)
 
 ---
 
@@ -318,7 +318,7 @@ SmartArchitect provides 30+ REST API endpoints. Key endpoints include:
 - `POST /api/models/config` - Configure AI providers
 - `GET /api/models/config/{provider}` - Get provider configuration
 
-Full API documentation: [http://localhost:8000/docs](http://localhost:8000/docs)
+Full API documentation: [http://localhost:8003/docs](http://localhost:8003/docs)
 
 ---
 
@@ -408,7 +408,7 @@ npm start
 **Backend:**
 ```bash
 cd backend
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+uvicorn app.main:app --host 0.0.0.0 --port 8003
 ```
 
 ---
@@ -445,7 +445,7 @@ We welcome contributions! Please see our contributing guidelines:
 ## Troubleshooting
 
 ### Frontend won't connect to backend
-- Ensure backend is running on port 8000
+- Ensure backend is running on port 8003
 - Check CORS settings in `backend/app/core/config.py`
 - Clear browser cache and refresh
 
