@@ -64,6 +64,79 @@ npm run dev
 
 ---
 
+### 2. 流式转换函数缺失
+
+#### 问题描述
+前端启动后，使用 Excalidraw Uploader 或 Image Conversion Modal 时报错：
+```
+TypeError: convertImageToExcalidrawStreaming(...) is not a function or its return value is not async iterable
+```
+
+#### 根本原因
+`ExcalidrawUploader.tsx` 和 `ImageConversionModal.tsx` 导入了 `convertImageToExcalidrawStreaming` 函数，但该函数在 `lib/utils/imageConversion.ts` 中不存在。
+
+#### 解决方案
+
+**已修复** (Commit: 67785d0)
+- 添加了 `convertImageToExcalidrawStreaming` 异步生成器函数
+- 实现了 SSE (Server-Sent Events) 流式解析
+- 支持实时接收和渲染 Excalidraw 元素
+
+**函数签名**:
+```typescript
+async function* convertImageToExcalidrawStreaming(
+  file: File,
+  onProgress?: (message: string) => void
+): AsyncGenerator<{
+  type: "start_streaming" | "element" | "complete";
+  total?: number;
+  appState?: any;
+  element?: ExcalidrawElement;
+  message?: string;
+}>
+```
+
+---
+
+### 3. CORS 错误（端口 3001）
+
+#### 问题描述
+前端在端口 3001 运行时，调用后端 API 被 CORS 策略阻止：
+```
+Access to fetch at 'http://localhost:8000/api/excalidraw/generate-stream'
+from origin 'http://localhost:3001' has been blocked by CORS policy
+```
+
+#### 根本原因
+后端 CORS 配置 (`backend/app/core/config.py`) 只允许端口 3000，不包含 3001。
+
+#### 解决方案
+
+**已修复** (Commit: 67785d0)
+- 更新 CORS 配置，添加 `http://localhost:3001` 和 `http://127.0.0.1:3001`
+
+**配置位置**: `backend/app/core/config.py:17-18`
+```python
+CORS_ORIGINS: List[str] = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",  # 新增
+    "http://127.0.0.1:3001"   # 新增
+]
+```
+
+**注意**: 修改 CORS 配置后需要重启后端服务器：
+```bash
+# 杀掉旧进程
+taskkill //F //PID <backend_pid>
+
+# 重启后端
+cd backend
+venv/Scripts/python.exe -m app.main
+```
+
+---
+
 ### 2. 其他常见启动问题
 
 #### 端口占用
