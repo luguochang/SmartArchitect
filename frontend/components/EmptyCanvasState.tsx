@@ -12,7 +12,7 @@ export function EmptyCanvasState() {
             <Sparkles className="w-16 h-16 text-indigo-600 dark:text-indigo-400" />
           </div>
           <h1 className="text-4xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 dark:from-indigo-400 dark:to-purple-400 bg-clip-text text-transparent mb-3">
-            欢迎使用 SmartArchitect AI
+            欢迎使用 Archboard AI
           </h1>
           <p className="text-lg text-slate-600 dark:text-slate-400">
             智能架构设计，让流程图创作变得简单有趣
