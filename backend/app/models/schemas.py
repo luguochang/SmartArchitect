@@ -300,6 +300,7 @@ class ChatGenerationRequest(BaseModel):
     template_id: Optional[str] = None
     provider: Optional[Literal["gemini", "openai", "claude", "siliconflow", "custom"]] = "gemini"
     diagram_type: Literal["flow", "architecture"] = "flow"
+    architecture_type: Optional[Literal["layered", "business", "technical", "deployment", "domain"]] = "layered"
     api_key: Optional[str] = None
     base_url: Optional[str] = None
     model_name: Optional[str] = None

@@ -18,7 +18,7 @@ import {
   ChevronDown,
   ArrowLeft,
 } from "lucide-react";
-import { useArchitectStore, PromptScenario, DiagramType } from "@/lib/store/useArchitectStore";
+import { useArchitectStore, PromptScenario, DiagramType, ArchitectureType } from "@/lib/store/useArchitectStore";
 import { toast } from "sonner";
 import { SelectedDetailsPanel } from "./SelectedDetailsPanel";
 import { FlowchartUploader } from "./FlowchartUploader";
@@ -169,6 +169,8 @@ export function AiControlPanel() {
     generateExcalidrawScene,
     generateExcalidrawSceneStream,
     canvasMode,
+    architectureType,
+    setArchitectureType,
     // Prompter
     promptScenarios,
     isExecutingPrompt,
@@ -449,6 +451,67 @@ export function AiControlPanel() {
                         </button>
                       </div>
                     </div>
+
+                    {/* Architecture Type Selector - Only show when Architecture is selected */}
+                    {templateFilter === "architecture" && (
+                      <div className="space-y-2">
+                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                          📐 Architecture Type
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            onClick={() => setArchitectureType("layered")}
+                            className={`px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                              architectureType === "layered"
+                                ? "bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-md"
+                                : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                            }`}
+                          >
+                            🏢 Layered
+                          </button>
+                          <button
+                            onClick={() => setArchitectureType("business")}
+                            className={`px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                              architectureType === "business"
+                                ? "bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-md"
+                                : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                            }`}
+                          >
+                            💼 Business
+                          </button>
+                          <button
+                            onClick={() => setArchitectureType("technical")}
+                            className={`px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                              architectureType === "technical"
+                                ? "bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-md"
+                                : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                            }`}
+                          >
+                            ⚙️ Technical
+                          </button>
+                          <button
+                            onClick={() => setArchitectureType("deployment")}
+                            className={`px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                              architectureType === "deployment"
+                                ? "bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-md"
+                                : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                            }`}
+                          >
+                            🚀 Deployment
+                          </button>
+                          <button
+                            onClick={() => setArchitectureType("domain")}
+                            className={`px-3 py-2 rounded-lg text-xs font-medium transition-all col-span-2 ${
+                              architectureType === "domain"
+                                ? "bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-md"
+                                : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                            }`}
+                          >
+                            🎯 Domain-Driven
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                     {/* ReactFlow Mode: Show Quick Prompts */}
                     <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto pr-1">

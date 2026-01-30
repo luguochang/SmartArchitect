@@ -41,8 +41,10 @@ import {
   Activity,
   Wifi,
   Lock,
+  Palette,
 } from "lucide-react";
 import { useArchitectStore } from "@/lib/store/useArchitectStore";
+import { StyleControlPanel } from "./StyleControlPanel";
 
 // 节点类型定义
 interface NodeType {
@@ -67,6 +69,7 @@ export function Sidebar() {
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
     new Set(["basic", "flowchart"])
   );
+  const [isStylePanelExpanded, setIsStylePanelExpanded] = useState(false);
 
   const { nodes, setNodes } = useArchitectStore();
 
@@ -370,6 +373,31 @@ export function Sidebar() {
               <p className="text-xs text-slate-400 mt-1">
                 尝试其他关键词
               </p>
+            </div>
+          )}
+        </div>
+
+        {/* 流程图样式控制面板 */}
+        <div className="border-t border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900/50">
+          <button
+            onClick={() => setIsStylePanelExpanded(!isStylePanelExpanded)}
+            className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium
+                     text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            <span className="flex items-center gap-2">
+              <Palette className="h-4 w-4" />
+              流程图样式
+            </span>
+            {isStylePanelExpanded ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronRight className="h-4 w-4" />
+            )}
+          </button>
+
+          {isStylePanelExpanded && (
+            <div className="max-h-96 overflow-y-auto border-t border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-900">
+              <StyleControlPanel />
             </div>
           )}
         </div>

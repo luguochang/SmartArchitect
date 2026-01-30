@@ -40,6 +40,7 @@ import {
 import { useArchitectStore } from "@/lib/store/useArchitectStore";
 import { NodeShape, SHAPE_CONFIG } from "@/lib/utils/nodeShapes";
 import { SvgShape } from "./SvgShapes";
+import { useNodeStyle } from "@/lib/hooks/useNodeStyle";
 
 const DEFAULT_SHAPE_CONFIG = {
   width: "140px",
@@ -122,15 +123,22 @@ export const DefaultNode = memo(({ id, data }: NodeProps) => {
   const shape: NodeShape = (data.shape as NodeShape) || "rectangle";
   const shapeConfig = SHAPE_CONFIG[shape] || DEFAULT_SHAPE_CONFIG;
 
+  // 获取样式配置
+  const nodeStyle = useNodeStyle(undefined, shape);
+
   const IconComponent = data.iconType && ICON_MAP[data.iconType] ? ICON_MAP[data.iconType] : null;
-  const iconColor = data.color || "var(--default-icon)";
-  const borderColor = data.color || "var(--default-border)";
+  const iconColor = nodeStyle.borderColor;
+  const borderColor = nodeStyle.borderColor;
+  const backgroundColor = nodeStyle.container.backgroundColor;
   const iconFallbackLabel =
     (data as any)?.iconLabel ||
     (typeof data.label === "string" && data.label.trim() ? data.label.trim().charAt(0).toUpperCase() : "·");
 
-  const renderIcon = (size = 20) =>
-    IconComponent ? (
+  const renderIcon = (size = 20) => {
+    // 只在showIcons为true时渲染图标
+    if (!nodeStyle.showIcons) return null;
+
+    return IconComponent ? (
       <IconComponent style={{ color: iconColor, width: `${size}px`, height: `${size}px` }} />
     ) : (
       <span
@@ -140,6 +148,7 @@ export const DefaultNode = memo(({ id, data }: NodeProps) => {
         {iconFallbackLabel}
       </span>
     );
+  };
 
   const handleDoubleClick = useCallback(() => {
     setIsEditing(true);
@@ -228,7 +237,7 @@ const renderCircularHandles = (color: string) => (
   // Start Event – thin ring
   if (shape === "start-event") {
     const size = shapeConfig.width || "56px";
-    const ringWidth = shapeConfig.borderWidth || "2px";
+    const ringWidth = nodeStyle.container.borderWidth;
 
     return (
       <div
@@ -237,12 +246,12 @@ const renderCircularHandles = (color: string) => (
           width: size,
           height: size,
           border: `${ringWidth} solid ${borderColor}`,
-          background: EVENT_BG,
-          boxShadow: SHADOW_SOFT,
+          background: backgroundColor,
+          boxShadow: nodeStyle.container.boxShadow,
         }}
       >
         {renderCircularHandles(borderColor)}
-        {renderIcon(22)}
+        <div style={nodeStyle.typography}>{renderIcon(22)}</div>
       </div>
     );
   }
@@ -250,7 +259,7 @@ const renderCircularHandles = (color: string) => (
   // End Event – thick ring
   if (shape === "end-event") {
     const size = shapeConfig.width || "56px";
-    const ringWidth = shapeConfig.borderWidth || "4px";
+    const ringWidth = "4px"; // Thick ring for end event
 
     return (
       <div
@@ -259,12 +268,12 @@ const renderCircularHandles = (color: string) => (
           width: size,
           height: size,
           border: `${ringWidth} solid ${borderColor}`,
-          background: EVENT_BG,
-          boxShadow: SHADOW_SOFT,
+          background: backgroundColor,
+          boxShadow: nodeStyle.container.boxShadow,
         }}
       >
         {renderCircularHandles(borderColor)}
-        {renderIcon(22)}
+        <div style={nodeStyle.typography}>{renderIcon(22)}</div>
       </div>
     );
   }
@@ -272,7 +281,7 @@ const renderCircularHandles = (color: string) => (
   // Intermediate Event – double ring
   if (shape === "intermediate-event") {
     const size = shapeConfig.width || "56px";
-    const ringWidth = toNumber(shapeConfig.borderWidth as string) ?? 2;
+    const ringWidth = toNumber(nodeStyle.container.borderWidth as string) ?? 2;
     const ringGap = toNumber((shapeConfig as any).ringGap) ?? 5;
 
     return (
@@ -281,8 +290,8 @@ const renderCircularHandles = (color: string) => (
           className="absolute inset-0 rounded-full"
           style={{
             border: `${ringWidth}px solid ${borderColor}`,
-            background: EVENT_BG,
-            boxShadow: SHADOW_SOFT,
+            background: backgroundColor,
+            boxShadow: nodeStyle.container.boxShadow,
           }}
         />
         <div
@@ -293,7 +302,8 @@ const renderCircularHandles = (color: string) => (
             right: `${ringGap}px`,
             bottom: `${ringGap}px`,
             border: `${ringWidth}px solid ${borderColor}`,
-            background: EVENT_BG,
+            background: backgroundColor,
+            ...nodeStyle.typography,
           }}
         >
           {renderIcon(20)}
@@ -307,28 +317,35 @@ const renderCircularHandles = (color: string) => (
   if (shape === "task") {
     return (
       <div
-        className="glass-node relative flex items-center gap-3 rounded-[16px] border transition-all duration-150"
+        className="glass-node relative flex items-center gap-3"
         style={{
+          ...nodeStyle.container,
           width: shapeConfig.width,
           height: shapeConfig.height,
-          borderColor: borderColor || TASK_BORDER,
-          background: TASK_BG,
-          boxShadow: SHADOW_SOFT,
-          padding: "12px 16px 12px 22px",
+          justifyContent: nodeStyle.showIcons ? "flex-start" : "center",
+          padding: nodeStyle.showIcons ? "12px 16px 12px 22px" : "12px 16px",
         }}
       >
         {renderOrthogonalHandles(borderColor)}
 
-        <span
-          className="absolute left-3 top-1/2 -translate-y-1/2 h-10 w-[6px] rounded-full"
-          style={{ backgroundColor: borderColor, opacity: 0.9 }}
-        />
+        {/* 只在showIcons为true时显示装饰条 */}
+        {nodeStyle.showIcons && (
+          <span
+            className="absolute left-3 top-1/2 -translate-y-1/2 h-10 w-[6px] rounded-full"
+            style={{ backgroundColor: borderColor, opacity: 0.9 }}
+          />
+        )}
 
-        <div className="flex flex-col items-center gap-1">
-          {renderIcon(20)}
-        </div>
+        {/* 只在showIcons为true时显示图标 */}
+        {nodeStyle.showIcons && <div className="flex flex-col items-center gap-1">{renderIcon(20)}</div>}
 
-        <div className="flex flex-col gap-1 w-full pl-1">
+        <div
+          className="flex flex-col gap-1 w-full"
+          style={{
+            paddingLeft: nodeStyle.showIcons ? "4px" : "0",
+            textAlign: nodeStyle.showIcons ? "left" : "center",
+          }}
+        >
           {isEditing ? (
             <input
               type="text"
@@ -339,36 +356,15 @@ const renderCircularHandles = (color: string) => (
               autoFocus
               className="nodrag bg-transparent border-b outline-none"
               style={{
-                color: iconColor,
+                ...nodeStyle.typography,
                 borderColor: borderColor,
-                fontSize: "13px",
-                fontWeight: 600,
               }}
             />
           ) : (
-            <div
-              onDoubleClick={handleDoubleClick}
-              className="cursor-text"
-              style={{
-                color: iconColor,
-                fontSize: "13px",
-                fontWeight: 600,
-                lineHeight: 1.35,
-              }}
-            >
+            <div onDoubleClick={handleDoubleClick} className="cursor-text" style={nodeStyle.typography}>
               {data.label}
             </div>
           )}
-          <div
-            className="text-xs"
-            style={{
-              color: "var(--muted-foreground)",
-              opacity: 0.75,
-              fontSize: "11px",
-            }}
-          >
-            Task
-          </div>
         </div>
       </div>
     );
@@ -386,10 +382,10 @@ const renderCircularHandles = (color: string) => (
           alignItems: "center",
           justifyContent: "center",
           borderColor: borderColor,
-          borderWidth: shapeConfig.borderWidth || "2px",
+          borderWidth: nodeStyle.container.borderWidth,
           borderStyle: "solid",
-          backgroundColor: "var(--default-background, #ffffff)",
-          boxShadow: SHADOW_SOFT,
+          backgroundColor: backgroundColor,
+          boxShadow: nodeStyle.container.boxShadow,
         }}
       >
         {renderCircularHandles(borderColor)}
@@ -404,26 +400,15 @@ const renderCircularHandles = (color: string) => (
               onBlur={handleBlur}
               onKeyDown={handleKeyDown}
               autoFocus
-              className="nodrag font-semibold bg-transparent border-b outline-none text-center"
+              className="nodrag bg-transparent border-b outline-none text-center"
               style={{
-                color: "var(--default-text)",
-                borderColor: "var(--default-border)",
-                fontSize: "10px",
-                fontWeight: "var(--font-weight-bold)",
+                ...nodeStyle.typography,
+                borderColor: borderColor,
                 width: "70px",
               }}
             />
           ) : (
-            <div
-              onDoubleClick={handleDoubleClick}
-              className="font-semibold cursor-text"
-              style={{
-                color: "var(--default-text)",
-                fontSize: "10px",
-                fontWeight: "var(--font-weight-bold)",
-                lineHeight: "1.2",
-              }}
-            >
+            <div onDoubleClick={handleDoubleClick} className="cursor-text" style={nodeStyle.typography}>
               {data.label}
             </div>
           )}
@@ -457,7 +442,7 @@ const renderCircularHandles = (color: string) => (
           width={width}
           height={height}
           borderColor={borderColor}
-          backgroundColor="var(--default-background, #ffffff)"
+          backgroundColor={backgroundColor}
           strokeWidth={2}
         />
         {/* Handles - separate in/out anchors */}
@@ -484,24 +469,19 @@ const renderCircularHandles = (color: string) => (
               onBlur={handleBlur}
               onKeyDown={handleKeyDown}
               autoFocus
-              className="nodrag font-semibold bg-transparent border-b outline-none text-center mt-1"
+              className="nodrag bg-transparent border-b outline-none text-center mt-1"
               style={{
-                color: "var(--default-text)",
-                borderColor: "var(--default-border)",
-                fontSize: "11px",
-                fontWeight: "var(--font-weight-bold)",
+                ...nodeStyle.typography,
+                borderColor: borderColor,
                 width: `${Math.min(width - 20, 100)}px`,
               }}
             />
           ) : (
             <div
               onDoubleClick={handleDoubleClick}
-              className="font-semibold cursor-text mt-1"
+              className="cursor-text mt-1"
               style={{
-                color: "var(--default-text)",
-                fontSize: "11px",
-                fontWeight: "var(--font-weight-bold)",
-                lineHeight: "1.2",
+                ...nodeStyle.typography,
                 maxWidth: `${width - 20}px`,
                 wordBreak: "break-word",
               }}
@@ -517,22 +497,31 @@ const renderCircularHandles = (color: string) => (
   // CSS-based shapes (rectangle, circle, rounded rectangle, etc.)
   return (
     <div
-      className={`${shapeConfig.className} ${shapeConfig.padding || "px-4 py-3"} shadow-lg`}
+      className="glass-node"
       style={{
-        borderColor: borderColor,
-        borderWidth: shapeConfig.borderWidth || "2px",
-        borderStyle: "solid",
-        backgroundColor: "var(--default-background, #ffffff)",
-        boxShadow: SHADOW_SOFT,
+        ...nodeStyle.container,
         width: shapeConfig.width,
         height: shapeConfig.height,
       }}
-      >
+    >
       {renderOrthogonalHandles(borderColor)}
 
-      <div className="flex items-center gap-2">
-        {renderIcon(20)}
-        <div>
+      <div
+        className="flex items-center gap-2"
+        style={{
+          justifyContent: nodeStyle.showIcons ? "flex-start" : "center",
+          height: "100%",
+        }}
+      >
+        {/* 只在showIcons为true时显示图标 */}
+        {nodeStyle.showIcons && renderIcon(20)}
+
+        <div
+          style={{
+            textAlign: nodeStyle.showIcons ? "left" : "center",
+            flex: 1,
+          }}
+        >
           {isEditing ? (
             <input
               type="text"
@@ -541,38 +530,18 @@ const renderCircularHandles = (color: string) => (
               onBlur={handleBlur}
               onKeyDown={handleKeyDown}
               autoFocus
-              className="nodrag font-semibold bg-transparent border-b-2 outline-none"
+              className="nodrag bg-transparent border-b-2 outline-none"
               style={{
-                color: "var(--default-text)",
-                borderColor: "var(--default-border)",
-                fontSize: "var(--font-size-node)",
-                fontWeight: "var(--font-weight-bold)",
+                ...nodeStyle.typography,
+                borderColor: borderColor,
                 width: `${Math.max(label.length, 8)}ch`,
               }}
             />
           ) : (
-            <div
-              onDoubleClick={handleDoubleClick}
-              className="font-semibold cursor-text"
-              style={{
-                color: "var(--default-text)",
-                fontSize: "var(--font-size-node)",
-                fontWeight: "var(--font-weight-bold)",
-              }}
-            >
+            <div onDoubleClick={handleDoubleClick} className="cursor-text" style={nodeStyle.typography}>
               {data.label}
             </div>
           )}
-          <div
-            className="text-xs"
-            style={{
-              color: "var(--default-text)",
-              opacity: 0.7,
-              fontSize: "var(--font-size-label)",
-            }}
-          >
-            {shape}
-          </div>
         </div>
       </div>
     </div>
