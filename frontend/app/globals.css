@@ -88,6 +88,30 @@
   padding: 0 !important;
   /* 添加淡入动画 */
   animation: fadeInNode 0.3s ease-out;
+  /* 节点在edges上方，但在handles下方 */
+  z-index: 3 !important;
+}
+
+/* React Flow Edges Z-Index Management */
+.react-flow__edges {
+  /* Edges render below nodes for BPMN standard layout */
+  z-index: 0 !important;
+}
+
+.react-flow__edge {
+  /* Individual edges also below nodes */
+  z-index: 0 !important;
+  cursor: pointer !important;
+}
+
+/* Connection handles always on top for easy access */
+.react-flow__handle {
+  z-index: 10 !important;
+}
+
+/* Edge text labels above edges but below nodes */
+.react-flow__edge-textwrapper {
+  z-index: 2 !important;
 }
 
 @keyframes fadeInNode {
@@ -289,9 +313,7 @@
 }
 
 /* 增加边的点击热区 */
-.react-flow__edge {
-  cursor: pointer !important;
-}
+/* Z-index already managed in main React Flow section above */
 
 /* 边的交互路径 - 增加热区宽度 */
 .react-flow__edge-interaction {

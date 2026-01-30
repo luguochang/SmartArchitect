@@ -5,8 +5,8 @@ import { Handle, Position, NodeProps } from "reactflow";
 import { Shield } from "lucide-react";
 import { useArchitectStore } from "@/lib/store/useArchitectStore";
 import { NodeShape, SHAPE_CONFIG } from "@/lib/utils/nodeShapes";
+import { useNodeStyle } from "@/lib/hooks/useNodeStyle";
 
-const SHADOW_SOFT = "var(--bpmn-shadow-soft, 0 12px 30px -12px rgba(15, 23, 42, 0.25))";
 const toNumber = (value?: string) => (value ? Number.parseInt(value, 10) : undefined);
 
 export const GatewayNode = memo(({ id, data }: NodeProps) => {
@@ -14,13 +14,16 @@ export const GatewayNode = memo(({ id, data }: NodeProps) => {
   const [label, setLabel] = useState(data.label);
   const updateNodeLabel = useArchitectStore((state) => state.updateNodeLabel);
 
+  // 获取样式配置
+  const nodeStyle = useNodeStyle("gateway", data.shape);
+
   const shape: NodeShape = (data.shape as NodeShape) || "diamond";
   const isDiamond = shape === "diamond";
   const shapeConfig = SHAPE_CONFIG[shape];
 
   const size = toNumber(shapeConfig.width as string) ?? 88;
-  const borderColor = data.color || "var(--bpmn-gateway-ring, #fb923c)";
-  const backgroundColor = "var(--bpmn-gateway-bg, #fff7ed)";
+  const borderColor = nodeStyle.borderColor;
+  const backgroundColor = nodeStyle.container.backgroundColor;
 
   const handleDoubleClick = useCallback(() => {
     setIsEditing(true);
@@ -147,22 +150,37 @@ export const GatewayNode = memo(({ id, data }: NodeProps) => {
 
   return (
     <div
-      className="gateway-node-box glass-node rounded-lg border px-4 py-3 shadow-lg"
-      style={{
-        borderColor: "var(--gateway-border, var(--bpmn-gateway-ring, #fb923c))",
-        backgroundColor: "var(--gateway-background, #fff7ed)",
-        boxShadow: SHADOW_SOFT,
-      }}
+      className="gateway-node-box glass-node"
+      style={nodeStyle.container}
     >
       <Handle
         type="target"
         position={Position.Left}
-        style={{ backgroundColor: "var(--gateway-border, var(--bpmn-gateway-ring, #fb923c))" }}
+        style={{ backgroundColor: borderColor }}
       />
 
-      <div className="flex items-center gap-2">
-        <Shield className="h-5 w-5 transition-transform duration-200 hover:scale-110" style={{ color: "var(--gateway-icon)" }} />
-        <div>
+      {/* 只在非专业模式下显示装饰条 */}
+      {nodeStyle.showIcons && (
+        <span
+          className="absolute left-2 top-2 h-[calc(100%-16px)] w-[5px] rounded-full opacity-80"
+          style={{ backgroundColor: borderColor }}
+        />
+      )}
+
+      <div className="flex items-center gap-3" style={{
+        justifyContent: nodeStyle.showIcons ? "flex-start" : "center",
+      }}>
+        {/* 只在showIcons为true时显示图标 */}
+        {nodeStyle.showIcons && (
+          <Shield
+            className="h-5 w-5 transition-transform duration-200 hover:scale-110"
+            style={{ color: borderColor }}
+          />
+        )}
+
+        <div className="flex-1" style={{
+          textAlign: nodeStyle.showIcons ? "left" : "center",
+        }}>
           {isEditing ? (
             <input
               type="text"
@@ -171,45 +189,29 @@ export const GatewayNode = memo(({ id, data }: NodeProps) => {
               onBlur={handleBlur}
               onKeyDown={handleKeyDown}
               autoFocus
-              className="nodrag font-semibold bg-transparent border-b-2 outline-none"
+              className="nodrag bg-transparent border-b-2 outline-none"
               style={{
-                color: "var(--gateway-text)",
-                borderColor: "var(--gateway-border)",
-                fontSize: "var(--font-size-node)",
-                fontWeight: "var(--font-weight-bold)",
+                ...nodeStyle.typography,
+                borderColor: borderColor,
                 width: `${Math.max(label.length, 8)}ch`,
               }}
             />
           ) : (
             <div
               onDoubleClick={handleDoubleClick}
-              className="font-semibold cursor-text"
-              style={{
-                color: "var(--gateway-text)",
-                fontSize: "var(--font-size-node)",
-                fontWeight: "var(--font-weight-bold)",
-              }}
+              className="cursor-text"
+              style={nodeStyle.typography}
             >
               {data.label}
             </div>
           )}
-          <div
-            className="text-xs"
-            style={{
-              color: "var(--gateway-text)",
-              opacity: 0.7,
-              fontSize: "var(--font-size-label)",
-            }}
-          >
-            Gateway
-          </div>
         </div>
       </div>
 
       <Handle
         type="source"
         position={Position.Right}
-        style={{ backgroundColor: "var(--gateway-border, var(--bpmn-gateway-ring, #fb923c))" }}
+        style={{ backgroundColor: borderColor }}
       />
     </div>
   );
