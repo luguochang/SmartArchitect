@@ -19,6 +19,54 @@ from app.services.model_presets import get_model_presets_service
 logger = logging.getLogger(__name__)
 
 
+# Architecture type templates configuration
+ARCHITECTURE_TEMPLATES = {
+    "layered": {
+        "name": "分层架构",
+        "name_en": "Layered Architecture",
+        "layers": ["frontend", "backend", "middleware", "data", "infrastructure"],
+        "default_columns": 5,
+        "show_edges": False,
+        "description": "通用前后端分层架构，适用于Web应用、微服务等",
+    },
+    "business": {
+        "name": "业务架构",
+        "name_en": "Business Architecture",
+        "layers": ["capability", "service", "process", "organization"],
+        "default_columns": 6,
+        "show_edges": False,  # Business architecture focuses on layers, not connections
+        "description": "业务能力地图，展示企业能力、服务、流程和组织关系",
+    },
+    "technical": {
+        "name": "技术架构",
+        "name_en": "Technical Architecture",
+        "layers": ["presentation", "application", "integration", "data", "infrastructure"],
+        "default_columns": 5,
+        "show_edges": True,  # Technical architecture shows API calls and data flow
+        "edge_type": "data-flow",
+        "description": "技术系统架构，展示应用组件之间的技术依赖和数据流",
+    },
+    "deployment": {
+        "name": "部署架构",
+        "name_en": "Deployment Architecture",
+        "layers": ["dmz", "app-tier", "data-tier", "monitoring"],
+        "default_columns": 4,
+        "show_edges": True,  # Deployment shows network connectivity
+        "edge_type": "network",
+        "description": "基础设施部署架构，展示网络拓扑、服务器、容器编排",
+    },
+    "domain": {
+        "name": "领域架构",
+        "name_en": "Domain-Driven Architecture",
+        "layers": ["domain-services", "shared-kernel", "anti-corruption", "infrastructure"],
+        "default_columns": 4,
+        "show_edges": True,
+        "edge_type": "dependency",
+        "description": "领域驱动设计架构，展示有界上下文和领域服务",
+    },
+}
+
+
 class ChatGeneratorService:
     """Chat-based flowchart generation service (mock-first)."""
 
@@ -65,55 +113,166 @@ Please generate a similar flowchart following this template's style.
 """
 
         if request.diagram_type == "architecture":
-            return f"""You are a professional systems architect. Generate a clean, layered architecture map with clear hierarchy.
+            # Get architecture type template
+            arch_type = request.architecture_type or "layered"
+            template = ARCHITECTURE_TEMPLATES.get(arch_type, ARCHITECTURE_TEMPLATES["layered"])
 
-**CRITICAL REQUIREMENTS:**
-1. Output JSON with "layers" array - each layer becomes a visual background frame
+            # Build layer-specific guidance
+            layer_examples = ""
+            if arch_type == "business":
+                layer_examples = """
+**Business Architecture Layers:**
+- capability (能力层): Business capabilities and services (e.g., 访客管理, 车辆管理, 安防监控)
+- service (服务层): Business service systems (e.g., 访客预约系统, 车辆识别系统)
+- process (流程层): Business processes and workflows
+- organization (组织层): Organizational units and roles
+"""
+            elif arch_type == "technical":
+                layer_examples = """
+**Technical Architecture Layers:**
+- presentation (表现层): UI components, web/mobile apps
+- application (应用层): Application services, business logic
+- integration (集成层): API Gateway, ESB, message queues
+- data (数据层): Databases, caches, storage
+- infrastructure (基础设施层): Servers, containers, cloud resources
+"""
+            elif arch_type == "deployment":
+                layer_examples = """
+**Deployment Architecture Layers:**
+- dmz (DMZ区): Load balancers, firewalls, reverse proxies
+- app-tier (应用层): Application servers, K8s pods, containers
+- data-tier (数据层): Database servers, storage systems
+- monitoring (监控层): Monitoring, logging, alerting systems
+"""
+            else:  # layered or domain
+                layer_examples = """
+**Layered Architecture:**
+- frontend (前端层): Web/Mobile clients
+- backend (后端层): APIs, Services
+- middleware (中间件层): Gateway, Cache, Queue
+- data (数据层): Databases, Storage
+- infrastructure (基础设施层): Servers, Network
+"""
+
+            # Edge generation guidance
+            edge_guidance = ""
+            if template.get("show_edges", False):
+                edge_guidance = """
+**EDGE/CONNECTION RULES:**
+- Include "edges" array to show dependencies/data flow
+- Each edge: {{"source": "layer-item-id", "target": "layer-item-id", "label": "connection type"}}
+- Example: {{"source": "application-0", "target": "integration-0", "label": "API调用"}}
+- Keep edge labels concise (API调用, 数据流, 网络连接, etc.)
+"""
+            else:
+                edge_guidance = """
+**EDGE RULE:** Do NOT include "edges" array - this architecture type focuses on layer organization.
+"""
+
+            return f"""You are a professional systems architect. Generate a {template['name']} ({template['name_en']}) with clear hierarchy and organization.
+
+**ARCHITECTURE TYPE:** {template['name']}
+**DESCRIPTION:** {template['description']}
+
+**CRITICAL OUTPUT FORMAT:**
+1. Return ONLY valid JSON (no markdown code blocks)
 2. Structure:
    {{
      "layers": [
-       {{"name": "Layer名称", "items": [...]}},
-       ...
-     ]
+       {{
+         "name": "layer-name",
+         "layout": {{ "columns": 4-6 }},
+         "items": [
+           {{"label": "Component Name", "tech_stack": ["Technology"], "note": "Description", "category": "service"}}
+         ]
+       }}
+     ],
+     "edges": [...]  // Only if showing dependencies
    }}
-3. Layer order (top to bottom):
-   - frontend (前端层): Web/Mobile clients
-   - backend (后端层): APIs, Services
-   - middleware (中间件层): Gateway, Cache, Queue
-   - data (数据层): Databases, Storage
-   - infrastructure (基础设施层): Servers, Network
 
-4. Each item format:
-   {{"label": "组件名称", "tech_stack": ["技术栈"], "note": "简短说明"}}
+{layer_examples}
 
-5. **ICON RULE**: Do NOT include "iconType" field - system will use default box icons
-6. Keep 3-6 items per layer (avoid overcrowding)
-7. Use Chinese labels if user input is Chinese
-8. Do NOT generate edges - architecture shows layers only
-9. Return ONLY valid JSON, no markdown blocks
+3. **GRID LAYOUT SUPPORT:**
+   - Each layer can specify "layout": {{ "columns": N }}
+   - Default columns: {template.get('default_columns', 4)}
+   - For layers with many items (10+), use more columns (5-6)
+   - For simple layers (< 5 items), use fewer columns (3-4)
 
-**EXAMPLE OUTPUT:**
+4. **Item Format:**
+   - "label": Component/service name (Chinese if user input is Chinese)
+   - "tech_stack": Array of technologies used (e.g., ["React", "Next.js"])
+   - "note": Brief description or tech stack summary
+   - "category": Optional category for icon selection ("service", "database", "api", "platform", etc.)
+
+5. **SMART CARD DISTRIBUTION:**
+   - Capability/service layers: 6-12 items across 4-6 columns
+   - Application layer: 5-10 items across 3-5 columns
+   - Integration layer: 3-6 items across 3-4 columns
+   - Data layer: 3-5 items across 3-4 columns
+   - Automatically wrap items into multiple rows
+
+{edge_guidance}
+
+**EXAMPLE OUTPUT (Smart Park Business Architecture):**
 {{
   "layers": [
-    {{"name": "frontend", "items": [
-      {{"label": "Web端", "tech_stack": ["React", "Next.js"], "note": "用户界面"}},
-      {{"label": "移动端", "tech_stack": ["React Native"], "note": "iOS/Android"}}
-    ]}},
-    {{"name": "backend", "items": [
-      {{"label": "用户服务", "tech_stack": ["Spring Boot"], "note": "用户管理"}},
-      {{"label": "订单服务", "tech_stack": ["Go"], "note": "订单处理"}}
-    ]}},
-    {{"name": "data", "items": [
-      {{"label": "MySQL", "tech_stack": ["MySQL 8.0"], "note": "主数据库"}},
-      {{"label": "Redis", "tech_stack": ["Redis"], "note": "缓存层"}}
-    ]}}
+    {{
+      "name": "capability",
+      "layout": {{ "columns": 6 }},
+      "items": [
+        {{"label": "访客管理", "category": "service", "note": "访客预约与登记"}},
+        {{"label": "车辆管理", "category": "service", "note": "车辆识别与停车"}},
+        {{"label": "安防监控", "category": "service", "note": "视频监控与预警"}},
+        {{"label": "能源管理", "category": "service", "note": "能耗分析与优化"}},
+        {{"label": "物业服务", "category": "service", "note": "工单与投诉处理"}},
+        {{"label": "智能楼宇", "category": "service", "note": "楼宇自控与调节"}},
+        {{"label": "环境监测", "category": "service", "note": "空气质量与温湿度"}},
+        {{"label": "资产管理", "category": "service", "note": "资产盘点与追踪"}},
+        {{"label": "应急指挥", "category": "service", "note": "应急响应与调度"}},
+        {{"label": "数据分析", "category": "platform", "note": "数据可视化与报表"}},
+        {{"label": "统一认证", "category": "platform", "note": "单点登录与权限"}},
+        {{"label": "消息通知", "category": "platform", "note": "消息推送与提醒"}}
+      ]
+    }},
+    {{
+      "name": "application",
+      "layout": {{ "columns": 5 }},
+      "items": [
+        {{"label": "访客预约系统", "tech_stack": ["Vue", "Spring Boot"], "note": "访客预约与审批"}},
+        {{"label": "车辆识别系统", "tech_stack": ["TensorFlow", "FastAPI"], "note": "车牌识别与抓拍"}},
+        {{"label": "视频监控平台", "tech_stack": ["WebRTC", "Node.js"], "note": "视频流处理"}},
+        {{"label": "能耗分析平台", "tech_stack": ["Grafana", "InfluxDB"], "note": "能耗数据分析"}},
+        {{"label": "物业工单系统", "tech_stack": ["React", "Django"], "note": "工单流转处理"}}
+      ]
+    }},
+    {{
+      "name": "integration",
+      "layout": {{ "columns": 4 }},
+      "items": [
+        {{"label": "API Gateway", "tech_stack": ["Kong"], "note": "统一网关"}},
+        {{"label": "ESB总线", "tech_stack": ["Kafka"], "note": "消息总线"}},
+        {{"label": "IoT平台", "tech_stack": ["EMQ X"], "note": "设备接入"}},
+        {{"label": "数据交换", "tech_stack": ["DataX"], "note": "数据同步"}}
+      ]
+    }},
+    {{
+      "name": "data",
+      "layout": {{ "columns": 5 }},
+      "items": [
+        {{"label": "业务数据库", "tech_stack": ["PostgreSQL"], "note": "主数据库"}},
+        {{"label": "时序数据库", "tech_stack": ["InfluxDB"], "note": "IoT数据"}},
+        {{"label": "图数据库", "tech_stack": ["Neo4j"], "note": "关系图谱"}},
+        {{"label": "缓存层", "tech_stack": ["Redis Cluster"], "note": "分布式缓存"}},
+        {{"label": "数据湖", "tech_stack": ["MinIO"], "note": "对象存储"}}
+      ]
+    }}
   ]
 }}
 
 {template_context}
 **User Request:** "{request.user_input}"
 
-Generate architecture with clear layer separation. Focus on component organization, not connections.
+Generate {template['name']} with optimal layout, clear layer organization, and appropriate item distribution.
 """
 
         system_prompt = f"""You are a professional flowchart generation expert. Create beautiful, well-organized flowcharts with optimal layout.
@@ -253,8 +412,50 @@ Generate a well-laid-out flowchart. Focus on clarity and visual balance. Return 
             return payload.model_dump()
         return json.loads(json.dumps(payload, default=str))
 
-    def _normalize_architecture_graph(self, ai_data: dict):
-        """Normalize architecture JSON (layers/items) into nodes with LayerFrame backgrounds."""
+    def _calculate_frame_size(self, items_count: int, columns: int = 4) -> dict:
+        """
+        Calculate dynamic frame size based on number of items and columns.
+
+        Args:
+            items_count: Number of items in the layer
+            columns: Number of columns in grid layout (default: 4)
+
+        Returns:
+            dict with 'width' and 'height' in pixels
+        """
+        item_width = 240  # Width of each component card
+        item_height = 100  # Height of each component card
+        padding = 60  # Frame padding
+        gap = 20  # Gap between items
+        header_height = 40  # Layer header height
+
+        # Calculate actual columns (don't exceed items count)
+        actual_columns = min(items_count, columns) if items_count > 0 else columns
+
+        # Calculate rows needed
+        rows = (items_count + columns - 1) // columns if items_count > 0 else 1
+
+        # Calculate dimensions
+        width = actual_columns * item_width + (actual_columns - 1) * gap + padding * 2
+        height = rows * item_height + (rows - 1) * gap + padding * 2 + header_height
+
+        return {
+            "width": max(width, 800),  # Minimum width for aesthetics
+            "height": max(height, 150),  # Minimum height
+        }
+
+    def _normalize_architecture_graph(self, ai_data: dict, architecture_type: str = "layered"):
+        """
+        Normalize architecture JSON (layers/items) into nodes with LayerFrame backgrounds.
+        Supports dynamic sizing and grid layout.
+
+        Args:
+            ai_data: AI-generated architecture data
+            architecture_type: Type of architecture (layered, business, technical, deployment, domain)
+
+        Returns:
+            Tuple of (nodes, edges, mermaid_code)
+        """
         try:
             layers = (
                 ai_data.get("layers")
@@ -263,32 +464,64 @@ Generate a well-laid-out flowchart. Focus on clarity and visual balance. Return 
                 or ai_data.get("groups")
                 or []
             )
+            # Extract edges if provided (for technical/deployment architectures)
+            ai_edges = ai_data.get("edges", [])
         except Exception:
             return [], [], ""
+
         nodes = []
         edges = []
+
+        # Enhanced layer colors with more types
         layer_colors = {
+            # Layered architecture
             "frontend": "#f59e0b",      # Orange
             "backend": "#22c55e",       # Green
             "middleware": "#6366f1",    # Indigo
             "data": "#a855f7",          # Purple
             "infrastructure": "#0ea5e9", # Sky blue
             "observability": "#14b8a6", # Teal
+            # Business architecture
+            "capability": "#f59e0b",    # Orange
+            "service": "#22c55e",       # Green
+            "process": "#6366f1",       # Indigo
+            "organization": "#a855f7",  # Purple
+            # Technical architecture
+            "presentation": "#f59e0b",  # Orange
+            "application": "#22c55e",   # Green
+            "integration": "#6366f1",   # Indigo
+            # Deployment architecture
+            "dmz": "#ef4444",           # Red
+            "app-tier": "#22c55e",      # Green
+            "data-tier": "#a855f7",     # Purple
+            "monitoring": "#14b8a6",    # Teal
+            # Domain architecture
+            "domain-services": "#22c55e",     # Green
+            "shared-kernel": "#6366f1",       # Indigo
+            "anti-corruption": "#f59e0b",     # Orange
         }
 
+        # Get template configuration
+        template = ARCHITECTURE_TEMPLATES.get(architecture_type, ARCHITECTURE_TEMPLATES["layered"])
+        default_columns = template.get("default_columns", 4)
+
         # Configuration for layout
-        frame_width = 1100
-        frame_height = 180
         frame_padding_x = 60
         frame_padding_y = 100
-        item_width = 220
-        item_spacing_x = 240
         layer_spacing_y = 200
+        item_width = 240
+        item_height = 100
+        padding = 60
+        gap = 20
+        header_height = 40
 
         if isinstance(layers, dict):
             layers = [{"name": k, "items": v} for k, v in layers.items()]
         elif not isinstance(layers, list):
             return [], [], ""
+
+        # Track cumulative Y position
+        current_y = frame_padding_y
 
         # Generate nodes with LayerFrame backgrounds
         for layer_idx, layer in enumerate(layers):
@@ -296,34 +529,48 @@ Generate a well-laid-out flowchart. Focus on clarity and visual balance. Return 
             items = layer.get("items", []) if isinstance(layer, dict) else []
             color = layer_colors.get(layer_name.lower(), "#64748b")
 
-            # Add LayerFrame background node
-            frame_y = frame_padding_y + layer_idx * layer_spacing_y
+            # Get layout configuration for this layer
+            layer_layout = layer.get("layout", {}) if isinstance(layer, dict) else {}
+            columns = layer_layout.get("columns", default_columns)
+
+            # Calculate dynamic frame size based on items count
+            frame_size = self._calculate_frame_size(len(items), columns)
+
+            # Add LayerFrame background node with dynamic sizing
             nodes.append({
                 "id": f"{layer_name}-frame",
                 "type": "layerFrame",
-                "position": {"x": frame_padding_x, "y": frame_y},
+                "position": {"x": frame_padding_x, "y": current_y},
                 "data": {
                     "label": layer_name.capitalize(),
                     "color": color,
-                    "width": frame_width,
-                    "height": frame_height,
+                    "width": frame_size["width"],
+                    "height": frame_size["height"],
+                    "layout": "grid",  # NEW: Indicate grid layout mode
+                    "columns": columns,  # NEW: Number of columns for grid
                 },
                 "draggable": False,
             })
 
-            # Add component nodes within the layer
+            # Position component nodes in grid layout
             for item_idx, item in enumerate(items):
                 if isinstance(item, dict):
                     label = item.get("label") or item.get("name") or f"{layer_name}-{item_idx}"
                     tech_stack = item.get("tech_stack", []) or []
                     note = item.get("note") or (", ".join(tech_stack) if tech_stack else "")
+                    category = item.get("category", "service")  # NEW: Category for icons
                 else:
                     label = str(item)
                     note = ""
+                    category = "service"
 
-                # Position component nodes inside the layer frame
-                item_x = frame_padding_x + 60 + item_idx * item_spacing_x
-                item_y = frame_y + 40
+                # Calculate grid position
+                row = item_idx // columns
+                col = item_idx % columns
+
+                # Calculate absolute position
+                item_x = frame_padding_x + padding + col * (item_width + gap)
+                item_y = current_y + header_height + row * (item_height + gap)
 
                 nodes.append({
                     "id": f"{layer_name}-{item_idx}",
@@ -336,11 +583,30 @@ Generate a well-laid-out flowchart. Focus on clarity and visual balance. Return 
                         "layer": layer_name,
                         "note": note,
                         "layerColor": color,
+                        "tech_stack": tech_stack if isinstance(tech_stack, list) else [],
+                        "category": category,  # NEW: For visual enhancements
                     },
                 })
 
+            # Update current_y for next layer (with spacing)
+            current_y += frame_size["height"] + layer_spacing_y
+
+        # Process edges if provided (for technical/deployment architectures)
+        for edge_idx, edge_data in enumerate(ai_edges):
+            if isinstance(edge_data, dict):
+                source = edge_data.get("source")
+                target = edge_data.get("target")
+                if source and target:
+                    edges.append({
+                        "id": edge_data.get("id") or f"e-{edge_idx}",
+                        "source": source,
+                        "target": target,
+                        "label": edge_data.get("label", ""),
+                        "type": edge_data.get("type", "dependency"),
+                    })
+
         # Generate mermaid code
-        mermaid_lines = ["# Architecture Overview"]
+        mermaid_lines = [f"# {template['name']} ({template['name_en']})"]
         for layer in layers:
             lname = layer.get("name") if isinstance(layer, dict) else str(layer)
             mermaid_lines.append(f"## {lname.capitalize()}")
@@ -768,9 +1034,15 @@ Generate a well-laid-out flowchart. Focus on clarity and visual balance. Return 
             logger.info(f"[CHAT-GEN] Parsed AI data keys: {list(ai_data.keys())}")
 
             if effective_diagram_type == "architecture":
-                nodes, edges, mermaid_code = self._normalize_architecture_graph(ai_data)
-                # Architecture diagrams don't show edges
-                edges = []
+                # Pass architecture_type to normalization
+                arch_type = request.architecture_type or "layered"
+                nodes, edges, mermaid_code = self._normalize_architecture_graph(ai_data, arch_type)
+
+                # Only suppress edges if template says not to show them
+                template = ARCHITECTURE_TEMPLATES.get(arch_type, ARCHITECTURE_TEMPLATES["layered"])
+                if not template.get("show_edges", False):
+                    edges = []  # Business and layered architectures don't show edges
+                # Technical and deployment architectures will keep their edges
             else:
                 nodes, edges, mermaid_code = self._normalize_ai_graph(ai_data)
 

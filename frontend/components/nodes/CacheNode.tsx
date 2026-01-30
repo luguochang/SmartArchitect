@@ -5,11 +5,15 @@ import { NodeProps } from "reactflow";
 import { Zap } from "lucide-react";
 import { useArchitectStore } from "@/lib/store/useArchitectStore";
 import { DynamicHandles } from "./DynamicHandles";
+import { useNodeStyle } from "@/lib/hooks/useNodeStyle";
 
 export const CacheNode = memo(({ id, data }: NodeProps) => {
   const [isEditing, setIsEditing] = useState(false);
   const [label, setLabel] = useState(data.label);
   const updateNodeLabel = useArchitectStore((state) => state.updateNodeLabel);
+
+  // 获取样式配置
+  const nodeStyle = useNodeStyle("cache", data.shape);
 
   const handleDoubleClick = useCallback(() => {
     setIsEditing(true);
@@ -36,23 +40,34 @@ export const CacheNode = memo(({ id, data }: NodeProps) => {
 
   return (
     <div
-      className="glass-node relative rounded-xl border-2 px-4 py-3 shadow-lg"
-      style={{
-        borderColor: "var(--cache-border)",
-        backgroundColor: "var(--cache-background)",
-        boxShadow: "var(--cache-shadow, 0 10px 15px -3px rgba(0,0,0,0.1))",
-      }}
+      className="glass-node relative"
+      style={nodeStyle.container}
     >
-      <DynamicHandles color="var(--cache-border)" />
+      {/* 动态双向连接点 */}
+      <DynamicHandles color={nodeStyle.borderColor} />
 
-      <span
-        className="absolute left-2 top-2 h-[calc(100%-16px)] w-[5px] rounded-full opacity-80"
-        style={{ backgroundColor: "var(--cache-border)" }}
-      />
+      {/* 只在非专业模式下显示装饰条 */}
+      {nodeStyle.showIcons && (
+        <span
+          className="absolute left-2 top-2 h-[calc(100%-16px)] w-[5px] rounded-full opacity-80"
+          style={{ backgroundColor: nodeStyle.borderColor }}
+        />
+      )}
 
-      <div className="flex items-center gap-3">
-        <Zap className="h-5 w-5 transition-transform duration-200 hover:scale-110" style={{ color: "var(--cache-icon)" }} />
-        <div className="flex-1">
+      <div className="flex items-center gap-3" style={{
+        justifyContent: nodeStyle.showIcons ? "flex-start" : "center",
+      }}>
+        {/* 只在showIcons为true时显示图标 */}
+        {nodeStyle.showIcons && (
+          <Zap
+            className="h-5 w-5 transition-transform duration-200 hover:scale-110"
+            style={{ color: nodeStyle.borderColor }}
+          />
+        )}
+
+        <div className="flex-1" style={{
+          textAlign: nodeStyle.showIcons ? "left" : "center",
+        }}>
           {isEditing ? (
             <input
               type="text"
@@ -61,38 +76,22 @@ export const CacheNode = memo(({ id, data }: NodeProps) => {
               onBlur={handleBlur}
               onKeyDown={handleKeyDown}
               autoFocus
-              className="nodrag font-semibold bg-transparent border-b-2 outline-none"
+              className="nodrag bg-transparent border-b-2 outline-none"
               style={{
-                color: "var(--cache-text)",
-                borderColor: "var(--cache-border)",
-                fontSize: "var(--font-size-node)",
-                fontWeight: "var(--font-weight-bold)",
+                ...nodeStyle.typography,
+                borderColor: nodeStyle.borderColor,
                 width: `${Math.max(label.length, 8)}ch`,
               }}
             />
           ) : (
             <div
               onDoubleClick={handleDoubleClick}
-              className="font-semibold cursor-text"
-              style={{
-                color: "var(--cache-text)",
-                fontSize: "var(--font-size-node)",
-                fontWeight: "var(--font-weight-bold)",
-              }}
+              className="cursor-text"
+              style={nodeStyle.typography}
             >
               {data.label}
             </div>
           )}
-          <div
-            className="text-xs"
-            style={{
-              color: "var(--cache-text)",
-              opacity: 0.7,
-              fontSize: "var(--font-size-label)",
-            }}
-          >
-            Cache
-          </div>
         </div>
       </div>
     </div>

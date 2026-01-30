@@ -1,8 +1,9 @@
 import { create } from "zustand";
-import { Node, Edge, NodeChange, EdgeChange, applyNodeChanges, applyEdgeChanges } from "reactflow";
+import { Node, Edge, NodeChange, EdgeChange, applyNodeChanges, applyEdgeChanges, MarkerType } from "reactflow";
 import { PROVIDER_DEFAULTS } from "@/lib/config/providerDefaults";
 import { getLayoutedElements, estimateNodeSize } from "@/lib/utils/autoLayout";
 import { API_ENDPOINTS, API_BASE_URL } from "@/lib/api-config";
+import { useFlowchartStyleStore } from "@/lib/stores/flowchartStyleStore";
 
 export interface PromptScenario {
   id: string;
@@ -24,6 +25,7 @@ export interface FlowTemplate {
 
 export type DiagramType = "flow" | "architecture";
 export type CanvasMode = "reactflow" | "excalidraw";
+export type ArchitectureType = "layered" | "business" | "technical" | "deployment" | "domain";
 
 export interface ExcalidrawScene {
   elements: any[];
@@ -38,6 +40,8 @@ interface ArchitectState {
   generationLogs: string[];
   chatHistory: { role: "user" | "assistant"; content: string }[];
   diagramType: DiagramType;
+  architectureType: ArchitectureType;
+  setArchitectureType: (type: ArchitectureType) => void;
   uploadedImage: File | null;
   imagePreviewUrl: string | null;
   isAnalyzing: boolean;
@@ -297,38 +301,37 @@ function mermaidToCanvas(code: string): { nodes: Node[]; edges: Edge[] } {
   return { nodes, edges };
 }
 
+// 给边应用当前的样式配置
+function applyEdgeStyles(edges: Edge[]): Edge[] {
+  const { currentPresentationStyle, edgeType } = useFlowchartStyleStore.getState();
+
+  return edges.map((edge) => ({
+    ...edge,
+    type: edgeType,
+    animated: true,
+    markerEnd: {
+      type: MarkerType.ArrowClosed,
+      width: currentPresentationStyle.edge.markerSize,
+      height: currentPresentationStyle.edge.markerSize,
+      color: currentPresentationStyle.edge.strokeColor,
+    },
+    style: {
+      stroke: currentPresentationStyle.edge.strokeColor,
+      strokeWidth: currentPresentationStyle.edge.strokeWidth,
+    },
+    data: {
+      ...edge.data,
+      showGlow: currentPresentationStyle.edge.showGlow,
+    },
+  }));
+}
+
 export const useArchitectStore = create<ArchitectState>((set, get) => ({
-  nodes: [
-    {
-      id: "1",
-      type: "api",
-      position: { x: 100, y: 100 },
-      data: { label: "API Gateway" },
-    },
-    {
-      id: "2",
-      type: "service",
-      position: { x: 400, y: 100 },
-      data: { label: "Auth Service" },
-    },
-    {
-      id: "3",
-      type: "database",
-      position: { x: 400, y: 250 },
-      data: { label: "PostgreSQL" },
-    },
-  ],
-  edges: [
-    { id: "e1-2", source: "1", target: "2", label: "auth" },
-    { id: "e2-3", source: "2", target: "3", label: "query" },
-  ],
+  nodes: [],
+  edges: [],
   diagramType: "flow",
-  mermaidCode: `graph TD
-    1["API Gateway"]
-    2[["Auth Service"]]
-    3[("PostgreSQL")]
-    1 -->|auth| 2
-    2 -->|query| 3`,
+  architectureType: "layered",
+  mermaidCode: "",
   uploadedImage: null,
   imagePreviewUrl: null,
   isAnalyzing: false,
@@ -358,6 +361,7 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
 
   setCanvasMode: (mode) => set({ canvasMode: mode }),
   setExcalidrawScene: (scene) => set({ excalidrawScene: scene }),
+  setArchitectureType: (type) => set({ architectureType: type }),
 
   setNodes: (nodes) => set({ nodes }),
   setEdges: (edges) => set({ edges }),
@@ -456,7 +460,7 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
   generateFlowchart: async (input, templateId, diagramType) => {
     set({ isGeneratingFlowchart: true, diagramType: diagramType || "flow" });
     try {
-      const { modelConfig } = get();
+      const { modelConfig, architectureType } = get();
       set((state) => ({
         generationLogs: [],
         chatHistory: [
@@ -468,6 +472,7 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
         user_input: input,
         template_id: templateId,
         diagram_type: diagramType,
+        architecture_type: diagramType === "architecture" ? architectureType : undefined,
         provider: modelConfig.provider,
         api_key: modelConfig.apiKey?.trim() || undefined,
         base_url: modelConfig.baseUrl?.trim() || undefined,
@@ -588,9 +593,12 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
             try {
               const layoutData = JSON.parse(content.replace("[LAYOUT_DATA]", "").trim());
               let rawNodes = layoutData.nodes as Node[];
-              const edges = layoutData.edges as Edge[];
+              const rawEdges = layoutData.edges as Edge[];
               const diagramType = layoutData.diagram_type;
               const mermaidCode = layoutData.mermaid_code;
+
+              // 应用当前样式到边
+              const edges = applyEdgeStyles(rawEdges);
 
               let preparedNodes: Node[];
 
@@ -663,7 +671,10 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
               const data = JSON.parse(content);
               if (data?.nodes && data?.edges) {
                 let rawNodes = data.nodes as Node[];
-                const edges = data.edges as Edge[];
+                const rawEdges = data.edges as Edge[];
+
+                // 应用当前样式到边
+                const edges = applyEdgeStyles(rawEdges);
 
                 let nodes: Node[];
 
@@ -713,7 +724,10 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
         const data = await retry.json();
         if (data?.nodes && data?.edges) {
           let rawNodes = data.nodes as Node[];
-          const edges = data.edges as Edge[];
+          const rawEdges = data.edges as Edge[];
+
+          // 应用当前样式到边
+          const edges = applyEdgeStyles(rawEdges);
 
           let nodes: Node[];
 
@@ -1243,7 +1257,11 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
       }
 
       const updatedNodes = addLayerFrames(data.nodes as Node[], get().diagramType);
-      const updatedEdges = data.edges as Edge[];
+      const rawEdges = data.edges as Edge[];
+
+      // 应用当前样式到边
+      const updatedEdges = applyEdgeStyles(rawEdges);
+
       const updatedMermaid = data.mermaid_code || get().mermaidCode;
 
       set({ nodes: updatedNodes, edges: updatedEdges, mermaidCode: updatedMermaid });

@@ -59,8 +59,8 @@ export function getLayoutedElements(
 ): Node[] {
   const {
     direction = "TB",
-    ranksep = 100,
-    nodesep = 80,
+    ranksep = 150,  // Increased from 100 for professional spacing
+    nodesep = 120,   // Increased from 80 for professional spacing
   } = options;
 
   // Create a new directed graph
@@ -72,8 +72,10 @@ export function getLayoutedElements(
     rankdir: direction,
     ranksep,
     nodesep,
-    marginx: 50,
-    marginy: 50,
+    marginx: 80,   // Increased from 50 for better margins
+    marginy: 80,   // Increased from 50 for better margins
+    align: "UL",   // Align upper-left for consistency
+    acyclicer: "greedy",  // Better cycle handling
   });
 
   // Add nodes to the graph

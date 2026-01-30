@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useEffect } from "react";
+import { useCallback, useMemo, useEffect, useRef } from "react";
 import ReactFlow, {
   Background,
   Controls,
@@ -27,12 +27,16 @@ import { DefaultNode } from "./nodes/DefaultNode";
 import { FrameNode } from "./nodes/FrameNode";
 import { LayerFrameNode } from "./nodes/LayerFrameNode";
 import { GlowEdge } from "./edges/GlowEdge";
+import { OrthogonalEdge } from "./edges/OrthogonalEdge";
+import { StraightEdge } from "./edges/StraightEdge";
 import ExportMenu from "./ExportMenu";
 import { Network, Sparkles, ArrowDown, ArrowRight, ArrowUp, ArrowLeft, Github } from "lucide-react";
 import ExcalidrawBoard from "./ExcalidrawBoard";
 import { getLayoutedElements, estimateNodeSize, LayoutOptions } from "@/lib/utils/autoLayout";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useFlowchartStyleStore } from "@/lib/stores/flowchartStyleStore";
+import { EmptyCanvasState } from "./EmptyCanvasState";
 
 type LayoutDirection = "TB" | "LR" | "BT" | "RL";
 
@@ -40,6 +44,56 @@ function ArchitectCanvasInner() {
   const { nodes, edges, onNodesChange, onEdgesChange, setEdges, setNodes, diagramType } = useArchitectStore();
   const { fitView } = useReactFlow();
   const [layoutDirection, setLayoutDirection] = useState<LayoutDirection>("LR"); // 默认左到右
+
+  // Get current flowchart presentation style
+  const { currentPresentationStyle, edgeType } = useFlowchartStyleStore();
+
+  // 追踪上一次的样式，避免不必要的更新
+  const prevStyleRef = useRef({ edgeType, edge: currentPresentationStyle.edge });
+
+  // 监听样式变化，自动更新所有现有的边
+  useEffect(() => {
+    // 检查edges是否为数组且不为空
+    if (!Array.isArray(edges) || edges.length === 0) return;
+
+    // 检查样式是否真的改变了
+    const prevStyle = prevStyleRef.current;
+    const styleChanged =
+      prevStyle.edgeType !== edgeType ||
+      prevStyle.edge.strokeColor !== currentPresentationStyle.edge.strokeColor ||
+      prevStyle.edge.strokeWidth !== currentPresentationStyle.edge.strokeWidth ||
+      prevStyle.edge.markerSize !== currentPresentationStyle.edge.markerSize ||
+      prevStyle.edge.showGlow !== currentPresentationStyle.edge.showGlow;
+
+    if (!styleChanged) return;
+
+    console.log("[ArchitectCanvas] Style changed, updating", edges.length, "edges...");
+
+    // 更新ref
+    prevStyleRef.current = { edgeType, edge: currentPresentationStyle.edge };
+
+    const updatedEdges = edges.map((edge) => ({
+      ...edge,
+      type: edgeType,
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        width: currentPresentationStyle.edge.markerSize,
+        height: currentPresentationStyle.edge.markerSize,
+        color: currentPresentationStyle.edge.strokeColor,
+      },
+      style: {
+        ...edge.style,
+        stroke: currentPresentationStyle.edge.strokeColor,
+        strokeWidth: currentPresentationStyle.edge.strokeWidth,
+      },
+      data: {
+        ...edge.data,
+        showGlow: currentPresentationStyle.edge.showGlow,
+      },
+    }));
+
+    setEdges(updatedEdges);
+  }, [edges, edgeType, currentPresentationStyle.edge, setEdges]);
 
   // 监听流程图导入事件
   useEffect(() => {
@@ -80,33 +134,42 @@ function ArchitectCanvasInner() {
   const edgeTypes = useMemo(
     () => ({
       glow: GlowEdge,
+      orthogonal: OrthogonalEdge,
+      straight: StraightEdge,
+      // Also register smoothstep as an alias for orthogonal
+      smoothstep: OrthogonalEdge,
+      step: OrthogonalEdge,
     }),
     []
   );
 
   const onConnect = useCallback(
     (connection: Connection) => {
+      // Determine edge type based on current presentation style
+      const selectedEdgeType = edgeType; // "orthogonal" | "straight" | "smoothstep" | "step"
+
       const newEdge = {
         ...connection,
         id: `${connection.source}-${connection.target}`,
-        type: "glow",
+        type: selectedEdgeType,
         animated: true,
         markerEnd: {
           type: MarkerType.ArrowClosed,
-          width: 18,
-          height: 18,
-          color: "var(--edge-stroke)",
+          width: currentPresentationStyle.edge.markerSize,
+          height: currentPresentationStyle.edge.markerSize,
+          color: currentPresentationStyle.edge.strokeColor,
         },
         style: {
-          stroke: "var(--edge-stroke, #94a3b8)",
-          strokeWidth: Number(
-            getComputedStyle(document.documentElement).getPropertyValue("--edge-stroke-width") || 2
-          ),
+          stroke: currentPresentationStyle.edge.strokeColor,
+          strokeWidth: currentPresentationStyle.edge.strokeWidth,
+        },
+        data: {
+          showGlow: currentPresentationStyle.edge.showGlow,
         },
       };
       setEdges(addEdge(newEdge, edges));
     },
-    [edges, setEdges]
+    [edges, setEdges, edgeType, currentPresentationStyle]
   );
 
   const handleAutoLayout = useCallback(() => {
@@ -207,9 +270,16 @@ function ArchitectCanvasInner() {
         edgesUpdatable={true}
         edgesFocusable={true}
         defaultEdgeOptions={{
-          type: "glow",
-          markerEnd: { type: MarkerType.ArrowClosed, width: 18, height: 18 },
-          style: { stroke: "var(--edge-stroke, #94a3b8)", strokeWidth: 2.5 },
+          type: edgeType,
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            width: currentPresentationStyle.edge.markerSize,
+            height: currentPresentationStyle.edge.markerSize,
+          },
+          style: {
+            stroke: currentPresentationStyle.edge.strokeColor,
+            strokeWidth: currentPresentationStyle.edge.strokeWidth,
+          },
         }}
         fitView
         style={{
@@ -226,6 +296,9 @@ function ArchitectCanvasInner() {
           className="!bg-white/80 !rounded-lg !shadow-md dark:!bg-slate-900/80"
           maskColor="rgba(0, 0, 0, 0.08)"
         />
+
+        {/* 空状态欢迎界面 */}
+        {nodes.length === 0 && <EmptyCanvasState />}
 
         {/* 工具栏 */}
         <Panel position="top-right" className="flex gap-2">
