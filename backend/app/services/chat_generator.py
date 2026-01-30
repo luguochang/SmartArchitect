@@ -117,41 +117,152 @@ Please generate a similar flowchart following this template's style.
             arch_type = request.architecture_type or "layered"
             template = ARCHITECTURE_TEMPLATES.get(arch_type, ARCHITECTURE_TEMPLATES["layered"])
 
-            # Build layer-specific guidance
+            # Build layer-specific guidance with STRONG differentiation
             layer_examples = ""
             if arch_type == "business":
                 layer_examples = """
-**Business Architecture Layers:**
-- capability (能力层): Business capabilities and services (e.g., 访客管理, 车辆管理, 安防监控)
-- service (服务层): Business service systems (e.g., 访客预约系统, 车辆识别系统)
-- process (流程层): Business processes and workflows
-- organization (组织层): Organizational units and roles
+**🏢 BUSINESS ARCHITECTURE - Focus on BUSINESS CAPABILITIES:**
+CRITICAL: This is a BUSINESS view, NOT technical implementation!
+
+**Required Layers (use EXACTLY these names):**
+1. "capability" (能力层) - 10-15 business capabilities
+   - Examples: 访客管理, 车辆管理, 安防监控, 能源管理, 物业服务, 智能楼宇, 环境监测, 资产管理, 应急指挥, 数据分析, 统一认证, 消息通知
+   - Use category: "service" for all capability items
+   - NO tech stack - focus on WHAT the business does
+
+2. "service" (服务层) - 5-8 business service systems
+   - Examples: 访客预约系统, 车辆识别系统, 视频监控平台, 能耗分析平台, 物业工单系统
+   - Use category: "platform"
+   - Add tech_stack ONLY if relevant to business stakeholders
+
+3. "process" (流程层) - 3-5 key business processes
+   - Examples: 访客入园流程, 车辆进出流程, 应急响应流程
+   - Use category: "default"
+
+4. "organization" (组织层) - 3-5 organizational units
+   - Examples: 运营中心, 安保部门, 物业部门, IT部门
+   - Use category: "default"
+
+**STRICT RULES:**
+- NO database/cache/queue components (those are technical!)
+- NO infrastructure components (K8s, Docker, etc.)
+- Focus on BUSINESS VALUE and CAPABILITIES
+- Use business-friendly language (Chinese preferred)
 """
             elif arch_type == "technical":
                 layer_examples = """
-**Technical Architecture Layers:**
-- presentation (表现层): UI components, web/mobile apps
-- application (应用层): Application services, business logic
-- integration (集成层): API Gateway, ESB, message queues
-- data (数据层): Databases, caches, storage
-- infrastructure (基础设施层): Servers, containers, cloud resources
+**⚙️ TECHNICAL ARCHITECTURE - Focus on TECHNICAL COMPONENTS:**
+CRITICAL: This is a TECHNICAL view showing HOW systems are built!
+
+**Required Layers (use EXACTLY these names):**
+1. "presentation" (表现层) - 3-5 UI components
+   - Examples: React前端, Vue管理后台, 移动端App, 小程序
+   - Use category: "api"
+   - tech_stack: ["React", "TypeScript"], ["Vue", "Element UI"], etc.
+
+2. "application" (应用层) - 6-10 application services
+   - Examples: 用户服务, 订单服务, 支付服务, 通知服务, 认证服务
+   - Use category: "service"
+   - tech_stack: ["Spring Boot", "Java"], ["FastAPI", "Python"], etc.
+
+3. "integration" (集成层) - 4-6 integration components
+   - Examples: API Gateway, 消息队列, ESB总线, 服务网格
+   - Use category: "network"
+   - tech_stack: ["Kong"], ["Kafka"], ["Istio"], etc.
+
+4. "data" (数据层) - 4-6 data storage systems
+   - Examples: MySQL主库, Redis缓存, MongoDB文档库, Elasticsearch搜索
+   - Use category: "database"
+   - tech_stack: ["MySQL 8.0"], ["Redis Cluster"], etc.
+
+5. "infrastructure" (基础设施层) - 3-5 infrastructure components
+   - Examples: Kubernetes集群, Docker容器, Nginx负载均衡, 云服务器
+   - Use category: "infrastructure"
+   - tech_stack: ["K8s"], ["Docker"], ["Nginx"], etc.
+
+**STRICT RULES:**
+- MUST include tech_stack for every item
+- Use technical terminology (API, Service, Gateway, etc.)
+- Show HOW components interact (include edges!)
+- Focus on IMPLEMENTATION details
 """
             elif arch_type == "deployment":
                 layer_examples = """
-**Deployment Architecture Layers:**
-- dmz (DMZ区): Load balancers, firewalls, reverse proxies
-- app-tier (应用层): Application servers, K8s pods, containers
-- data-tier (数据层): Database servers, storage systems
-- monitoring (监控层): Monitoring, logging, alerting systems
+**🚀 DEPLOYMENT ARCHITECTURE - Focus on INFRASTRUCTURE TOPOLOGY:**
+CRITICAL: This is a DEPLOYMENT view showing WHERE systems run!
+
+**Required Layers (use EXACTLY these names):**
+1. "dmz" (DMZ区) - 3-4 edge components
+   - Examples: Nginx负载均衡, WAF防火墙, CDN节点, SSL终结
+   - Use category: "network"
+   - tech_stack: ["Nginx", "HAProxy"], ["ModSecurity"], etc.
+   - note: Include IP ranges or network segments
+
+2. "app-tier" (应用层) - 5-8 application deployment units
+   - Examples: K8s Pod (订单服务), Docker容器 (用户服务), Tomcat实例
+   - Use category: "compute"
+   - tech_stack: ["K8s Deployment"], ["Docker Compose"], etc.
+   - note: Include replica counts (e.g., "3副本")
+
+3. "data-tier" (数据层) - 3-5 data storage deployments
+   - Examples: MySQL主从集群, Redis哨兵集群, MinIO对象存储
+   - Use category: "storage"
+   - tech_stack: ["MySQL 8.0 主从"], ["Redis Sentinel"], etc.
+   - note: Include HA configuration
+
+4. "monitoring" (监控层) - 3-4 monitoring/logging systems
+   - Examples: Prometheus监控, Grafana可视化, ELK日志, Jaeger链路追踪
+   - Use category: "platform"
+   - tech_stack: ["Prometheus"], ["Grafana"], ["Elasticsearch"], etc.
+
+**STRICT RULES:**
+- MUST include deployment details (replicas, HA, network)
+- Show PHYSICAL/LOGICAL deployment topology
+- Include edges for network connections
+- Focus on OPERATIONS and INFRASTRUCTURE
 """
-            else:  # layered or domain
+            elif arch_type == "domain":
                 layer_examples = """
-**Layered Architecture:**
-- frontend (前端层): Web/Mobile clients
-- backend (后端层): APIs, Services
-- middleware (中间件层): Gateway, Cache, Queue
-- data (数据层): Databases, Storage
-- infrastructure (基础设施层): Servers, Network
+**🎯 DOMAIN-DRIVEN ARCHITECTURE - Focus on BOUNDED CONTEXTS:**
+CRITICAL: This is a DDD view showing domain boundaries!
+
+**Required Layers (use EXACTLY these names):**
+1. "domain-services" (领域服务层) - 5-8 bounded contexts
+   - Examples: 订单域, 用户域, 支付域, 库存域, 物流域
+   - Use category: "service"
+   - note: Include domain responsibilities
+
+2. "shared-kernel" (共享内核层) - 2-4 shared components
+   - Examples: 通用工具类, 领域事件总线, 共享值对象
+   - Use category: "platform"
+
+3. "anti-corruption" (防腐层) - 2-3 integration adapters
+   - Examples: 外部支付适配器, 第三方物流适配器
+   - Use category: "network"
+
+4. "infrastructure" (基础设施层) - 3-4 infrastructure services
+   - Examples: 数据持久化, 消息发布, 缓存服务
+   - Use category: "infrastructure"
+
+**STRICT RULES:**
+- Use DDD terminology (Bounded Context, Aggregate, etc.)
+- Show domain boundaries clearly
+- Include edges for domain events
+"""
+            else:  # layered (default/generic)
+                layer_examples = """
+**🏢 LAYERED ARCHITECTURE - Generic multi-tier structure:**
+
+**Required Layers (use EXACTLY these names):**
+1. "frontend" (前端层) - 2-4 client applications
+2. "backend" (后端层) - 4-6 backend services
+3. "middleware" (中间件层) - 3-5 middleware components
+4. "data" (数据层) - 3-4 data storage systems
+5. "infrastructure" (基础设施层) - 2-3 infrastructure components
+
+**RULES:**
+- Generic architecture, suitable for most systems
+- Balance between business and technical views
 """
 
             # Edge generation guidance
@@ -537,8 +648,9 @@ Generate a well-laid-out flowchart. Focus on clarity and visual balance. Return 
             frame_size = self._calculate_frame_size(len(items), columns)
 
             # Add LayerFrame background node with dynamic sizing
+            layer_frame_id = f"{layer_name}-frame"
             nodes.append({
-                "id": f"{layer_name}-frame",
+                "id": layer_frame_id,
                 "type": "layerFrame",
                 "position": {"x": frame_padding_x, "y": current_y},
                 "data": {
@@ -548,11 +660,17 @@ Generate a well-laid-out flowchart. Focus on clarity and visual balance. Return 
                     "height": frame_size["height"],
                     "layout": "grid",  # NEW: Indicate grid layout mode
                     "columns": columns,  # NEW: Number of columns for grid
+                    "itemsCount": len(items),  # NEW: Track item count
                 },
                 "draggable": False,
+                # CRITICAL: Set style to define the draggable area for child nodes
+                "style": {
+                    "width": frame_size["width"],
+                    "height": frame_size["height"],
+                },
             })
 
-            # Position component nodes in grid layout
+            # Position component nodes in grid layout RELATIVE to parent
             for item_idx, item in enumerate(items):
                 if isinstance(item, dict):
                     label = item.get("label") or item.get("name") or f"{layer_name}-{item_idx}"
@@ -562,20 +680,24 @@ Generate a well-laid-out flowchart. Focus on clarity and visual balance. Return 
                 else:
                     label = str(item)
                     note = ""
+                    tech_stack = []
                     category = "service"
 
                 # Calculate grid position
                 row = item_idx // columns
                 col = item_idx % columns
 
-                # Calculate absolute position
-                item_x = frame_padding_x + padding + col * (item_width + gap)
-                item_y = current_y + header_height + row * (item_height + gap)
+                # Calculate RELATIVE position (relative to parent LayerFrame)
+                # Start from padding, not absolute coordinates
+                item_x_relative = padding + col * (item_width + gap)
+                item_y_relative = header_height + padding + row * (item_height + gap)
 
                 nodes.append({
                     "id": f"{layer_name}-{item_idx}",
                     "type": "frame",
-                    "position": {"x": item_x, "y": item_y},
+                    "position": {"x": item_x_relative, "y": item_y_relative},  # RELATIVE position
+                    "parentNode": layer_frame_id,  # CRITICAL: Set parent relationship
+                    "extent": "parent",  # CRITICAL: Constrain dragging within parent
                     "data": {
                         "label": label,
                         "shape": "task",
