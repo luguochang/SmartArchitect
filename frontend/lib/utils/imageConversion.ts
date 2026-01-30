@@ -158,7 +158,7 @@ export async function convertImageToReactFlow(
   // 构造请求
   const requestData = {
     image_data: base64Image,
-    prompt: options.prompt || "Convert this architecture diagram to SmartArchitect React Flow format. Identify all components and connections.",
+    prompt: options.prompt || "Convert this architecture diagram to Archboard React Flow format. Identify all components and connections.",
     provider: options.provider || config.provider || defaultProvider,
     api_key: options.apiKey || config.apiKey,
     base_url: options.baseUrl || config.baseUrl,
