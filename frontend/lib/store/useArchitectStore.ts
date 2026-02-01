@@ -308,7 +308,7 @@ function applyEdgeStyles(edges: Edge[]): Edge[] {
   return edges.map((edge) => ({
     ...edge,
     type: edgeType,
-    animated: true,
+    animated: false, // 🔥 修复：改为实线，不使用动画效果
     markerEnd: {
       type: MarkerType.ArrowClosed,
       width: currentPresentationStyle.edge.markerSize,
@@ -504,6 +504,8 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
 
       // Track generation status in chat history
       let statusMessage = "🔄 正在生成流程图...";
+      let aiResponseBuffer = "";  // Buffer for AI's actual response text
+
       const updateChatStatus = (message: string) => {
         statusMessage = message;
         set((state) => {
@@ -513,6 +515,28 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
             newHistory[newHistory.length - 1] = { role: "assistant", content: statusMessage };
           } else {
             newHistory.push({ role: "assistant", content: statusMessage });
+          }
+          return { chatHistory: newHistory };
+        });
+      };
+
+      // Update AI response in real-time (for chat display)
+      const updateAiResponse = (token: string) => {
+        aiResponseBuffer += token;
+        set((state) => {
+          const newHistory = [...state.chatHistory];
+          const last = newHistory[newHistory.length - 1];
+          if (last && last.role === "assistant") {
+            // Update the last assistant message with accumulated response
+            newHistory[newHistory.length - 1] = {
+              role: "assistant",
+              content: `🤖 AI 正在生成...\n\n${aiResponseBuffer}`
+            };
+          } else {
+            newHistory.push({
+              role: "assistant",
+              content: `🤖 AI 正在生成...\n\n${aiResponseBuffer}`
+            });
           }
           return { chatHistory: newHistory };
         });
@@ -560,8 +584,12 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
             updateChatStatus("📝 正在构建提示词...");
           } else if (content.startsWith("[CALL]")) {
             pushLog(content);
-            updateChatStatus("🤖 AI 正在思考...");
+            updateChatStatus("🤖 AI 正在生成流程图...");
             isGenerating = true;
+            // Add a "[生成中]" placeholder for token accumulation
+            if (!logs.some(log => log.startsWith("[生成中]"))) {
+              pushLog("[生成中] ");
+            }
           } else if (content.startsWith("[RESULT]")) {
             // Remove the "[生成中]" entry
             const generatingIndex = logs.findIndex(log => log.startsWith("[生成中]"));
@@ -585,6 +613,14 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
           if (content.startsWith("[TOKEN]")) {
             const token = content.replace("[TOKEN]", "").trimStart();
             updateJsonLog(token);
+            updateAiResponse(token);  // 实时更新聊天框中的 AI 回复
+
+            // Update status with progress for better feedback
+            const tokenLength = jsonBuffer.length;
+            if (tokenLength > 0 && tokenLength % 500 === 0) {
+              const charCount = Math.floor(tokenLength);
+              // Don't update chat status here, let updateAiResponse handle it
+            }
             continue;
           }
 
@@ -866,7 +902,9 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
 
       // Track generation status in chat history (打字机效果)
       let statusMessage = "🎨 正在生成 Excalidraw 场景...";
+      let aiResponseBuffer = "";  // Buffer for AI's actual response text
       let lastChatUpdate = Date.now();
+
       const updateChatStatus = (message: string, force = false) => {
         statusMessage = message;
         // Throttle chat updates to max once per 500ms unless forced
@@ -882,6 +920,34 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
               newHistory[newHistory.length - 1] = { role: "assistant", content: statusMessage };
             } else {
               newHistory.push({ role: "assistant", content: statusMessage });
+            }
+            return { chatHistory: newHistory };
+          });
+        }, 0);
+      };
+
+      // Update AI response in real-time (for chat display)
+      const updateAiResponse = (token: string) => {
+        aiResponseBuffer += token;
+        const now = Date.now();
+        // Throttle to avoid too many updates
+        if (now - lastChatUpdate < 100) return;
+        lastChatUpdate = now;
+
+        setTimeout(() => {
+          set((state) => {
+            const newHistory = [...state.chatHistory];
+            const last = newHistory[newHistory.length - 1];
+            if (last && last.role === "assistant") {
+              newHistory[newHistory.length - 1] = {
+                role: "assistant",
+                content: `🎨 AI 正在绘制...\n\n${aiResponseBuffer}`
+              };
+            } else {
+              newHistory.push({
+                role: "assistant",
+                content: `🎨 AI 正在绘制...\n\n${aiResponseBuffer}`
+              });
             }
             return { chatHistory: newHistory };
           });
@@ -1077,15 +1143,21 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
           } else if (content.startsWith("[CALL]")) {
             pushLog(content);
             updateChatStatus("🤖 AI 正在绘制场景...");
+            // Add a "[生成中]" placeholder for token accumulation
+            if (!logs.some(log => log.startsWith("[生成中]"))) {
+              pushLog("[生成中] ");
+            }
           } else if (content.startsWith("[TOKEN]")) {
             const token = content.replace("[TOKEN]", "").trimStart();
             tokenCount++;
 
             updateJsonLog(token);
+            updateAiResponse(token);  // 实时更新聊天框中的 AI 回复
 
-            // 每 100 个 token 更新聊天状态
-            if (tokenCount % 100 === 0) {
-              updateChatStatus(`🤖 AI 正在绘制场景...\n已生成 ${tokenCount} tokens`);
+            // Update status with character count for better feedback
+            const charCount = jsonBuffer.length;
+            if (charCount > 0 && charCount % 500 === 0) {
+              // Don't update chat status here, let updateAiResponse handle it
             }
           } else if (content.startsWith("[RESULT]")) {
             // Remove "[生成中]" log

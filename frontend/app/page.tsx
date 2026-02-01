@@ -147,17 +147,19 @@ export default function Home() {
       </header>
 
       {/* 主内容区域 */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden gap-3 px-3 py-3 bg-gradient-to-br from-slate-50 via-slate-100 to-indigo-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
         {/* 左侧工具栏 - 仅在 ReactFlow 模式显示 */}
         {canvasMode === "reactflow" && <Sidebar />}
 
         {/* 中间画布 */}
         <div className="flex flex-1 flex-col">
-          <ArchitectCanvas />
+          <div className="relative flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white/90 shadow-xl backdrop-blur dark:border-slate-800 dark:bg-slate-900/80">
+            <ArchitectCanvas />
+          </div>
         </div>
 
         {/* 右侧 AI 控制台 */}
-        <div className="w-[420px] min-w-[360px] border-l border-slate-200 bg-white/70 backdrop-blur dark:border-slate-800 dark:bg-slate-900/70">
+        <div className="w-[360px] min-w-[320px] rounded-xl border border-slate-200 bg-white/90 px-3 py-3 shadow-lg backdrop-blur-lg dark:border-slate-800 dark:bg-slate-900/85">
           <AiControlPanel />
         </div>
       </div>

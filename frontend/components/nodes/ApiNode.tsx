@@ -13,7 +13,7 @@ export const ApiNode = memo(({ id, data }: NodeProps) => {
   const updateNodeLabel = useArchitectStore((state) => state.updateNodeLabel);
 
   // 获取样式配置
-  const nodeStyle = useNodeStyle("api", data.shape);
+  const nodeStyle = useNodeStyle("api", data.shape, (data as any)?.color);
 
   const handleDoubleClick = useCallback(() => {
     setIsEditing(true);

@@ -40,10 +40,16 @@ export function ExcalidrawUploader() {
         const elements: any[] = [];
         let appState: any = {};
 
-        // 流式生成
+        // 🔧 传递 AI 配置给流式生成函数
         for await (const chunk of convertImageToExcalidrawStreaming(
           file,
-          (msg) => setProgress(msg)
+          (msg) => setProgress(msg),
+          {
+            provider: modelConfig.provider,
+            apiKey: modelConfig.apiKey,
+            baseUrl: modelConfig.baseUrl,
+            modelName: modelConfig.modelName,
+          }
         )) {
           if (chunk.type === "start_streaming") {
             setTotalElements(chunk.total || 0);

@@ -127,39 +127,39 @@ class ExcalidrawGeneratorService:
         Build Excalidraw generation prompt - inspired by FlowPilot's concise approach.
         Simple, clear instructions lead to more stable AI output.
         """
-        return f"""You are an Excalidraw Expert. Generate a complete hand-drawn diagram as valid JSON.
+        return f"""You are an Excalidraw expert. Produce a finished, readable diagram as pure JSON (no prose).
 
-OUTPUT FORMAT:
-- Wrap JSON in ```json code block
-- Valid JSON syntax with proper commas
-- Complete structure: {{"elements": [...], "appState": {{}}, "files": {{}}}}
+OUTPUT FORMAT (must be valid JSON):
+{{
+  "elements": [...],
+  "appState": {{}},
+  "files": {{}}
+}}
 
 CRITICAL RULES:
-1. For "line", "arrow" types: "points" array is MANDATORY (e.g. [[0,0], [50,50]])
-2. Use "arrow" type with startBinding/endBinding to connect shapes
-3. Each element MUST have unique "id" (string)
-4. "groupIds" and "boundElements" must be arrays
+1) For "line"/"arrow": include "points" (e.g. [[0,0],[50,50]]) and set "startArrowhead"/"endArrowhead" when directional.
+2) Every element must have: id (string), type, x, y, width, height, angle, strokeColor, backgroundColor, fillStyle, strokeWidth, strokeStyle, roughness, opacity, groupIds (array), boundElements (array), seed, version, versionNonce, isDeleted=false.
+3) Use "arrow" to connect shapes; prefer "text" for labels (include "text", "fontSize", "textAlign").
+4) Do NOT return images/icons; use basic shapes and arrows only. Ensure the JSON is closed (ends with "}}").
 
-ELEMENT TYPES:
-- Shapes: rectangle, ellipse, diamond
-- Connections: arrow, line
-- Labels: text (requires "text", "fontSize" fields)
+REQUIRED ELEMENT MIX:
+- Total 12-18 elements.
+- At least 6 shape nodes (rectangle/ellipse/diamond) for the main content.
+- At least 4 connectors (arrow/line) linking the shapes into a flow.
+- At least 2 text labels to annotate nodes or flows.
 
 LAYOUT:
-- Canvas: {width}x{height}px
-- Position elements evenly, avoid overlaps
-- Use arrows to show relationships
+- Canvas: {width}x{height}px. Keep a 40px margin; avoid overlap; distribute nodes evenly left-to-right/top-to-bottom.
+- Make connectors clean and direct; avoid zero-length points.
 
 STYLE (hand-drawn):
-- strokeColor: "#1e1e1e", "#2563eb", "#dc2626", "#059669"
-- backgroundColor: "transparent", "#a5d8ff", "#fde68a", "#bbf7d0"
-- fillStyle: "hachure" or "solid"
-- roughness: 1 (sketchy) or 0 (smooth)
-- strokeWidth: 2
+- strokeColor: choose from ["#1e1e1e","#2563eb","#dc2626","#059669"]
+- backgroundColor: choose from ["transparent","#a5d8ff","#fde68a","#bbf7d0"]
+- fillStyle: "hachure" or "solid"; roughness: 1 for sketch feel; strokeWidth: 2.
 
 USER REQUEST: "{prompt}"
 
-Generate 8-12 elements for a clear, complete diagram. Output the full JSON now:"""
+Return ONLY the JSON structure above. Generate the full set of elements; do not stop early."""
 
     def _safe_json(self, payload):
         """

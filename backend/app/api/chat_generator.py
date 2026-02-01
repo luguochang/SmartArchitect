@@ -119,55 +119,129 @@ async def generate_flowchart_stream(request: ChatGenerationRequest):
                     accumulated = ""
                     logger.info(f"[STREAM] Creating streaming request to {selected_provider} with model {vision_service.model_name}")
 
-                    # 检测是否是 Claude 模型
-                    is_claude_model = selected_provider == "custom" and vision_service.model_name and "claude" in vision_service.model_name.lower()
+                    # 检测是否需要使用 raw HTTP（ikuncode.cc 会阻拦 SDK）
+                    use_raw_http = (
+                        selected_provider == "custom" and
+                        vision_service.custom_base_url and
+                        "ikuncode.cc" in vision_service.custom_base_url.lower()
+                    )
 
-                    if is_claude_model:
-                        # 使用 Anthropic streaming API
-                        logger.info("[STREAM] Using Anthropic streaming API")
-                        stream = vision_service.client.messages.stream(
-                            model=vision_service.model_name,
-                            messages=[{"role": "user", "content": prompt}],
-                            max_tokens=4096,
-                            temperature=0.2,
-                        )
+                    if use_raw_http:
+                        # ikuncode.cc：使用 raw HTTP streaming
+                        logger.info("[STREAM] Detected ikuncode.cc, using raw HTTP streaming")
+                        import httpx
+
+                        # 清理 base_url
+                        clean_base_url = vision_service.custom_base_url.rstrip('/')
+                        if clean_base_url.endswith('/v1'):
+                            clean_base_url = clean_base_url[:-3]
+
+                        headers = {
+                            "x-api-key": vision_service.custom_api_key,
+                            "anthropic-version": "2023-06-01",
+                            "content-type": "application/json"
+                        }
+
+                        data = {
+                            "model": vision_service.model_name,
+                            "max_tokens": 4096,
+                            "messages": [{"role": "user", "content": prompt}],
+                            "stream": True
+                        }
+
+                        logger.info(f"[STREAM] Sending request to: {clean_base_url}/v1/messages")
+
+                        # 直接在这里处理流式响应
+                        async with httpx.AsyncClient(timeout=120.0) as http_client:
+                            async with http_client.stream("POST", f"{clean_base_url}/v1/messages", headers=headers, json=data) as response:
+                                if response.status_code != 200:
+                                    error_text = await response.aread()
+                                    logger.error(f"[STREAM] API error: {response.status_code} - {error_text}")
+                                    yield f"data: [ERROR] API request failed: {response.status_code}\n\n"
+                                    return
+
+                                logger.info("[STREAM] Starting raw HTTP token streaming...")
+                                current_event = None
+                                buffer = ""
+
+                                async for chunk in response.aiter_bytes():
+                                    buffer += chunk.decode('utf-8')
+
+                                    while '\n' in buffer:
+                                        line, buffer = buffer.split('\n', 1)
+                                        line = line.strip()
+
+                                        if not line:
+                                            continue
+
+                                        if line.startswith("event: "):
+                                            current_event = line[7:]
+                                        elif line.startswith("data: "):
+                                            data_str = line[6:]
+                                            try:
+                                                data_json = json.loads(data_str)
+                                                if current_event == "content_block_delta":
+                                                    delta = data_json.get("delta", {})
+                                                    if delta.get("type") == "text_delta":
+                                                        text = delta.get("text", "")
+                                                        if text:
+                                                            accumulated += text
+                                                            yield f"data: [TOKEN] {text}\n\n"
+                                            except json.JSONDecodeError:
+                                                continue
+
                     else:
-                        # 使用 OpenAI streaming API
-                        stream = vision_service.client.chat.completions.create(
-                            model=vision_service.model_name,
-                            messages=[{"role": "user", "content": prompt}],
-                            max_tokens=4096,
-                            temperature=0.2,
-                            stream=True,
-                        )
+                        # 检测是否是 Claude 模型（linkflow.run 等）
+                        is_claude_model = selected_provider == "custom" and vision_service.model_name and "claude" in vision_service.model_name.lower()
+
+                        if is_claude_model:
+                            # 使用 Anthropic streaming API
+                            logger.info("[STREAM] Using Anthropic streaming API")
+                            stream = vision_service.client.messages.stream(
+                                model=vision_service.model_name,
+                                messages=[{"role": "user", "content": prompt}],
+                                max_tokens=4096,
+                                temperature=0.2,
+                            )
+                        else:
+                            # 使用 OpenAI streaming API
+                            stream = vision_service.client.chat.completions.create(
+                                model=vision_service.model_name,
+                                messages=[{"role": "user", "content": prompt}],
+                                max_tokens=4096,
+                                temperature=0.2,
+                                stream=True,
+                            )
                 except Exception as init_error:
                     logger.error(f"[STREAM] Failed to initialize streaming: {init_error}", exc_info=True)
                     yield f"data: [ERROR] Failed to initialize AI streaming: {str(init_error)}\n\n"
                     return
 
-                try:
-                    if is_claude_model:
-                        # Anthropic streaming API使用context manager
-                        with stream as s:
-                            for text in s.text_stream:
+                # 只有非 raw HTTP 的情况才需要这里处理流式
+                if not use_raw_http:
+                    try:
+                        if is_claude_model:
+                            # Anthropic streaming API使用context manager
+                            with stream as s:
+                                for text in s.text_stream:
+                                    accumulated += text
+                                    yield f"data: [TOKEN] {text}\n\n"
+                        else:
+                            # OpenAI streaming API
+                            for chunk in stream:
+                                # Some providers may emit empty heartbeats; guard against missing choices
+                                if not getattr(chunk, "choices", None):
+                                    continue
+                                delta = chunk.choices[0].delta.content if chunk.choices[0].delta else None
+                                if not delta:
+                                    continue
+                                text = "".join(delta)
                                 accumulated += text
                                 yield f"data: [TOKEN] {text}\n\n"
-                    else:
-                        # OpenAI streaming API
-                        for chunk in stream:
-                            # Some providers may emit empty heartbeats; guard against missing choices
-                            if not getattr(chunk, "choices", None):
-                                continue
-                            delta = chunk.choices[0].delta.content if chunk.choices[0].delta else None
-                            if not delta:
-                                continue
-                            text = "".join(delta)
-                            accumulated += text
-                            yield f"data: [TOKEN] {text}\n\n"
-                except Exception as stream_error:
-                    logger.error(f"[STREAM] Error during streaming: {stream_error}", exc_info=True)
-                    yield f"data: [ERROR] Streaming interrupted: {str(stream_error)}\n\n"
-                    return
+                    except Exception as stream_error:
+                        logger.error(f"[STREAM] Error during streaming: {stream_error}", exc_info=True)
+                        yield f"data: [ERROR] Streaming interrupted: {str(stream_error)}\n\n"
+                        return
 
                 # Parse final JSON and normalize; if parse fails, fall back to non-stream path
                 try:

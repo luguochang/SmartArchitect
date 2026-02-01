@@ -12,7 +12,7 @@ export const ClientNode = memo(({ id, data }: NodeProps) => {
   const updateNodeLabel = useArchitectStore((state) => state.updateNodeLabel);
 
   // 获取样式配置
-  const nodeStyle = useNodeStyle("client", data.shape);
+  const nodeStyle = useNodeStyle("client", data.shape, (data as any)?.color);
 
   const handleDoubleClick = useCallback(() => {
     setIsEditing(true);

@@ -400,18 +400,19 @@ Basic Flow (for general processes):
 Technical Nodes (ONLY for technical architecture):
 - api, service, database, cache, queue, storage, client, gateway
 
-**LAYOUT ALGORITHM - CRITICAL:**
-1. **Main Flow**: Center column, start at x=400, y=100
-2. **Vertical spacing**: 180px between sequential steps
-3. **Decision Branches**:
-   - "Yes" branch: Continue straight down (same x)
-   - "No" branch: Branch to the LEFT at -350px offset
-   - Rejoin branches after processing both paths
-4. **Parallel processes**: Use horizontal offset ±300px from center
-5. **Edge directions**:
-   - Sequential: Vertical (top → bottom)
+**LAYOUT ALGORITHM - CRITICAL (BALANCED GRID):**
+1. **Main spine**: Start near center (x=0, y=100). Keep the core flow mostly top-to-bottom.
+2. **Horizontal spread**: Use a 3-5 column grid with x positions spaced ~220-280px (e.g., -420, -200, 0, 220, 440). Do NOT stack everything in one column or only on the left.
+3. **Decision branches**:
+   - Place branch nodes at the SAME y-level as the decision.
+   - Mirror positions left/right (e.g., x=-240 for "No", x=+240 for "Yes") to keep symmetry.
+   - Rejoin branches after 1-2 steps at a centered node.
+4. **Parallel processes**: Keep siblings aligned horizontally on the same y. Use even spacing (±240/±480 from center) so the layout feels balanced.
+5. **Long flows**: After every 3-4 steps, gently shift the spine to an adjacent column (x=+200 or -200) to avoid a single vertical line while keeping flow mostly downward.
+6. **Edge directions**:
+   - Sequential: Vertical (top to bottom)
    - Branches: Diagonal or horizontal
-   - Avoid all edges exiting from same side!
+   - Avoid all edges exiting from the same side; balance entry/exit points.
 
 **LAYOUT EXAMPLE (Decision Flow):**
 {{

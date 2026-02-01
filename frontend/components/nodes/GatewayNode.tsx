@@ -15,7 +15,7 @@ export const GatewayNode = memo(({ id, data }: NodeProps) => {
   const updateNodeLabel = useArchitectStore((state) => state.updateNodeLabel);
 
   // 获取样式配置
-  const nodeStyle = useNodeStyle("gateway", data.shape);
+  const nodeStyle = useNodeStyle("gateway", data.shape, (data as any)?.color);
 
   const shape: NodeShape = (data.shape as NodeShape) || "diamond";
   const isDiamond = shape === "diamond";

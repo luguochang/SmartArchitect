@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef } from "react";
 import { X, Upload, Image as ImageIcon, Loader2, CheckCircle2, AlertCircle, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+import { useArchitectStore } from "@/lib/store/useArchitectStore";
 import {
   validateImageFile,
   formatFileSize,
@@ -31,6 +32,7 @@ export function ImageConversionModal({
   description,
   enableStreaming = true, // Default to streaming for Excalidraw
 }: ImageConversionModalProps) {
+  const { modelConfig } = useArchitectStore();
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [converting, setConverting] = useState(false);
@@ -110,7 +112,17 @@ export function ImageConversionModal({
         let appState: any = {};
 
         try {
-          for await (const chunk of convertImageToExcalidrawStreaming(file, (msg) => setProgress(msg))) {
+          // 🔧 传递 AI 配置给流式生成函数
+          for await (const chunk of convertImageToExcalidrawStreaming(
+            file,
+            (msg) => setProgress(msg),
+            {
+              provider: modelConfig.provider,
+              apiKey: modelConfig.apiKey,
+              baseUrl: modelConfig.baseUrl,
+              modelName: modelConfig.modelName,
+            }
+          )) {
             if (chunk.type === "start_streaming") {
               appState = chunk.appState;
               setProgress(`Streaming ${chunk.total} elements...`);
@@ -131,12 +143,22 @@ export function ImageConversionModal({
         toast.success(`Successfully streamed ${elements.length} elements to Excalidraw!`);
       } else if (mode === "excalidraw") {
         // Non-streaming Excalidraw
-        result = await convertImageToExcalidraw(file);
+        result = await convertImageToExcalidraw(file, {
+          provider: modelConfig.provider,
+          apiKey: modelConfig.apiKey,
+          baseUrl: modelConfig.baseUrl,
+          modelName: modelConfig.modelName,
+        });
         setProgress("Generating Excalidraw scene...");
         toast.success(`Successfully converted to Excalidraw format!`);
       } else {
         // ReactFlow mode
-        result = await convertImageToReactFlow(file);
+        result = await convertImageToReactFlow(file, {
+          provider: modelConfig.provider,
+          apiKey: modelConfig.apiKey,
+          baseUrl: modelConfig.baseUrl,
+          modelName: modelConfig.modelName,
+        });
         setProgress("Creating React Flow nodes...");
         toast.success(`Successfully converted to React Flow format!`);
       }
