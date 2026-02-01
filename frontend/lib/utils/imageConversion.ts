@@ -78,30 +78,19 @@ export async function convertImageToExcalidraw(
   // 转换为base64
   const base64Image = await fileToBase64(file);
 
-  // 从localStorage获取默认配置
-  const defaultProvider = localStorage.getItem("selectedProvider") || "custom";
-  const modelConfig = localStorage.getItem("modelConfig");
-  let config: any = {};
-
-  if (modelConfig) {
-    try {
-      config = JSON.parse(modelConfig);
-    } catch (e) {
-      console.error("Failed to parse model config:", e);
-    }
-  }
-
-  // 构造请求
-  const requestData = {
+  // 🔧 构造请求 - 使用传入的配置参数
+  const requestData: any = {
     image_data: base64Image,
     prompt: options.prompt || "Convert this diagram to Excalidraw format. Preserve layout and all connections.",
-    provider: options.provider || config.provider || defaultProvider,
-    api_key: options.apiKey || config.apiKey,
-    base_url: options.baseUrl || config.baseUrl,
-    model_name: options.modelName || config.modelName,
     width: options.width || 1400,
     height: options.height || 900,
   };
+
+  // 添加 AI 配置参数
+  if (options.provider) requestData.provider = options.provider;
+  if (options.apiKey) requestData.api_key = options.apiKey;
+  if (options.baseUrl) requestData.base_url = options.baseUrl;
+  if (options.modelName) requestData.model_name = options.modelName;
 
   // 调用API
   const response = await fetch(`${API_BASE_URL}/api/vision/generate-excalidraw`, {
@@ -142,28 +131,17 @@ export async function convertImageToReactFlow(
   // 转换为base64
   const base64Image = await fileToBase64(file);
 
-  // 从localStorage获取默认配置
-  const defaultProvider = localStorage.getItem("selectedProvider") || "custom";
-  const modelConfig = localStorage.getItem("modelConfig");
-  let config: any = {};
-
-  if (modelConfig) {
-    try {
-      config = JSON.parse(modelConfig);
-    } catch (e) {
-      console.error("Failed to parse model config:", e);
-    }
-  }
-
-  // 构造请求
-  const requestData = {
+  // 🔧 构造请求 - 使用传入的配置参数
+  const requestData: any = {
     image_data: base64Image,
     prompt: options.prompt || "Convert this architecture diagram to Archboard React Flow format. Identify all components and connections.",
-    provider: options.provider || config.provider || defaultProvider,
-    api_key: options.apiKey || config.apiKey,
-    base_url: options.baseUrl || config.baseUrl,
-    model_name: options.modelName || config.modelName,
   };
+
+  // 添加 AI 配置参数
+  if (options.provider) requestData.provider = options.provider;
+  if (options.apiKey) requestData.api_key = options.apiKey;
+  if (options.baseUrl) requestData.base_url = options.baseUrl;
+  if (options.modelName) requestData.model_name = options.modelName;
 
   // 调用API
   const response = await fetch(`${API_BASE_URL}/api/vision/generate-reactflow`, {
@@ -233,7 +211,13 @@ export function formatFileSize(bytes: number): string {
  */
 export async function* convertImageToExcalidrawStreaming(
   file: File,
-  onProgress?: (message: string) => void
+  onProgress?: (message: string) => void,
+  config?: {
+    provider?: string;
+    apiKey?: string;
+    baseUrl?: string;
+    modelName?: string;
+  }
 ): AsyncGenerator<{
   type: "start_streaming" | "element" | "complete" | "error";
   total?: number;
@@ -249,30 +233,19 @@ export async function* convertImageToExcalidrawStreaming(
     onProgress("Uploading image...");
   }
 
-  // 从localStorage获取默认配置
-  const defaultProvider = localStorage.getItem("selectedProvider") || "custom";
-  const modelConfig = localStorage.getItem("modelConfig");
-  let config: any = {};
-
-  if (modelConfig) {
-    try {
-      config = JSON.parse(modelConfig);
-    } catch (e) {
-      console.error("Failed to parse model config:", e);
-    }
-  }
-
-  // 构造请求
-  const requestData = {
+  // 🔧 构造请求 - 使用前端传入的配置参数
+  const requestData: any = {
     image_data: base64Image,
     prompt: "Convert this diagram to Excalidraw format. Preserve layout and all connections.",
-    provider: config.provider || defaultProvider,
-    api_key: config.apiKey,
-    base_url: config.baseUrl,
-    model_name: config.modelName,
     width: 1400,
     height: 900,
   };
+
+  // 如果传入了配置参数，添加到请求中
+  if (config?.provider) requestData.provider = config.provider;
+  if (config?.apiKey) requestData.api_key = config.apiKey;
+  if (config?.baseUrl) requestData.base_url = config.baseUrl;
+  if (config?.modelName) requestData.model_name = config.modelName;
 
   // 调用流式API
   const response = await fetch(`${API_BASE_URL}/api/vision/generate-excalidraw-stream`, {

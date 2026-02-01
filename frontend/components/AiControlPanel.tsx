@@ -43,81 +43,81 @@ const EXCALIDRAW_PROMPTS = [
   {
     id: "github-heatmap",
     name: "GitHub贡献图",
-    prompt: "画一个类似GitHub贡献热力图的表格，横向12-15列（代表周），纵向7行（代表周一到周日）。每个格子是小方块，用不同深浅的绿色填充表示活跃度：深绿色（高活跃）、浅绿色（中等）、灰色（无活跃）。尽可能复刻真实的GitHub样式，方块之间有小间隙，整体排列整齐"
+    prompt: "手绘风格的GitHub贡献热力图：12-15列（周）× 7行（周一-周日）小方块，浅→深绿色渐变表示活跃度，格子之间留出微小间距，整体整齐对齐，背景留白"
   },
   {
     id: "kanban-board",
     name: "看板布局",
-    prompt: "绘制一个Trello/Jira风格的看板，包含4列：待办(To Do)、进行中(In Progress)、测试中(Testing)、已完成(Done)。每列内有3-4张卡片，卡片是圆角矩形，包含标题栏和简单的图标（如小旗帜、打钩符号）。尽可能复刻真实看板的布局和样式"
+    prompt: "手绘看板：4列（To Do / In Progress / Testing / Done），列头有标题；每列3-4张统一尺寸的圆角卡片，卡片带细分栏位和简笔图标；保持网格对齐和均匀留白"
   },
   {
     id: "dashboard-layout",
     name: "数据面板",
-    prompt: "画一个Dashboard仪表盘布局，左侧是垂直导航栏（5-6个菜单项，用简单图标表示），右侧主区域分成4个卡片：左上是折线图（用曲线和坐标轴）、右上是环形进度条、左下是柱状图（5根柱子）、右下是饼图（分3-4块）。尽可能复刻真实数据看板的网格布局和卡片样式"
+    prompt: "仪表盘线框：左侧窄导航栏（5-6个菜单 + 小图标），右侧主区域为2×2卡片网格：折线图、环形进度条、柱状图、饼图。用简笔线条表现图表，强调卡片边框和分栏对齐"
   },
   {
     id: "calendar-month",
     name: "月历视图",
-    prompt: "绘制一个月历（日历）视图，顶部是月份标题，下方是7x5或7x6的网格（周一到周日，4-5周）。某些日期格子内有小圆点标记（表示有事件），某些格子被高亮（不同颜色）。尽可能复刻常见日历应用的样式，网格线清晰，日期数字在格子左上角"
+    prompt: "月历线框：顶部月份标题，下方7列×5~6行网格，左上角标日期数字；随机格子加小圆点或浅色高亮表示事件；线条轻、间距均匀、整体居中"
   },
   {
     id: "flowchart-boxes",
     name: "流程图结构",
-    prompt: "画一个标准的流程图结构，包含：1个起始椭圆（开始）→ 2-3个处理矩形（步骤）→ 1个菱形判断节点（是/否分支）→ 2个不同路径的矩形 → 1个结束椭圆。用箭头连接各个节点，箭头标注简单的文字（是/否）。尽可能复刻经典流程图的样式"
+    prompt: "手绘流程图：开始椭圆 → 3-4个矩形步骤 → 1个菱形判断分成2条路径 → 结束椭圆。所有节点用箭头连接，分支箭头标注“是/否”，留出均匀间距，线条略有手绘抖动感"
   },
   {
     id: "sitemap-tree",
     name: "网站地图树",
-    prompt: "绘制一个网站Sitemap树状结构图，顶部是首页（根节点，用矩形表示），下方分3个主分支（用户中心、产品列表、帮助文档），每个分支下有2-3个子页面。用树状连接线连接各个节点，尽可能复刻真实sitemap的层级结构和对齐方式"
+    prompt: "Sitemap树：顶层首页矩形，下方3个主分支（用户中心、产品列表、帮助文档），每个主分支带2-3个子页面节点。保持分支对齐和层级缩进，连接线清晰，手绘风格"
   },
   {
     id: "gantt-chart",
     name: "甘特图",
-    prompt: "画一个项目甘特图，左侧列出5-6个任务名称（需求分析、设计、开发、测试、上线），右侧是时间轴网格（横向12列代表月份），每个任务用不同颜色的横条表示时间跨度，横条长度不同表示任务耗时。尽可能复刻真实甘特图的网格和横条样式"
+    prompt: "甘特图线框：左侧任务列表5-6行，右侧是横向时间轴网格（约12列）；每个任务用彩色横条表示跨度，条宽不一且与时间轴对齐；保持行列对齐和简洁描边"
   },
   {
     id: "mobile-wireframe",
     name: "手机界面原型",
-    prompt: "绘制一个手机APP首页的线框图原型（竖屏），包含：顶部状态栏（信号、电量图标）、搜索框、4个圆角方块分类入口（2x2网格）、中间是列表区域（3-4个卡片，每个卡片左侧是正方形图片占位符、右侧是标题和描述线条）、底部Tab栏（4个图标）。尽可能复刻真实APP线框图的布局和元素样式"
+    prompt: "手机首页线框（竖屏）：顶部状态栏 + 搜索框；中上部2×2圆角卡片入口；中间列表区3-4个卡片（左图占位、右侧标题/描述线条）；底部Tab栏4个图标。保持留白与对齐，简笔线框"
   },
   {
     id: "er-diagram",
     name: "数据库ER图",
-    prompt: "画一个简单的数据库ER图（实体关系图），包含3个实体表：用户(Users)、订单(Orders)、商品(Products)。每个表是矩形，内部列出3-4个字段（用横线分隔），表之间用连线表示关系（1对多、多对多），连线上标注基数（1、N）。尽可能复刻真实ER图的符号和布局"
+    prompt: "简洁ER图：3个表（Users / Orders / Products），表内分栏列出3-4个字段；用连接线标注基数（1 / N），表格对齐，线条清晰，保持手绘感"
   },
   {
     id: "timeline-horizontal",
     name: "水平时间轴",
-    prompt: "绘制一条水平时间轴，从左到右有5-6个里程碑节点（用圆点标记），每个节点上方或下方有一个圆角矩形卡片（里程碑描述），节点之间用实线连接。尽可能复刻产品Roadmap的样式，节点对齐在中心线，卡片交错排列（上下交替）"
+    prompt: "水平时间轴：中央水平线 + 5-6个里程碑圆点，节点间等距；每个节点附带上下交错的圆角卡片描述；使用单一主色+浅色填充，保持对齐和留白"
   }
 ];
 
 // Flow Diagram 预设提示词（补充现有模板）
 const FLOW_PROMPTS = [
   {
-    id: "api-request",
-    name: "API请求流程",
-    prompt: "生成API请求处理完整流程：客户端发起请求 → 网关验证Token → 参数校验 → 业务逻辑处理 → 查询数据库 → 封装响应数据 → 返回JSON结果。包含异常处理分支"
+    id: "date-day",
+    name: "约会日流程",
+    prompt: "生成“和异性约会的一天”流程图：从早晨准备→路上见面→午餐/下午活动→晚餐/散步→送别，考虑迟到/堵车/临时改地点/冷场/过敏等突发情况，并标注应对策略（如备用话题、应急药物、备选餐厅）"
   },
   {
-    id: "email-verify",
-    name: "邮箱验证",
-    prompt: "生成用户邮箱验证流程：用户注册填写邮箱 → 系统生成验证码（6位数字）→ 发送邮件（异步）→ 用户点击链接 → 验证码校验（是否过期？是否正确？）→ 激活账号 → 跳转登录页"
+    id: "incident-response",
+    name: "故障应急",
+    prompt: "生成技术故障应急流程：监控告警→初步分级→值班响应→定位（日志/指标/链路追踪）→缓解措施（回滚/降级/扩容）→验证恢复→事后复盘。包含严重级别分支、升级路径、通信同步节点"
   },
   {
-    id: "order-refund",
-    name: "订单退款",
-    prompt: "生成电商订单退款流程：用户申请退款 → 填写退款原因 → 客服审核（通过/驳回）→ 调用支付接口退款 → 更新订单状态 → 发送退款通知（短信+站内信）→ 完成"
+    id: "onboarding",
+    name: "新人入职",
+    prompt: "生成新人入职全流程：预入职邮件/账号申请→报到→设备/权限开通→导师分配→首日引导→一周/一月检查点→转正评估。考虑异常如设备缺货、权限审批延迟、导师缺席"
   },
   {
-    id: "cache-penetration",
-    name: "缓存穿透方案",
-    prompt: "生成缓存穿透解决方案流程图：请求到达 → 先查布隆过滤器（Key存在？）→ 不存在直接返回空 → 存在则查Redis缓存 → 缓存命中返回 → 未命中查数据库 → 数据存在写入缓存 → 数据不存在缓存空值（5分钟TTL）"
+    id: "ml-deployment",
+    name: "模型上线",
+    prompt: "生成机器学习模型上线流程：数据准备→特征校验→训练/评估→模型注册→A/B或灰度发布→实时/批量推理→监控（漂移/延迟/成本）→回滚策略。突出安全网：模型回滚、阈值降级、熔断"
   },
   {
-    id: "login-sso",
-    name: "单点登录SSO",
-    prompt: "生成单点登录SSO流程：用户访问应用A → 未登录重定向到SSO中心 → 输入账号密码 → SSO验证成功生成Token → 重定向回应用A并携带Token → 应用A验证Token → 建立Session → 访问应用B时自动登录"
+    id: "release-train",
+    name: "发布列车",
+    prompt: "生成跨团队发布列车流程：需求冻结→分支策略→CI流水线→自动化测试（单测/集成/端到端）→安全扫描→预发布验证→分批放量→观测与回滚。加入失败分支和审批/沟通节点"
   }
 ];
 
@@ -554,7 +554,14 @@ export function AiControlPanel() {
                           : "bg-slate-200 text-slate-900 dark:bg-slate-700 dark:text-white"
                       }`}
                     >
-                      {msg.content}
+                      {/* Show loading animation for generating messages */}
+                      {msg.role === "assistant" && msg.content.includes("正在生成") && (
+                        <div className="flex items-center gap-2 mb-1">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          <span className="text-xs opacity-75">AI 正在工作中...</span>
+                        </div>
+                      )}
+                      <div className="whitespace-pre-wrap">{msg.content}</div>
                     </div>
                   </div>
                 ))}
@@ -573,6 +580,17 @@ export function AiControlPanel() {
                         : "whitespace-pre-wrap break-words"
                     }`}
                   >
+                    {/* Show animated dots for generating logs */}
+                    {log.startsWith("[生成中]") && (
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="flex gap-1">
+                          <div className="w-1.5 h-1.5 bg-emerald-600 dark:bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }}></div>
+                          <div className="w-1.5 h-1.5 bg-emerald-600 dark:bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }}></div>
+                          <div className="w-1.5 h-1.5 bg-emerald-600 dark:bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }}></div>
+                        </div>
+                        <span className="text-xs opacity-75">流式生成中...</span>
+                      </div>
+                    )}
                     {log}
                   </div>
                 ))}

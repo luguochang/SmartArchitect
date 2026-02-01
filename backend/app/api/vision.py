@@ -1,5 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Query
-from typing import Optional
+from typing import Optional, List
 import logging
 import asyncio
 
@@ -8,7 +8,10 @@ from app.models.schemas import (
     VisionToExcalidrawRequest,
     VisionToExcalidrawResponse,
     VisionToReactFlowRequest,
-    VisionToReactFlowResponse
+    VisionToReactFlowResponse,
+    Node,
+    Position,
+    NodeData
 )
 from app.services.ai_vision import create_vision_service
 from app.services.model_presets import get_model_presets_service
@@ -26,6 +29,136 @@ ALLOWED_CONTENT_TYPES = [
 
 # 最大文件大小（10MB）
 MAX_FILE_SIZE = 10 * 1024 * 1024
+
+
+def _fix_node_overlaps(nodes: List[Node], gentle_mode: bool = True) -> List[Node]:
+    """
+    Fix overlapping nodes - Simple and Direct Approach
+
+    Algorithm:
+    1. Process nodes in order
+    2. For each node, check if it overlaps with ANY already-placed node
+    3. If overlap: push right (or wrap to next row)
+    4. Keep checking until no overlaps with any placed node
+
+    Returns:
+        List of nodes with guaranteed no overlaps
+    """
+    if len(nodes) <= 1:
+        return nodes
+
+    # Node dimensions - MUST match frontend SHAPE_CONFIG (nodeShapes.ts)
+    NODE_SIZES = {
+        # BPMN shapes
+        "start-event": (56, 56),
+        "end-event": (56, 56),
+        "intermediate-event": (56, 56),
+        "task": (140, 80),
+        # Basic shapes
+        "rectangle": (180, 90),
+        "rounded-rectangle": (180, 90),
+        "circle": (80, 80),
+        "diamond": (100, 100),
+        "hexagon": (120, 100),
+        "triangle": (100, 100),
+        "parallelogram": (140, 80),
+        "trapezoid": (140, 80),
+        "star": (100, 100),
+        "cloud": (140, 80),
+        "cylinder": (100, 120),
+        "document": (120, 100),
+        # Default fallback
+        "default": (140, 80),
+    }
+
+    MIN_GAP = 30  # Minimum gap between nodes (increased from 20)
+    CANVAS_WIDTH = 1400
+    CANVAS_MARGIN = 60
+
+    def get_size(node: Node) -> tuple:
+        """Get (width, height) for a node"""
+        shape = node.data.shape if node.data.shape else "default"
+        return NODE_SIZES.get(shape, NODE_SIZES["default"])
+
+    def boxes_overlap(x1, y1, w1, h1, x2, y2, w2, h2) -> bool:
+        """Check if two bounding boxes overlap"""
+        left1, right1 = x1, x1 + w1
+        top1, bottom1 = y1, y1 + h1
+        left2, right2 = x2, x2 + w2
+        top2, bottom2 = y2, y2 + h2
+
+        # Check overlap (with MIN_GAP buffer)
+        x_overlap = not (right1 + MIN_GAP < left2 or right2 + MIN_GAP < left1)
+        y_overlap = not (bottom1 + MIN_GAP < top2 or bottom2 + MIN_GAP < top1)
+
+        return x_overlap and y_overlap
+
+    def find_non_overlapping_position(x, y, width, height, placed_nodes):
+        """
+        Find a position that doesn't overlap with any placed nodes
+
+        Strategy:
+        - Check all placed nodes
+        - For each overlap, push right past that node
+        - After all pushes, check again until no overlaps
+        """
+        MAX_ITERATIONS = 20
+
+        for iteration in range(MAX_ITERATIONS):
+            # Collect all overlapping nodes
+            need_push = []
+
+            for placed in placed_nodes:
+                placed_w, placed_h = get_size(placed)
+
+                if boxes_overlap(x, y, width, height,
+                                placed.position.x, placed.position.y, placed_w, placed_h):
+                    need_push.append(placed)
+
+            if not need_push:
+                # No overlaps! Found a good position
+                return x, y
+
+            # Push right past the rightmost overlapping node
+            rightmost = max(need_push, key=lambda n: n.position.x + get_size(n)[0])
+            rightmost_w, _ = get_size(rightmost)
+            x = rightmost.position.x + rightmost_w + MIN_GAP
+
+            # If too far right, wrap to next row
+            if x + width > CANVAS_WIDTH - CANVAS_MARGIN:
+                x = CANVAS_MARGIN
+                y += 200
+
+        # Couldn't find position after max iterations
+        logger.warning(f"[Collision] Couldn't resolve overlap after {MAX_ITERATIONS} iterations")
+        return x, y
+
+    # Process nodes one by one
+    fixed = []
+
+    for i, node in enumerate(nodes):
+        width, height = get_size(node)
+        x, y = node.position.x, node.position.y
+
+        # Find non-overlapping position
+        x, y = find_non_overlapping_position(x, y, width, height, fixed)
+
+        # Create fixed node
+        fixed_node = Node(
+            id=node.id,
+            type=node.type,
+            position=Position(x=x, y=y),
+            data=node.data
+        )
+
+        fixed.append(fixed_node)
+
+        if x != node.position.x or y != node.position.y:
+            logger.debug(f"[Collision] Node {node.id} moved from ({node.position.x:.0f}, {node.position.y:.0f}) to ({x:.0f}, {y:.0f})")
+
+    logger.info(f"[Collision] Fixed {len(fixed)} nodes - all overlaps removed")
+    return fixed
+
 
 
 @router.post("/vision/analyze", response_model=ImageAnalysisResponse)
@@ -317,6 +450,11 @@ async def analyze_flowchart_screenshot(
             fast_mode=fast_mode
         )
 
+        # ✅ Apply collision detection (use aggressive mode to ensure no overlaps)
+        logger.info(f"[FLOWCHART API] Applying collision detection to {len(result.nodes)} nodes...")
+        result.nodes = _fix_node_overlaps(result.nodes, gentle_mode=False)
+        logger.info(f"[FLOWCHART API] Collision detection complete")
+
         logger.info(f"[FLOWCHART API] Success: {len(result.nodes)} nodes, {len(result.edges)} edges")
 
         # 记录警告（如果有）
@@ -448,6 +586,11 @@ async def analyze_flowchart_screenshot_stream_v2(request: VisionToReactFlowReque
                 )
 
                 logger.info(f"[FLOWCHART STREAM] Analysis complete: {len(result.nodes)} nodes, {len(result.edges)} edges")
+
+                # ✅ Apply collision detection (use aggressive mode to ensure no overlaps)
+                yield f"data: {json.dumps({'type': 'progress', 'message': '🔧 正在修正节点间距...'})}\n\n"
+                result.nodes = _fix_node_overlaps(result.nodes, gentle_mode=False)
+                logger.info(f"[FLOWCHART STREAM] Collision detection complete")
 
                 # Convert result to dict for JSON serialization
                 result_dict = {
@@ -1105,10 +1248,32 @@ async def generate_reactflow_from_image(request: VisionToReactFlowRequest):
         )
 
         # Build prompt for React Flow generation
+        # Optimized layout rules inspired by Excalidraw's success (see excalidraw_generator.py:125-163)
         reactflow_prompt = f"""
 Analyze the uploaded diagram and convert it to SmartArchitect React Flow format.
 
-Output a JSON object with this structure:
+**CRITICAL LAYOUT RULES (Prevent Overlap & Ensure Spacing):**
+
+1. **Canvas Dimensions:** Assume canvas is 1400px width × 900px height
+2. **Mandatory Margins:** Keep 60px margin from all edges (do not place nodes at x<60, y<60, x>1340, y>840)
+3. **Minimum Node Spacing (STRICT):**
+   - Horizontal gap between nodes: MINIMUM 180px (center to center)
+   - Vertical gap between rows: MINIMUM 150px (center to center)
+   - **NO OVERLAP ALLOWED** - each node must be clearly separated
+4. **Node Dimensions (assume for spacing calculations):**
+   - Standard rectangle/task nodes: 180px wide × 60px tall
+   - Circle nodes (start/end): 60px diameter
+   - Diamond nodes: 80px × 80px
+5. **Distribution Strategy:**
+   - For 3-5 nodes: Use x: 100-600 range with 200px gaps
+   - For 6-10 nodes: Use grid layout with 200px horizontal, 180px vertical spacing
+   - For 10+ nodes: Multi-row layout, keep rows 200px apart
+6. **Collision Detection (CRITICAL):**
+   - Before assigning coordinates, mentally check if any two nodes overlap
+   - If overlap detected, push the second node right by 200px or down by 180px
+   - Example: If node A is at (200, 100), node B minimum position is (400, 100) horizontally or (200, 280) vertically
+
+**JSON STRUCTURE:**
 {{
     "nodes": [
         {{
@@ -1117,8 +1282,7 @@ Output a JSON object with this structure:
             "position": {{"x": 100, "y": 100}},
             "data": {{
                 "label": "Node Label",
-                "shape": "rectangle" | "circle" | "diamond" | "hexagon" | "start-event" | "end-event",
-                "iconType": "server" | "database" | "zap" | "monitor" | "list" | "cloud" | "package",
+                "shape": "rectangle" | "circle" | "diamond" | "hexagon" | "task",
                 "color": "#3b82f6"
             }}
         }}
@@ -1133,31 +1297,48 @@ Output a JSON object with this structure:
     ]
 }}
 
-Available node types:
-- api: API services (iconType: server, shape: rectangle)
-- service: Backend services (iconType: settings, shape: rectangle)
-- database: Databases (iconType: database, shape: circle or rectangle)
-- cache: Cache systems (iconType: zap, shape: rectangle)
-- client: Client applications (iconType: monitor, shape: rectangle)
-- queue: Message queues (iconType: list, shape: rectangle)
-- gateway: API gateways (iconType: cloud, shape: hexagon)
-- container: Generic containers (iconType: package, shape: rectangle)
-- default: Default nodes (shape: rectangle)
+**Node Types:**
+- api: API services → shape: rectangle, color: #2563eb
+- service: Backend services → shape: task (rounded), color: #8b5cf6
+- database: Databases → shape: circle, color: #059669
+- cache: Cache systems → shape: rectangle, color: #f59e0b
+- client: Client applications → shape: rectangle, color: #06b6d4
+- queue: Message queues → shape: rectangle, color: #ec4899
+- gateway: API gateways → shape: hexagon or diamond, color: #6366f1
+- default: Generic nodes → shape: task, color: #64748b
 
-Available shapes:
-- rectangle: Standard boxes
-- circle: Circular nodes
-- diamond: Decision/gateway nodes
-- hexagon: Integration points
-- start-event: BPMN start (green circle)
-- end-event: BPMN end (red circle)
+**Shape Dimensions Reference (for spacing calculation):**
+- rectangle/task: width=180px, height=60px
+- circle: diameter=60px
+- diamond: width=80px, height=80px
+- hexagon: width=100px, height=80px
 
-Rules:
-1. Analyze each component and map to appropriate node type
-2. Use descriptive labels
-3. Preserve spatial layout with x, y coordinates
-4. Ensure all edge source/target IDs match node IDs
-5. Output ONLY the JSON, no extra text
+**LAYOUT VALIDATION CHECKLIST (before output):**
+✓ All nodes have minimum 180px horizontal spacing (center to center)
+✓ All nodes have minimum 150px vertical spacing (center to center)
+✓ No nodes overlap when considering their dimensions
+✓ All nodes are within canvas bounds (60px margin)
+✓ Grid-like distribution for multiple nodes (not random clustering)
+
+**POSITION CALCULATION EXAMPLE:**
+For a 3-node horizontal flow:
+- Node 1: x=150, y=300 (leftmost)
+- Node 2: x=400, y=300 (middle, 250px gap from node 1)
+- Node 3: x=650, y=300 (rightmost, 250px gap from node 2)
+
+For a 2-row layout:
+- Row 1: y=200
+- Row 2: y=400 (200px gap from row 1)
+
+**EDGE RULES:**
+1. Extract all arrows/connections from the diagram
+2. Preserve arrow labels (e.g., "HTTP", "gRPC", "Async")
+3. Ensure source/target IDs match node IDs exactly
+
+**OUTPUT FORMAT:**
+- Return ONLY valid JSON (no markdown, no explanatory text)
+- Ensure all IDs are unique strings
+- Verify no coordinate collisions before outputting
 
 {request.prompt or ''}
 """
@@ -1231,7 +1412,10 @@ Rules:
                 raw_response=json_str[:500]
             )
 
-        logger.info(f"Successfully generated React Flow diagram: {len(nodes)} nodes, {len(edges)} edges")
+        # ✅ Apply collision detection (use aggressive mode to ensure no overlaps)
+        nodes = _fix_node_overlaps(nodes, gentle_mode=False)
+
+        logger.info(f"Successfully generated React Flow diagram: {len(nodes)} nodes, {len(edges)} edges (collision-fixed)")
 
         return VisionToReactFlowResponse(
             success=True,

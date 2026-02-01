@@ -6,6 +6,8 @@ import { useArchitectStore } from "@/lib/store/useArchitectStore";
 import { toast } from "sonner";
 import { fileToBase64 } from "@/lib/utils/imageConversion";
 import { API_BASE_URL } from "@/lib/api-config";
+import { MarkerType } from "reactflow";
+import { useFlowchartStyleStore } from "@/lib/stores/flowchartStyleStore";
 
 
 interface UploadResult {
@@ -160,10 +162,95 @@ export function FlowchartUploader() {
             await new Promise(resolve => setTimeout(resolve, 200));
           }
 
+          // 🔧 处理节点和边的样式（保留原始位置）
+          console.log("[FlowchartUploader] Processing nodes and edges...");
+          console.log("[FlowchartUploader] Raw nodes from AI:", analysisResult.nodes.slice(0, 3));
+
+          const currentStyle = useFlowchartStyleStore.getState().currentPresentationStyle;
+          const edgeType = useFlowchartStyleStore.getState().edgeType;
+
+          // 🔥 检测节点重叠问题
+          const checkOverlap = (nodes: any[]) => {
+            let overlapCount = 0;
+            const nodeWidth = 200; // 节点宽度
+            const nodeHeight = 80; // 节点高度
+            const minSpacing = 50; // 最小间距
+
+            for (let i = 0; i < nodes.length; i++) {
+              for (let j = i + 1; j < nodes.length; j++) {
+                const dx = Math.abs(nodes[i].position.x - nodes[j].position.x);
+                const dy = Math.abs(nodes[i].position.y - nodes[j].position.y);
+
+                // 如果两个节点距离小于节点大小+最小间距，认为重叠
+                if (dx < (nodeWidth + minSpacing) && dy < (nodeHeight + minSpacing)) {
+                  overlapCount++;
+                  console.log(`[Overlap] Node ${nodes[i].id} and ${nodes[j].id}: dx=${dx.toFixed(0)}, dy=${dy.toFixed(0)}`);
+                }
+              }
+            }
+
+            const totalPairs = nodes.length * (nodes.length - 1) / 2;
+            const overlapRatio = totalPairs > 0 ? overlapCount / totalPairs : 0;
+            console.log(`[FlowchartUploader] Overlap detection: ${overlapCount}/${totalPairs} pairs overlap, ratio: ${(overlapRatio * 100).toFixed(1)}%`);
+
+            return overlapRatio > 0.15; // 如果超过15%的节点对重叠，认为需要重新布局
+          };
+
+          const hasOverlap = checkOverlap(analysisResult.nodes);
+
+          if (hasOverlap) {
+            console.warn("[FlowchartUploader] ⚠️ Detected significant overlap! Applying auto-layout...");
+            addChatMessage("assistant", "⚠️ 检测到节点重叠，自动应用布局优化...");
+          }
+
+          // 1. 只添加样式，保留 AI 识别的原始位置
+          const styledNodes = analysisResult.nodes.map((node: any) => {
+            // 🔥 修复：确保 type 是有效的节点类型，shape 才是形状
+            const validTypes = ['default', 'database', 'api', 'service', 'gateway', 'cache', 'queue', 'storage', 'client', 'frame', 'layerFrame'];
+            const nodeType = validTypes.includes(node.type) ? node.type : 'default';
+
+            return {
+              ...node,
+              type: nodeType,
+              position: node.position,
+              data: {
+                ...node.data,
+                shape: node.data?.shape || (node.type === 'task' ? 'task' : undefined),
+                color: node.data?.color || (
+                  node.data?.shape === "start-event" ? "#16a34a" :
+                  node.data?.shape === "end-event" ? "#dc2626" :
+                  node.data?.shape === "task" || node.type === "task" ? "#2563eb" :
+                  undefined
+                ),
+              },
+            };
+          });
+
+          // 2. 修复边的样式（改为实线，不使用 animated）
+          const styledEdges = analysisResult.edges.map((edge: any) => ({
+            ...edge,
+            type: edgeType, // 使用当前样式的边类型
+            animated: false, // 🔥 关键修复：不使用动画（虚线）
+            markerEnd: {
+              type: MarkerType.ArrowClosed,
+              width: currentStyle.edge.markerSize,
+              height: currentStyle.edge.markerSize,
+              color: currentStyle.edge.strokeColor,
+            },
+            style: {
+              stroke: currentStyle.edge.strokeColor,
+              strokeWidth: currentStyle.edge.strokeWidth,
+            },
+            data: {
+              ...edge.data,
+              showGlow: currentStyle.edge.showGlow,
+            },
+          }));
+
           // 应用到画布
           console.log("[FlowchartUploader] Calling setNodes and setEdges...");
-          setNodes(analysisResult.nodes);
-          setEdges(analysisResult.edges);
+          setNodes(styledNodes);
+          setEdges(styledEdges);
 
           // 延迟fitView以确保节点已渲染
           setTimeout(() => {

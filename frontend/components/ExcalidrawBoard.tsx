@@ -112,10 +112,21 @@ export default function ExcalidrawBoard() {
 
   // Update scene when scene data changes (if API is ready)
   useEffect(() => {
-    console.log(`🔔 [ExcalidrawBoard] useEffect triggered, scene elements: ${scene?.elements?.length || 0}`);
+    const elementCount = scene?.elements?.length || 0;
+    const hasApi = !!apiRef.current;
 
-    if (!apiRef.current || !scene?.elements) {
-      console.log(`⏭️ [ExcalidrawBoard] Skipping update - API ready: ${!!apiRef.current}, has elements: ${!!scene?.elements}`);
+    console.log(`🔔 [ExcalidrawBoard] useEffect triggered`);
+    console.log(`   - API ready: ${hasApi}`);
+    console.log(`   - Scene elements: ${elementCount}`);
+    console.log(`   - Scene object:`, scene);
+
+    if (!apiRef.current) {
+      console.log(`⏭️ [ExcalidrawBoard] API not ready yet, will update when API initializes`);
+      return;
+    }
+
+    if (!scene?.elements) {
+      console.log(`⏭️ [ExcalidrawBoard] No scene elements yet`);
       return;
     }
 

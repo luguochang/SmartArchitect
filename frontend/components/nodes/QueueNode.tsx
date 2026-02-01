@@ -12,7 +12,7 @@ export const QueueNode = memo(({ id, data }: NodeProps) => {
   const updateNodeLabel = useArchitectStore((state) => state.updateNodeLabel);
 
   // 获取样式配置
-  const nodeStyle = useNodeStyle("queue", data.shape);
+  const nodeStyle = useNodeStyle("queue", data.shape, (data as any)?.color);
 
   const handleDoubleClick = useCallback(() => {
     setIsEditing(true);

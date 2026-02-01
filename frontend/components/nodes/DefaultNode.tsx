@@ -31,9 +31,9 @@ import {
   Package,
   Cpu,
   Activity,
+  Zap,
   Wifi,
   Lock,
-  User,
   Users,
   Smartphone,
 } from "lucide-react";
@@ -84,7 +84,7 @@ const ICON_MAP: Record<string, any> = {
   note: FileText,
   folder: Folder,
   package: Package,
-  user: User,
+  user: Users,
   users: Users,
   mobile: Smartphone,
   desktop: Monitor,
@@ -105,7 +105,11 @@ const ICON_MAP: Record<string, any> = {
   activity: Activity,
   wifi: Wifi,
   lock: Lock,
-  box: Box,
+  api: Globe,
+  gateway: Shield,
+  service: Box,
+  cache: Zap,
+  queue: Layers,
 };
 
 const EVENT_BG = "var(--bpmn-event-bg, #ffffff)";
@@ -124,31 +128,12 @@ export const DefaultNode = memo(({ id, data }: NodeProps) => {
   const shapeConfig = SHAPE_CONFIG[shape] || DEFAULT_SHAPE_CONFIG;
 
   // 获取样式配置
-  const nodeStyle = useNodeStyle(undefined, shape);
+  const nodeStyle = useNodeStyle(undefined, shape, (data as any)?.color);
 
-  const IconComponent = data.iconType && ICON_MAP[data.iconType] ? ICON_MAP[data.iconType] : null;
-  const iconColor = nodeStyle.borderColor;
   const borderColor = nodeStyle.borderColor;
   const backgroundColor = nodeStyle.container.backgroundColor;
-  const iconFallbackLabel =
-    (data as any)?.iconLabel ||
-    (typeof data.label === "string" && data.label.trim() ? data.label.trim().charAt(0).toUpperCase() : "·");
-
-  const renderIcon = (size = 20) => {
-    // 只在showIcons为true时渲染图标
-    if (!nodeStyle.showIcons) return null;
-
-    return IconComponent ? (
-      <IconComponent style={{ color: iconColor, width: `${size}px`, height: `${size}px` }} />
-    ) : (
-      <span
-        className="flex items-center justify-center text-xs font-semibold"
-        style={{ color: iconColor, width: `${size}px`, height: `${size}px` }}
-      >
-        {iconFallbackLabel}
-      </span>
-    );
-  };
+  const iconType = (data as any)?.iconType || data.type;
+  const IconComponent = iconType && ICON_MAP[iconType] ? ICON_MAP[iconType] : null;
 
   const handleDoubleClick = useCallback(() => {
     setIsEditing(true);
@@ -205,8 +190,8 @@ export const DefaultNode = memo(({ id, data }: NodeProps) => {
     </>
   );
 
-const renderCircularHandles = (color: string) => (
-  <>
+  const renderCircularHandles = (color: string) => (
+    <>
     <Handle
       id="target-top"
       type="target"
@@ -234,6 +219,35 @@ const renderCircularHandles = (color: string) => (
   </>
 );
 
+  const renderCenterLabel = (fontSize?: number) => (
+    <div
+      style={{
+        ...nodeStyle.typography,
+        fontSize: fontSize ? `${fontSize}px` : nodeStyle.typography.fontSize,
+        textAlign: "center",
+      }}
+    >
+      {data.label}
+    </div>
+  );
+  const renderIcon = (size = 20) => {
+    if (!nodeStyle.showIcons) return null;
+    if (IconComponent) {
+      return <IconComponent style={{ color: borderColor, width: `${size}px`, height: `${size}px` }} />;
+    }
+    const fallback =
+      (data as any)?.iconLabel ||
+      (typeof data.label === "string" && data.label.trim() ? data.label.trim().charAt(0).toUpperCase() : "·");
+    return (
+      <span
+        className="flex items-center justify-center text-xs font-semibold"
+        style={{ color: borderColor, width: `${size}px`, height: `${size}px` }}
+      >
+        {fallback}
+      </span>
+    );
+  };
+
   // Start Event – thin ring
   if (shape === "start-event") {
     const size = shapeConfig.width || "56px";
@@ -251,7 +265,7 @@ const renderCircularHandles = (color: string) => (
         }}
       >
         {renderCircularHandles(borderColor)}
-        <div style={nodeStyle.typography}>{renderIcon(22)}</div>
+        {renderCenterLabel(12)}
       </div>
     );
   }
@@ -273,7 +287,7 @@ const renderCircularHandles = (color: string) => (
         }}
       >
         {renderCircularHandles(borderColor)}
-        <div style={nodeStyle.typography}>{renderIcon(22)}</div>
+        {renderCenterLabel(12)}
       </div>
     );
   }
@@ -306,7 +320,7 @@ const renderCircularHandles = (color: string) => (
             ...nodeStyle.typography,
           }}
         >
-          {renderIcon(20)}
+          {renderCenterLabel(12)}
         </div>
         {renderCircularHandles(borderColor)}
       </div>
@@ -391,7 +405,6 @@ const renderCircularHandles = (color: string) => (
         {renderCircularHandles(borderColor)}
 
         <div className="flex flex-col items-center justify-center text-center px-2">
-          {renderIcon(20)}
           {isEditing ? (
             <input
               type="text"
@@ -460,7 +473,6 @@ const renderCircularHandles = (color: string) => (
             pointerEvents: "auto",
           }}
         >
-          {renderIcon(20)}
           {isEditing ? (
             <input
               type="text"
@@ -502,20 +514,17 @@ const renderCircularHandles = (color: string) => (
         ...nodeStyle.container,
         width: shapeConfig.width,
         height: shapeConfig.height,
-      }}
-    >
-      {renderOrthogonalHandles(borderColor)}
-
-      <div
-        className="flex items-center gap-2"
-        style={{
-          justifyContent: nodeStyle.showIcons ? "flex-start" : "center",
-          height: "100%",
         }}
       >
-        {/* 只在showIcons为true时显示图标 */}
-        {nodeStyle.showIcons && renderIcon(20)}
+        {renderOrthogonalHandles(borderColor)}
 
+        <div
+          className="flex items-center gap-2"
+          style={{
+            justifyContent: nodeStyle.showIcons ? "flex-start" : "center",
+            height: "100%",
+          }}
+        >
         <div
           style={{
             textAlign: nodeStyle.showIcons ? "left" : "center",
