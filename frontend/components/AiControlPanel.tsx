@@ -314,15 +314,11 @@ export function AiControlPanel() {
           )}
         </div>
 
-        {/* 图片上传按钮卡片 - 只在未激活上传界面时显示 */}
-        {!showUploader && !showExcalidrawUploader && (
+        {/* 图片上传按钮卡片 - 只在 Excalidraw 模式下显示，ReactFlow 模式禁用（效果不好） */}
+        {!showUploader && !showExcalidrawUploader && canvasMode === "excalidraw" && (
           <button
             onClick={() => {
-              if (canvasMode === "excalidraw") {
-                setShowExcalidrawUploader(true);
-              } else {
-                setShowUploader(true);
-              }
+              setShowExcalidrawUploader(true);
             }}
             className="w-full rounded-lg bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 p-3 border border-blue-100 dark:border-blue-900/50 hover:from-blue-100 hover:to-indigo-100 dark:hover:from-blue-950/50 dark:hover:to-indigo-950/50 transition-all text-left"
           >
@@ -338,10 +334,7 @@ export function AiControlPanel() {
                   </span>
                 </div>
                 <p className="text-xs text-blue-700 dark:text-blue-300 leading-relaxed">
-                  {canvasMode === "reactflow"
-                    ? "上传流程图/架构图截图，AI自动识别转为可编辑节点"
-                    : "上传任意图片，AI实时流式转换为Excalidraw手绘风格"
-                  }
+                  上传任意图片，AI实时流式转换为Excalidraw手绘风格
                 </p>
               </div>
             </div>

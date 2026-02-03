@@ -717,14 +717,14 @@ async def generate_excalidraw_from_image(request: VisionToExcalidrawRequest):
 
         # Build prompt for Excalidraw generation
         excalidraw_prompt = f"""
-Analyze the uploaded image and convert it to Excalidraw JSON format.
+Analyze the uploaded image and convert it to Excalidraw JSON format with HIGH FOCUS on preserving ALL connections/arrows.
 
 Output a valid JSON object with this structure:
 {{
     "elements": [
         {{
             "id": "unique-id",
-            "type": "rectangle" | "ellipse" | "diamond" | "arrow" | "text",
+            "type": "rectangle" | "ellipse" | "diamond" | "arrow" | "line" | "text",
             "x": number,
             "y": number,
             "width": number,
@@ -738,7 +738,9 @@ Output a valid JSON object with this structure:
             "text": "label" (for shapes with labels),
             "fontSize": 20,
             "fontFamily": 1,
-            "textAlign": "center"
+            "textAlign": "center",
+            "points": [[0,0], [100,0]] (REQUIRED for arrow/line),
+            "endArrowhead": "arrow" (for directional arrows)
         }}
     ],
     "appState": {{
@@ -746,20 +748,95 @@ Output a valid JSON object with this structure:
     }}
 }}
 
-Rules:
-1. For each shape in the image, create a corresponding element
-2. For boxes/rectangles: use type="rectangle"
-3. For circles: use type="ellipse"
-4. For diamonds: use type="diamond"
-5. For arrows/connections: use type="arrow" with points array [[x1,y1], [x2,y2]]
-6. For text labels: either embed text in shapes or create separate text elements
-7. Preserve spatial layout (x, y coordinates relative to canvas size {request.width}x{request.height})
-8. Use unique IDs (e.g., "rect-1", "arrow-2", "text-3")
-9. Output ONLY the JSON, no explanatory text
+**CRITICAL RULES - Connection Detection (HIGHEST PRIORITY):**
+
+⚠️ **CONNECTION DETECTION IS CRITICAL** - This is the PRIMARY requirement:
+- Identify and preserve ALL arrows/lines/connections in the diagram
+- For EVERY connection you see in the image, you MUST create a corresponding arrow/line element
+- Connections are AS IMPORTANT as shapes - DO NOT skip them
+- If the image has 5 arrows connecting boxes, your output MUST have 5 arrow elements
+- Missing connections breaks the entire diagram - pay close attention!
+
+**Element Rules:**
+
+1. **Shapes** - For each shape in the image, create corresponding element:
+   - Boxes/Rectangles → type="rectangle"
+   - Circles/Ovals → type="ellipse"
+   - Diamonds/Rhombus → type="diamond"
+   - Text labels → embed in shapes OR create separate text elements
+
+2. **Connections/Arrows** (CRITICAL - Read Carefully):
+
+   a) **Type Selection:**
+      - Directional arrows (with arrowhead) → type="arrow"
+      - Plain lines (no arrowhead) → type="line"
+      - Bidirectional arrows → type="arrow" with both startArrowhead and endArrowhead
+
+   b) **Required Fields for Arrow/Line:**
+      - "points": [[x1,y1], [x2,y2], ...] - MANDATORY, relative to element's (x,y)
+      - "x", "y": Top-left corner of bounding box
+      - "width", "height": Bounding box dimensions calculated from points
+      - "endArrowhead": "arrow" (for single-direction arrows)
+      - "startArrowhead": "arrow" (for reverse direction)
+      - "strokeColor": Line color (usually "#000000")
+      - "strokeWidth": Usually 2 for arrows
+
+   c) **Arrow Coordinate System:**
+      - x, y = top-left of bounding box containing the line
+      - points = array of [x, y] coordinates RELATIVE to (x, y)
+      - width = max(x-coords) - min(x-coords) from points
+      - height = max(y-coords) - min(y-coords) from points
+
+   d) **Arrow Examples:**
+      - Horizontal arrow (left to right):
+        {{"id":"arrow-1", "type":"arrow", "x":200, "y":150, "width":150, "height":0,
+          "points":[[0,0],[150,0]], "endArrowhead":"arrow", "strokeColor":"#000000", "strokeWidth":2}}
+
+      - Vertical arrow (top to bottom):
+        {{"id":"arrow-2", "type":"arrow", "x":300, "y":100, "width":0, "height":100,
+          "points":[[0,0],[0,100]], "endArrowhead":"arrow", "strokeColor":"#000000", "strokeWidth":2}}
+
+      - Diagonal arrow:
+        {{"id":"arrow-3", "type":"arrow", "x":200, "y":200, "width":100, "height":80,
+          "points":[[0,0],[100,80]], "endArrowhead":"arrow", "strokeColor":"#000000", "strokeWidth":2}}
+
+      - Bidirectional arrow:
+        {{"id":"arrow-4", "type":"arrow", "x":100, "y":300, "width":200, "height":0,
+          "points":[[0,0],[200,0]], "startArrowhead":"arrow", "endArrowhead":"arrow", "strokeColor":"#000000", "strokeWidth":2}}
+
+3. **Layout Preservation:**
+   - Preserve spatial layout (x, y coordinates relative to canvas {request.width}x{request.height})
+   - Maintain relative positions of shapes and connections
+   - Keep arrow endpoints near shape boundaries
+
+4. **Identifiers:**
+   - Use unique IDs (e.g., "rect-1", "arrow-2", "text-3", "line-1")
+   - Ensure all referenced IDs exist
+
+5. **Output Format:**
+   - Output ONLY valid JSON, no markdown, no explanatory text
+   - Ensure JSON is complete and properly closed
+
+**Validation Checklist (before output):**
+✓ For N shapes, expect at least N-1 connections (for typical flow diagrams)
+✓ ALL arrow/line elements have valid "points" array
+✓ Arrow endpoints roughly connect to shape boundaries
+✓ Total element count = shapes + arrows + text labels
+✓ No duplicate IDs
+
+**Complete Example (2 boxes + 1 arrow):**
+{{
+    "elements": [
+        {{"id":"box1", "type":"rectangle", "x":100, "y":100, "width":120, "height":60, "strokeColor":"#000000", "backgroundColor":"#ffffff", "fillStyle":"hachure", "strokeWidth":2, "roughness":1, "opacity":100, "text":"Start", "fontSize":20, "fontFamily":1, "textAlign":"center"}},
+        {{"id":"arrow1", "type":"arrow", "x":220, "y":130, "width":80, "height":0, "points":[[0,0],[80,0]], "strokeColor":"#000000", "strokeWidth":2, "endArrowhead":"arrow", "roughness":1, "opacity":100}},
+        {{"id":"box2", "type":"rectangle", "x":300, "y":100, "width":120, "height":60, "strokeColor":"#000000", "backgroundColor":"#ffffff", "fillStyle":"hachure", "strokeWidth":2, "roughness":1, "opacity":100, "text":"End", "fontSize":20, "fontFamily":1, "textAlign":"center"}}
+    ],
+    "appState": {{"viewBackgroundColor":"#ffffff"}}
+}}
 
 Canvas dimensions: {request.width}px width, {request.height}px height
 
-{request.prompt or ''}
+Additional instructions: {request.prompt or 'None'}
 """
 
         # Call AI service
@@ -860,6 +937,20 @@ Canvas dimensions: {request.width}px width, {request.height}px height
                 if "endArrowhead" not in element:
                     element["endArrowhead"] = "arrow"
 
+            # For line elements, add similar fields
+            if element.get("type") == "line":
+                if "startBinding" not in element:
+                    element["startBinding"] = None
+                if "endBinding" not in element:
+                    element["endBinding"] = None
+                if "lastCommittedPoint" not in element:
+                    element["lastCommittedPoint"] = None
+                # Lines typically don't have arrowheads
+                if "startArrowhead" not in element:
+                    element["startArrowhead"] = None
+                if "endArrowhead" not in element:
+                    element["endArrowhead"] = None
+
             # For text elements
             if element.get("type") == "text" or "text" in element:
                 if "lineHeight" not in element:
@@ -874,6 +965,29 @@ Canvas dimensions: {request.width}px width, {request.height}px height
             # Ensure strokeStyle exists
             if "strokeStyle" not in element:
                 element["strokeStyle"] = "solid"
+
+        # Validate connection detection (arrow/line elements)
+        arrow_count = sum(1 for e in scene_data["elements"] if e.get("type") in ["arrow", "line"])
+        shape_count = sum(1 for e in scene_data["elements"] if e.get("type") in ["rectangle", "ellipse", "diamond"])
+        text_count = sum(1 for e in scene_data["elements"] if e.get("type") == "text")
+        total_count = len(scene_data["elements"])
+
+        logger.info(f"Excalidraw generation result: {total_count} total elements - {shape_count} shapes, {arrow_count} connections, {text_count} text elements")
+
+        # Warn if no arrows detected when there are multiple shapes
+        if arrow_count == 0 and shape_count > 1:
+            logger.warning(f"⚠️ No arrows/lines detected for {shape_count} shapes - possible AI recognition issue. Consider using a different provider or retrying.")
+
+        # Validate arrow elements have required "points" field
+        invalid_arrows = []
+        for element in scene_data["elements"]:
+            if element.get("type") in ["arrow", "line"]:
+                if "points" not in element or not isinstance(element.get("points"), list) or len(element.get("points", [])) < 2:
+                    invalid_arrows.append(element.get("id", "unknown"))
+
+        if invalid_arrows:
+            logger.error(f"❌ Invalid arrow/line elements detected (missing or invalid 'points' field): {invalid_arrows}")
+            logger.error(f"These elements will not render correctly in Excalidraw. Total affected: {len(invalid_arrows)}")
 
         logger.info(f"Successfully generated Excalidraw scene with {len(scene_data['elements'])} elements (normalized)")
 
@@ -938,6 +1052,20 @@ async def generate_excalidraw_from_image_stream(request: VisionToExcalidrawReque
                 element["startArrowhead"] = None
             if "endArrowhead" not in element:
                 element["endArrowhead"] = "arrow"
+
+        # Line-specific fields
+        if element.get("type") == "line":
+            if "startBinding" not in element:
+                element["startBinding"] = None
+            if "endBinding" not in element:
+                element["endBinding"] = None
+            if "lastCommittedPoint" not in element:
+                element["lastCommittedPoint"] = None
+            # Lines typically don't have arrowheads
+            if "startArrowhead" not in element:
+                element["startArrowhead"] = None
+            if "endArrowhead" not in element:
+                element["endArrowhead"] = None
 
         # Text-specific fields
         if element.get("type") == "text" or "text" in element:
@@ -1025,14 +1153,14 @@ async def generate_excalidraw_from_image_stream(request: VisionToExcalidrawReque
 
             # Build prompt
             excalidraw_prompt = f"""
-Analyze the uploaded image and convert it to Excalidraw JSON format.
+Analyze the uploaded image and convert it to Excalidraw JSON format with HIGH FOCUS on preserving ALL connections/arrows.
 
 Output a valid JSON object with this structure:
 {{
     "elements": [
         {{
             "id": "unique-id",
-            "type": "rectangle" | "ellipse" | "diamond" | "arrow" | "text",
+            "type": "rectangle" | "ellipse" | "diamond" | "arrow" | "line" | "text",
             "x": number,
             "y": number,
             "width": number,
@@ -1046,7 +1174,9 @@ Output a valid JSON object with this structure:
             "text": "label" (for shapes with labels),
             "fontSize": 20,
             "fontFamily": 1,
-            "textAlign": "center"
+            "textAlign": "center",
+            "points": [[0,0], [100,0]] (REQUIRED for arrow/line),
+            "endArrowhead": "arrow" (for directional arrows)
         }}
     ],
     "appState": {{
@@ -1054,20 +1184,95 @@ Output a valid JSON object with this structure:
     }}
 }}
 
-Rules:
-1. For each shape in the image, create a corresponding element
-2. For boxes/rectangles: use type="rectangle"
-3. For circles: use type="ellipse"
-4. For diamonds: use type="diamond"
-5. For arrows/connections: use type="arrow" with points array [[x1,y1], [x2,y2]]
-6. For text labels: either embed text in shapes or create separate text elements
-7. Preserve spatial layout (x, y coordinates relative to canvas size {request.width}x{request.height})
-8. Use unique IDs (e.g., "rect-1", "arrow-2", "text-3")
-9. Output ONLY the JSON, no explanatory text
+**CRITICAL RULES - Connection Detection (HIGHEST PRIORITY):**
+
+⚠️ **CONNECTION DETECTION IS CRITICAL** - This is the PRIMARY requirement:
+- Identify and preserve ALL arrows/lines/connections in the diagram
+- For EVERY connection you see in the image, you MUST create a corresponding arrow/line element
+- Connections are AS IMPORTANT as shapes - DO NOT skip them
+- If the image has 5 arrows connecting boxes, your output MUST have 5 arrow elements
+- Missing connections breaks the entire diagram - pay close attention!
+
+**Element Rules:**
+
+1. **Shapes** - For each shape in the image, create corresponding element:
+   - Boxes/Rectangles → type="rectangle"
+   - Circles/Ovals → type="ellipse"
+   - Diamonds/Rhombus → type="diamond"
+   - Text labels → embed in shapes OR create separate text elements
+
+2. **Connections/Arrows** (CRITICAL - Read Carefully):
+
+   a) **Type Selection:**
+      - Directional arrows (with arrowhead) → type="arrow"
+      - Plain lines (no arrowhead) → type="line"
+      - Bidirectional arrows → type="arrow" with both startArrowhead and endArrowhead
+
+   b) **Required Fields for Arrow/Line:**
+      - "points": [[x1,y1], [x2,y2], ...] - MANDATORY, relative to element's (x,y)
+      - "x", "y": Top-left corner of bounding box
+      - "width", "height": Bounding box dimensions calculated from points
+      - "endArrowhead": "arrow" (for single-direction arrows)
+      - "startArrowhead": "arrow" (for reverse direction)
+      - "strokeColor": Line color (usually "#000000")
+      - "strokeWidth": Usually 2 for arrows
+
+   c) **Arrow Coordinate System:**
+      - x, y = top-left of bounding box containing the line
+      - points = array of [x, y] coordinates RELATIVE to (x, y)
+      - width = max(x-coords) - min(x-coords) from points
+      - height = max(y-coords) - min(y-coords) from points
+
+   d) **Arrow Examples:**
+      - Horizontal arrow (left to right):
+        {{"id":"arrow-1", "type":"arrow", "x":200, "y":150, "width":150, "height":0,
+          "points":[[0,0],[150,0]], "endArrowhead":"arrow", "strokeColor":"#000000", "strokeWidth":2}}
+
+      - Vertical arrow (top to bottom):
+        {{"id":"arrow-2", "type":"arrow", "x":300, "y":100, "width":0, "height":100,
+          "points":[[0,0],[0,100]], "endArrowhead":"arrow", "strokeColor":"#000000", "strokeWidth":2}}
+
+      - Diagonal arrow:
+        {{"id":"arrow-3", "type":"arrow", "x":200, "y":200, "width":100, "height":80,
+          "points":[[0,0],[100,80]], "endArrowhead":"arrow", "strokeColor":"#000000", "strokeWidth":2}}
+
+      - Bidirectional arrow:
+        {{"id":"arrow-4", "type":"arrow", "x":100, "y":300, "width":200, "height":0,
+          "points":[[0,0],[200,0]], "startArrowhead":"arrow", "endArrowhead":"arrow", "strokeColor":"#000000", "strokeWidth":2}}
+
+3. **Layout Preservation:**
+   - Preserve spatial layout (x, y coordinates relative to canvas {request.width}x{request.height})
+   - Maintain relative positions of shapes and connections
+   - Keep arrow endpoints near shape boundaries
+
+4. **Identifiers:**
+   - Use unique IDs (e.g., "rect-1", "arrow-2", "text-3", "line-1")
+   - Ensure all referenced IDs exist
+
+5. **Output Format:**
+   - Output ONLY valid JSON, no markdown, no explanatory text
+   - Ensure JSON is complete and properly closed
+
+**Validation Checklist (before output):**
+✓ For N shapes, expect at least N-1 connections (for typical flow diagrams)
+✓ ALL arrow/line elements have valid "points" array
+✓ Arrow endpoints roughly connect to shape boundaries
+✓ Total element count = shapes + arrows + text labels
+✓ No duplicate IDs
+
+**Complete Example (2 boxes + 1 arrow):**
+{{
+    "elements": [
+        {{"id":"box1", "type":"rectangle", "x":100, "y":100, "width":120, "height":60, "strokeColor":"#000000", "backgroundColor":"#ffffff", "fillStyle":"hachure", "strokeWidth":2, "roughness":1, "opacity":100, "text":"Start", "fontSize":20, "fontFamily":1, "textAlign":"center"}},
+        {{"id":"arrow1", "type":"arrow", "x":220, "y":130, "width":80, "height":0, "points":[[0,0],[80,0]], "strokeColor":"#000000", "strokeWidth":2, "endArrowhead":"arrow", "roughness":1, "opacity":100}},
+        {{"id":"box2", "type":"rectangle", "x":300, "y":100, "width":120, "height":60, "strokeColor":"#000000", "backgroundColor":"#ffffff", "fillStyle":"hachure", "strokeWidth":2, "roughness":1, "opacity":100, "text":"End", "fontSize":20, "fontFamily":1, "textAlign":"center"}}
+    ],
+    "appState": {{"viewBackgroundColor":"#ffffff"}}
+}}
 
 Canvas dimensions: {request.width}px width, {request.height}px height
 
-{request.prompt or ''}
+Additional instructions: {request.prompt or 'None'}
 """
 
             # Extract base64 data
@@ -1085,6 +1290,8 @@ Canvas dimensions: {request.width}px width, {request.height}px height
             parsed_ids = set()  # Track which elements we've already sent
             timestamp = int(time.time() * 1000)
             element_count = 0
+            arrow_count = 0  # Track connection count
+            shape_count = 0  # Track shape count
 
             # Stream tokens in real-time
             async for token in vision_service.generate_with_vision_stream(image_bytes, excalidraw_prompt):
@@ -1097,12 +1304,30 @@ Canvas dimensions: {request.width}px width, {request.height}px height
                 for element in new_elements:
                     normalized = normalize_element(element, timestamp)
                     element_count += 1
-                    yield f"data: {json.dumps({'type': 'element', 'element': normalized})}\n\n"
-                    logger.info(f"[REAL STREAM] Yielded element {element_count}: {element.get('id')}")
 
-            # Send completion
-            yield f"data: {json.dumps({'type': 'complete', 'message': f'Generated {element_count} elements in real-time'})}\n\n"
-            logger.info(f"[REAL STREAM] Completed with {element_count} elements")
+                    # Track element types for validation
+                    element_type = element.get("type")
+                    if element_type in ["arrow", "line"]:
+                        arrow_count += 1
+                        # Validate arrow has points field
+                        if "points" not in element or not isinstance(element.get("points"), list) or len(element.get("points", [])) < 2:
+                            logger.warning(f"⚠️ Arrow/line element '{element.get('id')}' missing or invalid 'points' field - may not render correctly")
+                    elif element_type in ["rectangle", "ellipse", "diamond"]:
+                        shape_count += 1
+
+                    yield f"data: {json.dumps({'type': 'element', 'element': normalized})}\n\n"
+                    logger.info(f"[REAL STREAM] Yielded element {element_count}: {element.get('id')} (type: {element_type})")
+
+            # Send completion with validation info
+            completion_message = f'Generated {element_count} elements in real-time ({shape_count} shapes, {arrow_count} connections)'
+
+            # Warn if no arrows detected
+            if arrow_count == 0 and shape_count > 1:
+                logger.warning(f"⚠️ No arrows/lines detected for {shape_count} shapes - possible AI recognition issue")
+                completion_message += " - ⚠️ No connections detected"
+
+            yield f"data: {json.dumps({'type': 'complete', 'message': completion_message})}\n\n"
+            logger.info(f"[REAL STREAM] Completed with {element_count} elements ({shape_count} shapes, {arrow_count} connections)")
 
         except Exception as e:
             logger.error(f"Excalidraw real streaming failed: {e}", exc_info=True)
