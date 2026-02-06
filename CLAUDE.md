@@ -105,14 +105,15 @@ SmartArchitect/
 5. **Prompter API** (`/api/prompter/*`) - Architecture refactoring scenarios
 6. **Export API** (`/api/export/ppt`, `/api/export/slidev`, `/api/export/script`) - PowerPoint, Slidev, speech script generation
 7. **RAG API** (`/api/rag/*`) - Document upload, semantic search, ChromaDB vector database
-8. **Chat Generator API** (`/api/chat-generator/*`) - Natural language to flowchart conversion
+8. **Chat Generator API** (`/api/chat-generator/*`) - Natural language to flowchart conversion with streaming support, incremental generation mode, and session management (`/session/save`, `/session/{id}`, `/session/{id}` DELETE)
 9. **Excalidraw API** (`/api/excalidraw/generate`) - AI-powered Excalidraw scene generation
 
 **Key Services:**
 
 - **RAG Service** (`services/rag.py`) - ChromaDB integration with sentence-transformers embeddings (all-MiniLM-L6-v2), chunking strategy: 1000 chars with 200 overlap
 - **AI Vision Service** (`services/ai_vision.py`) - Multi-provider abstraction layer for Gemini/OpenAI/Claude/SiliconFlow
-- **Chat Generator Service** (`services/chat_generator.py`) - Natural language to flowchart/architecture diagram converter with template system
+- **Chat Generator Service** (`services/chat_generator.py`) - Natural language to flowchart/architecture diagram converter with template system and incremental generation support
+- **Session Manager** (`services/session_manager.py`) - Canvas session management with TTL, in-memory storage, and file persistence
 - **Excalidraw Generator** (`services/excalidraw_generator.py`) - AI-powered Excalidraw scene generation with fallback mock data
 - **PPT Exporter** (`services/ppt_exporter.py`) - python-pptx based presentation generator
 - **Slidev Exporter** (`services/slidev_exporter.py`) - Markdown slide deck generator
@@ -183,13 +184,38 @@ class ModelConfig(BaseModel):
 
 **Phase 5 Schemas (Chat Generator & Excalidraw):**
 ```python
-# Chat generation supports streaming responses
+# Chat generation supports streaming responses and incremental mode
 class ChatGenerationRequest(BaseModel):
     user_input: str
     template_id: Optional[str] = None
     provider: Optional[Literal["gemini", "openai", "claude", "siliconflow", "custom"]] = "gemini"
     diagram_type: Literal["flow", "architecture"] = "flow"
     api_key: Optional[str] = None
+
+    # 🆕 Incremental generation parameters (Phase 5.1)
+    incremental_mode: Optional[bool] = False  # Enable incremental mode
+    session_id: Optional[str] = None          # Canvas session ID
+
+class ChatGenerationResponse(BaseModel):
+    nodes: List[Node]
+    edges: List[Edge]
+    mermaid_code: str
+    success: bool = True
+    message: Optional[str] = None
+    session_id: Optional[str] = None  # 🆕 Returned session ID
+
+# 🆕 Session management schemas (Phase 5.1)
+class CanvasSaveRequest(BaseModel):
+    session_id: Optional[str] = None  # Omit to create new session
+    nodes: List[Node]
+    edges: List[Edge]
+
+class CanvasSaveResponse(BaseModel):
+    success: bool = True
+    session_id: str
+    node_count: int
+    edge_count: int
+    message: Optional[str] = None
 
 # Excalidraw generation with AI
 class ExcalidrawGenerateRequest(BaseModel):
@@ -385,6 +411,16 @@ SILICONFLOW_BASE_URL = "https://api.siliconflow.cn/v1"
 - Support for both "flow" (flowchart) and "architecture" diagram types
 - Enhanced BPMN node support (start-event, end-event, intermediate-event, task)
 
+**Phase 5.1 (Complete):** Incremental Generation
+- Canvas session management with 60-minute TTL
+- Incremental mode UI toggle for appending to existing architectures
+- Backend validation to auto-recover deleted nodes and fix conflicts
+- Prompt engineering to preserve existing nodes during AI generation
+- Session persistence with file backup (data/canvas_sessions/)
+- Automatic session cleanup and size limits (5MB max per session)
+- Comprehensive test coverage (9/9 unit tests, 5/5 API tests passing)
+- See INCREMENTAL_GENERATION_TEST_REPORT.md for detailed test results
+
 ## Known Issues & Limitations
 
 1. **First RAG Query Latency:** ~26 seconds for embedding model initialization (subsequent queries: 100-200ms)
@@ -393,6 +429,7 @@ SILICONFLOW_BASE_URL = "https://api.siliconflow.cn/v1"
 4. **Security Gaps:** No authentication, no rate limiting (documented in SYSTEM_REVIEW.md for production deployment)
 5. **Excalidraw Generation:** AI generation may fail or timeout; automatic fallback to mock scene ensures reliability
 6. **Streaming Edge Cases:** Network interruptions during streaming may require client-side retry logic
+7. **Incremental Generation Session Expiry:** Canvas sessions expire after 60 minutes; automatic fallback to full generation when session not found (graceful degradation implemented)
 
 ## Code Patterns & Conventions
 

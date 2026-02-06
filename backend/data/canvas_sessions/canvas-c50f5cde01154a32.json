@@ -1,0 +1,322 @@
+{
+  "nodes": [
+    {
+      "id": "start",
+      "type": "default",
+      "position": {
+        "x": 80.0,
+        "y": 80.0
+      },
+      "data": {
+        "label": "用户点击秒杀",
+        "shape": "start-event",
+        "iconType": null,
+        "color": "#16a34a"
+      }
+    },
+    {
+      "id": "check_login",
+      "type": "gateway",
+      "position": {
+        "x": 410.0,
+        "y": 230.0
+      },
+      "data": {
+        "label": "是否登录?",
+        "shape": "diamond",
+        "iconType": null,
+        "color": null
+      }
+    },
+    {
+      "id": "login",
+      "type": "default",
+      "position": {
+        "x": 80.0,
+        "y": 240.0
+      },
+      "data": {
+        "label": "跳转登录页",
+        "shape": "task",
+        "iconType": null,
+        "color": "#f59e0b"
+      }
+    },
+    {
+      "id": "check_time",
+      "type": "gateway",
+      "position": {
+        "x": 640.0,
+        "y": 230.0
+      },
+      "data": {
+        "label": "秒杀时间内?",
+        "shape": "diamond",
+        "iconType": null,
+        "color": null
+      }
+    },
+    {
+      "id": "time_error",
+      "type": "default",
+      "position": {
+        "x": 2320.0,
+        "y": 240.0
+      },
+      "data": {
+        "label": "提示未开始/已结束",
+        "shape": "task",
+        "iconType": null,
+        "color": "#dc2626"
+      }
+    },
+    {
+      "id": "check_stock",
+      "type": "gateway",
+      "position": {
+        "x": 870.0,
+        "y": 390.0
+      },
+      "data": {
+        "label": "库存充足?",
+        "shape": "diamond",
+        "iconType": null,
+        "color": null
+      }
+    },
+    {
+      "id": "stock_error",
+      "type": "default",
+      "position": {
+        "x": 2320.0,
+        "y": 400.0
+      },
+      "data": {
+        "label": "提示已售罄",
+        "shape": "task",
+        "iconType": null,
+        "color": "#dc2626"
+      }
+    },
+    {
+      "id": "lock_stock",
+      "type": "default",
+      "position": {
+        "x": 1100.0,
+        "y": 560.0
+      },
+      "data": {
+        "label": "锁定库存",
+        "shape": "task",
+        "iconType": null,
+        "color": "#2563eb"
+      }
+    },
+    {
+      "id": "create_order",
+      "type": "default",
+      "position": {
+        "x": 1430.0,
+        "y": 560.0
+      },
+      "data": {
+        "label": "创建订单",
+        "shape": "task",
+        "iconType": null,
+        "color": "#2563eb"
+      }
+    },
+    {
+      "id": "payment",
+      "type": "gateway",
+      "position": {
+        "x": 1760.0,
+        "y": 550.0
+      },
+      "data": {
+        "label": "支付成功?",
+        "shape": "diamond",
+        "iconType": null,
+        "color": null
+      }
+    },
+    {
+      "id": "confirm_order",
+      "type": "default",
+      "position": {
+        "x": 1990.0,
+        "y": 720.0
+      },
+      "data": {
+        "label": "确认订单",
+        "shape": "task",
+        "iconType": null,
+        "color": "#2563eb"
+      }
+    },
+    {
+      "id": "release_stock",
+      "type": "default",
+      "position": {
+        "x": 1990.0,
+        "y": 560.0
+      },
+      "data": {
+        "label": "释放库存",
+        "shape": "task",
+        "iconType": null,
+        "color": "#f59e0b"
+      }
+    },
+    {
+      "id": "cancel_order",
+      "type": "default",
+      "position": {
+        "x": 2320.0,
+        "y": 560.0
+      },
+      "data": {
+        "label": "取消订单",
+        "shape": "task",
+        "iconType": null,
+        "color": "#dc2626"
+      }
+    },
+    {
+      "id": "end_success",
+      "type": "default",
+      "position": {
+        "x": 2320.0,
+        "y": 720.0
+      },
+      "data": {
+        "label": "秒杀成功",
+        "shape": "end-event",
+        "iconType": null,
+        "color": "#16a34a"
+      }
+    },
+    {
+      "id": "end_fail",
+      "type": "default",
+      "position": {
+        "x": 2650.0,
+        "y": 400.0
+      },
+      "data": {
+        "label": "秒杀失败",
+        "shape": "end-event",
+        "iconType": null,
+        "color": "#dc2626"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "start",
+      "target": "check_login",
+      "label": null
+    },
+    {
+      "id": "e2",
+      "source": "check_login",
+      "target": "login",
+      "label": "否"
+    },
+    {
+      "id": "e3",
+      "source": "login",
+      "target": "check_login",
+      "label": "登录后"
+    },
+    {
+      "id": "e4",
+      "source": "check_login",
+      "target": "check_time",
+      "label": "是"
+    },
+    {
+      "id": "e5",
+      "source": "check_time",
+      "target": "time_error",
+      "label": "否"
+    },
+    {
+      "id": "e6",
+      "source": "time_error",
+      "target": "end_fail",
+      "label": null
+    },
+    {
+      "id": "e7",
+      "source": "check_time",
+      "target": "check_stock",
+      "label": "是"
+    },
+    {
+      "id": "e8",
+      "source": "check_stock",
+      "target": "stock_error",
+      "label": "否"
+    },
+    {
+      "id": "e9",
+      "source": "stock_error",
+      "target": "end_fail",
+      "label": null
+    },
+    {
+      "id": "e10",
+      "source": "check_stock",
+      "target": "lock_stock",
+      "label": "是"
+    },
+    {
+      "id": "e11",
+      "source": "lock_stock",
+      "target": "create_order",
+      "label": null
+    },
+    {
+      "id": "e12",
+      "source": "create_order",
+      "target": "payment",
+      "label": null
+    },
+    {
+      "id": "e13",
+      "source": "payment",
+      "target": "confirm_order",
+      "label": "是"
+    },
+    {
+      "id": "e14",
+      "source": "payment",
+      "target": "release_stock",
+      "label": "否"
+    },
+    {
+      "id": "e15",
+      "source": "release_stock",
+      "target": "cancel_order",
+      "label": null
+    },
+    {
+      "id": "e16",
+      "source": "cancel_order",
+      "target": "end_fail",
+      "label": null
+    },
+    {
+      "id": "e17",
+      "source": "confirm_order",
+      "target": "end_success",
+      "label": null
+    }
+  ],
+  "timestamp": "2026-02-06T16:33:18.657090",
+  "node_count": 15,
+  "edge_count": 17,
+  "created_at": "2026-02-06T16:30:03.037027"
+}

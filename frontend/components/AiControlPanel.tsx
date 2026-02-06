@@ -171,6 +171,11 @@ export function AiControlPanel() {
     canvasMode,
     architectureType,
     setArchitectureType,
+    // 🆕 增量生成
+    incrementalMode,
+    setIncrementalMode,
+    currentSessionId,
+    nodes,
     // Prompter
     promptScenarios,
     isExecutingPrompt,
@@ -639,6 +644,42 @@ export function AiControlPanel() {
                   disabled={isGeneratingFlowchart}
                 />
               </div>
+
+              {/* 🆕 增量生成模式切换 */}
+              <div className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  id="incremental-mode"
+                  checked={incrementalMode}
+                  onChange={(e) => setIncrementalMode(e.target.checked)}
+                  disabled={nodes.length === 0}
+                  className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                />
+                <label
+                  htmlFor="incremental-mode"
+                  className={`cursor-pointer select-none ${
+                    nodes.length === 0
+                      ? "text-slate-400 dark:text-slate-600"
+                      : "text-slate-700 dark:text-slate-300"
+                  }`}
+                >
+                  增量模式（在现有架构上追加）
+                </label>
+                {currentSessionId && (
+                  <span
+                    className="text-xs text-emerald-600 dark:text-emerald-400"
+                    title={`会话 ID: ${currentSessionId}`}
+                  >
+                    ✓ 会话已保存
+                  </span>
+                )}
+              </div>
+
+              {incrementalMode && nodes.length > 0 && (
+                <div className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10 rounded-lg px-3 py-2">
+                  💡 将在现有 {nodes.length} 个节点基础上追加
+                </div>
+              )}
 
               <button
                 onClick={handleGenerateFlow}

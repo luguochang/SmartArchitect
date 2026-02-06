@@ -12,6 +12,8 @@ import ReactFlow, {
   Connection,
   MarkerType,
   ConnectionMode,
+  Node,
+  Edge,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { useArchitectStore } from "@/lib/store/useArchitectStore";
@@ -41,7 +43,7 @@ import { EmptyCanvasState } from "./EmptyCanvasState";
 type LayoutDirection = "TB" | "LR" | "BT" | "RL";
 
 function ArchitectCanvasInner() {
-  const { nodes, edges, onNodesChange, onEdgesChange, setEdges, setNodes, diagramType } = useArchitectStore();
+  const { nodes, edges, onNodesChange, onEdgesChange, setEdges, setNodes, diagramType, deleteCanvasSession, setIncrementalMode } = useArchitectStore();
   const { presentationStyleId, setPresentationStyle, fontStyleId, setFontStyle } = useFlowchartStyleStore();
   const { fitView, project } = useReactFlow();
   const [layoutDirection, setLayoutDirection] = useState<LayoutDirection>("LR"); // 默认左到右
@@ -337,6 +339,9 @@ function ArchitectCanvasInner() {
         if (confirm("确定要清空画布吗？")) {
           setNodes([]);
           setEdges([]);
+          // 🆕 清空画布时删除会话
+          deleteCanvasSession();
+          setIncrementalMode(false);
           toast.info("画布已清空", { duration: 1500 });
         }
       }
@@ -344,7 +349,7 @@ function ArchitectCanvasInner() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleAutoLayout, fitView, setNodes, setEdges]);
+  }, [handleAutoLayout, fitView, setNodes, setEdges, deleteCanvasSession, setIncrementalMode]);
 
   return (
     <div className="relative h-full w-full">
@@ -409,6 +414,9 @@ function ArchitectCanvasInner() {
             onClick={() => {
               setNodes([]);
               setEdges([]);
+              // 🆕 清空画布时删除会话
+              deleteCanvasSession();
+              setIncrementalMode(false);
             }}
             className="flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-600 shadow-sm hover:border-red-300 hover:bg-red-50 dark:border-red-500/50 dark:bg-slate-800 dark:text-red-300 dark:hover:border-red-400 dark:hover:bg-red-500/10"
             title="清除画布上的所有节点和连线"

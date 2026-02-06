@@ -6,9 +6,17 @@ import asyncio
 from app.models.schemas import (
     FlowTemplateList,
     ChatGenerationRequest,
-    ChatGenerationResponse
+    ChatGenerationResponse,
+    CanvasSaveRequest,
+    CanvasSaveResponse,
+    CanvasSessionResponse,
+    CanvasSessionData,
+    CanvasSessionDeleteResponse,
+    Node,
+    Edge
 )
 from app.services.chat_generator import create_chat_generator_service
+from app.services.session_manager import get_session_manager
 from fastapi.responses import StreamingResponse
 import json
 from app.services.ai_vision import create_vision_service
@@ -363,3 +371,153 @@ async def generate_flowchart_stream(request: ChatGenerationRequest):
             "Transfer-Encoding": "chunked",
         },
     )
+
+
+# ============================================================
+# Canvas Session Management (增量生成会话管理)
+# ============================================================
+
+@router.post("/chat-generator/session/save", response_model=CanvasSaveResponse)
+async def save_canvas_session(request: CanvasSaveRequest):
+    """
+    保存当前画布到会话
+
+    Args:
+        request: 包含 session_id (可选), nodes, edges
+
+    Returns:
+        CanvasSaveResponse: 包含 session_id, node_count, edge_count
+    """
+    try:
+        logger.info(
+            f"Saving canvas session: session_id={request.session_id}, "
+            f"nodes={len(request.nodes)}, edges={len(request.edges)}"
+        )
+
+        session_manager = get_session_manager()
+
+        # 创建或更新会话
+        session_id = session_manager.create_or_update_session(
+            session_id=request.session_id,
+            nodes=request.nodes,
+            edges=request.edges
+        )
+
+        logger.info(f"Canvas session saved: {session_id}")
+
+        return CanvasSaveResponse(
+            success=True,
+            session_id=session_id,
+            message="Canvas session saved successfully",
+            node_count=len(request.nodes),
+            edge_count=len(request.edges)
+        )
+
+    except ValueError as ve:
+        # 会话过大或其他验证错误
+        logger.error(f"Failed to save session: {ve}")
+        raise HTTPException(status_code=413, detail=str(ve))
+
+    except Exception as e:
+        logger.error(f"Failed to save canvas session: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to save session: {str(e)}"
+        )
+
+
+@router.get("/chat-generator/session/{session_id}", response_model=CanvasSessionResponse)
+async def get_canvas_session(session_id: str):
+    """
+    获取会话数据
+
+    Args:
+        session_id: 会话 ID
+
+    Returns:
+        CanvasSessionResponse: 包含 nodes, edges, node_count, edge_count 等
+    """
+    try:
+        logger.info(f"Retrieving canvas session: {session_id}")
+
+        session_manager = get_session_manager()
+        session_data = session_manager.get_session(session_id)
+
+        if not session_data:
+            logger.warning(f"Session not found or expired: {session_id}")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Session not found or expired: {session_id}"
+            )
+
+        # 转换为响应格式
+        nodes = [Node(**n) for n in session_data["nodes"]]
+        edges = [Edge(**e) for e in session_data["edges"]]
+
+        session_response = CanvasSessionData(
+            nodes=nodes,
+            edges=edges,
+            node_count=session_data["node_count"],
+            edge_count=session_data["edge_count"],
+            timestamp=session_data["timestamp"].isoformat(),
+            created_at=session_data["created_at"].isoformat()
+        )
+
+        logger.info(
+            f"Session retrieved: {session_id} "
+            f"({session_data['node_count']} nodes, {session_data['edge_count']} edges)"
+        )
+
+        return CanvasSessionResponse(
+            success=True,
+            session=session_response
+        )
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        logger.error(f"Failed to get canvas session: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get session: {str(e)}"
+        )
+
+
+@router.delete("/chat-generator/session/{session_id}", response_model=CanvasSessionDeleteResponse)
+async def delete_canvas_session(session_id: str):
+    """
+    删除会话（用户清空画布时调用）
+
+    Args:
+        session_id: 会话 ID
+
+    Returns:
+        CanvasSessionDeleteResponse: 删除结果
+    """
+    try:
+        logger.info(f"Deleting canvas session: {session_id}")
+
+        session_manager = get_session_manager()
+        existed = session_manager.delete_session(session_id)
+
+        if existed:
+            logger.info(f"Session deleted: {session_id}")
+            return CanvasSessionDeleteResponse(
+                success=True,
+                message=f"Session deleted: {session_id}"
+            )
+        else:
+            logger.warning(f"Session not found for deletion: {session_id}")
+            return CanvasSessionDeleteResponse(
+                success=True,
+                message=f"Session not found: {session_id}"
+            )
+
+    except Exception as e:
+        logger.error(f"Failed to delete canvas session: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete session: {str(e)}"
+        )
+

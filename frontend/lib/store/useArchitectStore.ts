@@ -92,6 +92,14 @@ interface ArchitectState {
   generateExcalidrawScene: (prompt: string) => Promise<void>;
   generateExcalidrawSceneStream: (prompt: string) => Promise<void>;
 
+  // 🆕 增量生成状态
+  incrementalMode: boolean;
+  currentSessionId: string | null;
+  setIncrementalMode: (enabled: boolean) => void;
+  saveCanvasSession: () => Promise<string | null>;
+  loadCanvasSession: (sessionId: string) => Promise<void>;
+  deleteCanvasSession: () => Promise<void>;
+
   // Prompter mock actions
   promptScenarios: PromptScenario[];
   isExecutingPrompt: boolean;
@@ -348,6 +356,10 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
   _preparedNodes: [],
   _preparedEdges: [],
 
+  // 🆕 增量生成状态初始化
+  incrementalMode: false,
+  currentSessionId: null,
+
   promptScenarios: DEFAULT_PROMPT_SCENARIOS,
   isExecutingPrompt: false,
   promptError: undefined,
@@ -457,10 +469,92 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
     set({ flowTemplates: DEFAULT_FLOW_TEMPLATES });
   },
 
+  // ============================================================
+  // 🆕 增量生成会话管理方法
+  // ============================================================
+
+  setIncrementalMode: (enabled) => {
+    set({ incrementalMode: enabled });
+
+    // 启用增量模式时，自动保存当前画布到会话
+    if (enabled && get().nodes.length > 0) {
+      get().saveCanvasSession();
+    }
+  },
+
+  saveCanvasSession: async () => {
+    const { nodes, edges, currentSessionId } = get();
+
+    if (nodes.length === 0) {
+      return null;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/chat-generator/session/save`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: currentSessionId,
+          nodes,
+          edges,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        set({ currentSessionId: data.session_id });
+        console.log(`Canvas session saved: ${data.session_id}`);
+        return data.session_id;
+      }
+    } catch (error) {
+      console.error("Failed to save canvas session:", error);
+    }
+
+    return null;
+  },
+
+  loadCanvasSession: async (sessionId: string) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/chat-generator/session/${sessionId}`);
+      const data = await response.json();
+
+      if (data.success && data.session) {
+        set({
+          nodes: data.session.nodes,
+          edges: data.session.edges,
+          currentSessionId: sessionId,
+        });
+        console.log(`Canvas session loaded: ${sessionId}`);
+      }
+    } catch (error) {
+      console.error("Failed to load canvas session:", error);
+    }
+  },
+
+  deleteCanvasSession: async () => {
+    const { currentSessionId } = get();
+
+    if (!currentSessionId) {
+      return;
+    }
+
+    try {
+      await fetch(`${API_BASE_URL}/api/chat-generator/session/${currentSessionId}`, {
+        method: "DELETE",
+      });
+
+      set({ currentSessionId: null, incrementalMode: false });
+      console.log(`Canvas session deleted: ${currentSessionId}`);
+    } catch (error) {
+      console.error("Failed to delete canvas session:", error);
+    }
+  },
+
   generateFlowchart: async (input, templateId, diagramType) => {
     set({ isGeneratingFlowchart: true, diagramType: diagramType || "flow" });
     try {
-      const { modelConfig, architectureType } = get();
+      const { modelConfig, architectureType, incrementalMode, currentSessionId, nodes, saveCanvasSession } = get();
       set((state) => ({
         generationLogs: [],
         chatHistory: [
@@ -468,6 +562,15 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
           { role: "user", content: input },
         ],
       }));
+
+      // 🆕 如果启用增量模式且画布非空，先保存会话
+      let sessionId = currentSessionId;
+      if (incrementalMode && nodes.length > 0) {
+        if (!sessionId) {
+          sessionId = await saveCanvasSession();
+        }
+      }
+
       const body = {
         user_input: input,
         template_id: templateId,
@@ -477,6 +580,9 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
         api_key: modelConfig.apiKey?.trim() || undefined,
         base_url: modelConfig.baseUrl?.trim() || undefined,
         model_name: modelConfig.modelName,
+        // 🆕 增量模式参数
+        incremental_mode: incrementalMode && nodes.length > 0,
+        session_id: sessionId,
       };
 
       // Stream events to show progress and avoid spinner-only UX
@@ -791,6 +897,11 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
 
           // 直接设置（非stream fallback）
           set({ nodes, edges, mermaidCode });
+
+          // 🆕 更新 session_id
+          if (data.session_id) {
+            set({ currentSessionId: data.session_id });
+          }
         } else {
           throw new Error(data?.message || "Generation failed");
         }

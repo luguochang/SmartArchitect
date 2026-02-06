@@ -1,5 +1,7 @@
 import json
 import logging
+import math
+import time
 from pathlib import Path
 from typing import List, Optional, Tuple, Any
 
@@ -12,9 +14,12 @@ from app.models.schemas import (
     ChatGenerationResponse,
     Node,
     Edge,
+    Position,
+    NodeData,
 )
 from app.services.ai_vision import create_vision_service
 from app.services.model_presets import get_model_presets_service
+from app.services.session_manager import get_session_manager
 
 logger = logging.getLogger(__name__)
 
@@ -1092,6 +1097,432 @@ Generate a well-laid-out flowchart. Focus on clarity and visual balance. Return 
                 mermaid_lines.append(f"  - {label}")
         return {"nodes": nodes, "edges": [], "mermaid_code": "\n".join(mermaid_lines)}
 
+    # ============================================================
+    # 增量生成辅助方法 (Incremental Generation Helpers)
+    # ============================================================
+
+    def _build_architecture_description(
+        self,
+        nodes: List[Node],
+        edges: List[Edge]
+    ) -> str:
+        """将现有架构转换为自然语言描述（参考 Prompter 模式）"""
+
+        desc = f"### Current Architecture Overview\n\n"
+        desc += f"**Total**: {len(nodes)} components, {len(edges)} connections\n\n"
+
+        # 1. 按类型分组节点
+        nodes_by_type = {}
+        for node in nodes:
+            node_type = node.type or "default"
+            if node_type not in nodes_by_type:
+                nodes_by_type[node_type] = []
+            nodes_by_type[node_type].append(node)
+
+        # 2. 描述各类型节点
+        desc += "**Components by Type**:\n"
+        for node_type, type_nodes in sorted(nodes_by_type.items()):
+            desc += f"\n{node_type.upper()} ({len(type_nodes)}):\n"
+            for node in type_nodes:
+                desc += f"  - {node.data.label} (id: {node.id})\n"
+
+        # 3. 描述连接关系
+        desc += f"\n**Connections** ({len(edges)} total):\n"
+        for edge in edges:
+            # 查找 source 和 target 的 label
+            source_node = next((n for n in nodes if n.id == edge.source), None)
+            target_node = next((n for n in nodes if n.id == edge.target), None)
+
+            source_label = source_node.data.label if source_node else edge.source
+            target_label = target_node.data.label if target_node else edge.target
+            edge_label = f" ({edge.label})" if edge.label else ""
+
+            desc += f"  - {source_label} → {target_label}{edge_label}\n"
+
+        # 4. 分析架构特征
+        desc += "\n**Architecture Characteristics**:\n"
+
+        # 检测分层结构（基于 y 坐标）
+        y_coords = sorted(set(n.position.y for n in nodes))
+        if len(y_coords) > 1:
+            desc += f"  - Layered structure with {len(y_coords)} distinct layers\n"
+
+        # 检测关键节点（入度/出度高的）
+        in_degree = {n.id: 0 for n in nodes}
+        out_degree = {n.id: 0 for n in nodes}
+        for edge in edges:
+            out_degree[edge.source] = out_degree.get(edge.source, 0) + 1
+            in_degree[edge.target] = in_degree.get(edge.target, 0) + 1
+
+        hubs = [n for n in nodes if in_degree[n.id] + out_degree[n.id] > 2]
+        if hubs:
+            desc += f"  - {len(hubs)} hub components with multiple connections\n"
+            for hub in hubs[:3]:  # 只显示前 3 个
+                desc += f"    * {hub.data.label} ({in_degree[hub.id]} in, {out_degree[hub.id]} out)\n"
+
+        return desc
+
+    def _build_incremental_prompt(
+        self,
+        request: ChatGenerationRequest,
+        existing_nodes: List[Node],
+        existing_edges: List[Edge]
+    ) -> str:
+        """构建增量生成的 Prompt"""
+
+        # 提取现有节点信息
+        existing_ids = [n.id for n in existing_nodes]
+        max_x = max((n.position.x for n in existing_nodes), default=0)
+        max_y = max((n.position.y for n in existing_nodes), default=0)
+        min_y = min((n.position.y for n in existing_nodes), default=0)
+        node_count = len(existing_nodes)
+        edge_count = len(existing_edges)
+
+        # 按类型分组节点
+        nodes_by_type = {}
+        for node in existing_nodes:
+            node_type = node.type or "default"
+            if node_type not in nodes_by_type:
+                nodes_by_type[node_type] = []
+            nodes_by_type[node_type].append(node.data.label)
+
+        # 生成时间戳用于新节点 ID
+        timestamp = int(time.time())
+
+        # 构建系统 Prompt
+        system_prompt = f"""You are an expert systems architect tasked with INCREMENTALLY enhancing an existing {"architecture" if request.diagram_type == "architecture" else "flowchart"}.
+
+**CRITICAL CONSTRAINT: DO NOT SIMPLIFY THE EXISTING ARCHITECTURE**
+
+This is an ENHANCEMENT task, NOT a REFACTORING task.
+
+ABSOLUTE RULES:
+1. PRESERVE COMPLEXITY: Keep all existing nodes with their EXACT labels, types, and properties
+2. NO DELETION: Do NOT delete any existing nodes or edges
+3. NO MODIFICATION: Do NOT change existing node labels, types, positions, or colors
+4. NO MERGE: Do NOT merge or consolidate existing nodes
+5. NO REARRANGEMENT: Do NOT change the existing layout or structure
+6. ONLY ADD: You may ONLY add new nodes and new edges
+
+The user wants to ENHANCE (add new features), not REFACTOR (restructure existing).
+Treat the existing architecture as IMMUTABLE except for adding new nodes/edges.
+
+If the user request seems to require modifying existing nodes, interpret it as
+"add new nodes that complement the existing ones" instead.
+
+---
+
+**CRITICAL RULES FOR INCREMENTAL GENERATION:**
+1. **PRESERVE ALL EXISTING NODES**: Keep all {node_count} nodes UNCHANGED (IDs: {', '.join(existing_ids[:10])}{', ...' if len(existing_ids) > 10 else ''})
+2. **UNIQUE NEW IDs**: New nodes must use format `{{type}}-{timestamp}-{{sequence}}` (e.g., "service-{timestamp}-1")
+3. **SMART POSITIONING**:
+   - Existing bounds: x=[0, {max_x}], y=[{min_y}, {max_y}]
+   - Place new nodes starting at x={max_x + 300}, y within [{min_y}, {max_y}]
+   - Maintain spacing: 300px horizontal, 200px vertical
+4. **PRESERVE EDGES**: Keep all {edge_count} existing connections unless explicitly removing
+5. **TYPE CONSISTENCY**: Use existing node types where appropriate ({', '.join(nodes_by_type.keys())})
+
+**EXISTING ARCHITECTURE SUMMARY:**
+- Total: {node_count} nodes, {edge_count} edges
+- Node types:
+{chr(10).join(f'  - {t}: {len(nodes)} nodes ({", ".join(nodes[:3])}{"..." if len(nodes) > 3 else ""})' for t, nodes in nodes_by_type.items())}
+
+**EXISTING ARCHITECTURE (NATURAL LANGUAGE)**:
+{self._build_architecture_description(existing_nodes, existing_edges)}
+
+**COMPLETE EXISTING STRUCTURE (JSON FORMAT)**:
+```json
+{json.dumps({
+    "nodes": [n.model_dump() for n in existing_nodes],
+    "edges": [e.model_dump() for e in existing_edges]
+}, indent=2, ensure_ascii=False)}
+```
+
+**USER ENHANCEMENT REQUEST:**
+"{request.user_input}"
+
+**DIAGRAM TYPE:** {request.diagram_type}
+**ARCHITECTURE TYPE:** {request.architecture_type if request.diagram_type == "architecture" else "N/A"}
+
+**OUTPUT FORMAT:**
+Return ONLY valid JSON (no markdown, no code blocks) with the COMPLETE architecture (existing + new):
+{{
+  "nodes": [
+    ...ALL existing nodes UNCHANGED...,
+    ...NEW nodes with unique IDs and proper positioning...
+  ],
+  "edges": [
+    ...ALL existing edges...,
+    ...NEW edges connecting new nodes...
+  ]
+}}
+
+**VALIDATION CHECKLIST:**
+- [ ] All {node_count} existing node IDs are present
+- [ ] New node IDs use timestamp format ({timestamp})
+- [ ] New nodes positioned at x >= {max_x + 300}
+- [ ] All edges reference valid node IDs
+- [ ] No duplicate node IDs
+
+Generate the enhanced architecture now."""
+
+        return system_prompt
+
+    def _extract_semantic_keywords(self, label: str) -> set:
+        """从节点label提取关键语义词"""
+        import re
+
+        # 移除常见修饰词
+        noise_words = {'service', 'module', 'layer', 'system', 'component',
+                       '服务', '模块', '层', '系统', '组件', 'api', 'db', 'database', 'server'}
+
+        words = set()
+
+        # 英文分词
+        for word in re.findall(r'[A-Za-z]+', label.lower()):
+            if word not in noise_words and len(word) > 2:
+                words.add(word)
+
+        # 中文分词（提取连续中文字符）
+        for word in re.findall(r'[\u4e00-\u9fff]+', label):
+            if word not in noise_words and len(word) >= 2:
+                words.add(word)
+
+        return words
+
+    def _validate_semantic_coverage(self, original_nodes: List[Node], final_nodes: List[Node]) -> bool:
+        """验证语义覆盖率 - 确保原有概念没有丢失"""
+
+        # 提取原始节点的所有语义关键词
+        original_keywords = set()
+        original_node_keywords = {}  # {node_id: keywords}
+
+        for node in original_nodes:
+            keywords = self._extract_semantic_keywords(node.data.label)
+            if keywords:  # 只考虑有实际语义的节点
+                original_keywords.update(keywords)
+                original_node_keywords[node.id] = {
+                    'label': node.data.label,
+                    'keywords': keywords
+                }
+
+        # 提取最终节点的所有语义关键词
+        final_keywords = set()
+        for node in final_nodes:
+            keywords = self._extract_semantic_keywords(node.data.label)
+            final_keywords.update(keywords)
+
+        # 检查丢失的关键词
+        lost_keywords = original_keywords - final_keywords
+
+        if lost_keywords:
+            logger.warning(
+                f"Semantic content lost: keywords {lost_keywords} are missing in final architecture"
+            )
+
+            # 找出哪些节点的语义完全丢失了
+            lost_semantic_nodes = []
+            for node_id, info in original_node_keywords.items():
+                # 如果这个节点的所有关键词都不在最终架构中，说明这个概念完全丢失了
+                if info['keywords'] and not info['keywords'].intersection(final_keywords):
+                    lost_semantic_nodes.append(info['label'])
+
+            if lost_semantic_nodes:
+                logger.error(
+                    f"CRITICAL: {len(lost_semantic_nodes)} nodes lost semantic content: {lost_semantic_nodes}"
+                )
+                logger.error(
+                    "This means AI simplified the architecture instead of appending to it!"
+                )
+                return False
+
+        # 计算语义覆盖率
+        if original_keywords:
+            coverage = len(final_keywords.intersection(original_keywords)) / len(original_keywords)
+            logger.info(f"Semantic coverage: {coverage * 100:.1f}%")
+
+            if coverage < 0.8:
+                logger.error(
+                    f"Semantic coverage too low ({coverage * 100:.1f}%), "
+                    "significant content loss detected"
+                )
+                return False
+
+        return True
+
+    def _validate_incremental_result(
+        self,
+        original_nodes: List[Node],
+        ai_nodes: List[Node]
+    ) -> List[Node]:
+        """更严格的验证和修复 AI 的增量生成结果"""
+        original_id_map = {n.id: n for n in original_nodes}
+        ai_id_map = {n.id: n for n in ai_nodes}
+
+        # 1. 检查缺失节点（AI 误删）
+        missing_ids = set(original_id_map.keys()) - set(ai_id_map.keys())
+        if missing_ids:
+            logger.warning(f"AI deleted {len(missing_ids)} nodes: {missing_ids}, restoring them")
+            # 恢复缺失节点
+            for node_id in missing_ids:
+                ai_nodes.append(original_id_map[node_id])
+            # 重建 ai_id_map
+            ai_id_map = {n.id: n for n in ai_nodes}
+
+        # 2. 检查现有节点的属性是否被修改
+        position_modified_count = 0
+        for node_id in original_id_map.keys():
+            if node_id in ai_id_map:
+                original_node = original_id_map[node_id]
+                ai_node = ai_id_map[node_id]
+
+                # 检查关键属性
+                if ai_node.data.label != original_node.data.label:
+                    logger.warning(
+                        f"Node label changed: {node_id} "
+                        f"({original_node.data.label} → {ai_node.data.label}), "
+                        f"reverting to original"
+                    )
+                    ai_node.data.label = original_node.data.label
+
+                if ai_node.type != original_node.type:
+                    logger.warning(
+                        f"Node type changed: {node_id} "
+                        f"({original_node.type} → {ai_node.type}), "
+                        f"reverting to original"
+                    )
+                    ai_node.type = original_node.type
+
+                # 🔧 在增量模式下，原始节点位置不应该变化（除非非常小的偏移 ±5px）
+                pos_diff = abs(ai_node.position.x - original_node.position.x) + \
+                           abs(ai_node.position.y - original_node.position.y)
+                if pos_diff > 5:  # 严格限制：超过 5px 就认为是移动了
+                    logger.warning(
+                        f"Node position changed: {node_id} "
+                        f"({original_node.position.x}, {original_node.position.y}) → "
+                        f"({ai_node.position.x}, {ai_node.position.y}), diff={pos_diff:.0f}px, "
+                        f"reverting to original"
+                    )
+                    ai_node.position = original_node.position
+                    position_modified_count += 1
+
+        # 如果大量节点位置被修改，说明 AI 重新排列了整个架构
+        if position_modified_count > len(original_nodes) * 0.3:  # 超过 30% 的节点被移动
+            logger.error(
+                f"⚠️ {position_modified_count}/{len(original_nodes)} nodes had positions changed! "
+                f"AI appears to have reorganized the entire architecture instead of appending."
+            )
+
+        # 3. 检查重复 ID
+        seen_ids = set()
+        deduplicated = []
+        for node in ai_nodes:
+            if node.id in seen_ids:
+                # 重命名重复节点
+                original_id = node.id
+                node.id = f"{node.id}-dup-{int(time.time())}"
+                logger.warning(f"Duplicate node ID: {original_id} → {node.id}")
+            seen_ids.add(node.id)
+            deduplicated.append(node)
+
+        # 4. 检查位置重叠
+        deduplicated = self._resolve_position_overlaps(deduplicated)
+
+        # 5. 🆕 语义完整性检查 - 确保原有概念没有丢失
+        semantic_ok = self._validate_semantic_coverage(original_nodes, deduplicated)
+        if not semantic_ok:
+            logger.error(
+                "Semantic validation failed! AI simplified architecture. "
+                "Keeping ALL original nodes to preserve content."
+            )
+            # 如果语义丢失严重，保留所有原始节点，只添加新节点
+            final_node_ids = {n.id for n in deduplicated}
+            original_node_ids = {n.id for n in original_nodes}
+            new_nodes = [n for n in deduplicated if n.id not in original_node_ids]
+
+            logger.warning(
+                f"Falling back to safe mode: keeping all {len(original_nodes)} original nodes + "
+                f"{len(new_nodes)} new nodes"
+            )
+            deduplicated = list(original_nodes) + new_nodes
+
+        # 6. 🆕 检查是否真的新增了节点 - 关键验证！
+        original_node_ids = set(original_id_map.keys())
+        final_node_ids = {n.id for n in deduplicated}
+        new_node_ids = final_node_ids - original_node_ids
+
+        if len(new_node_ids) == 0:
+            logger.error(
+                f"❌ CRITICAL: No new nodes were added! "
+                f"AI just rearranged existing {len(original_nodes)} nodes without adding requested content."
+            )
+            logger.error(
+                "This is a failed incremental generation - user requested to ADD something, "
+                "but AI only reorganized what already exists."
+            )
+        else:
+            logger.info(f"✓ Successfully added {len(new_node_ids)} new nodes: {list(new_node_ids)[:5]}...")
+
+        return deduplicated
+
+    def _resolve_position_overlaps(self, nodes: List[Node]) -> List[Node]:
+        """解决节点位置重叠"""
+        overlap_threshold = 100  # 100px 以内视为重叠
+
+        for i, node in enumerate(nodes):
+            for other in nodes[:i]:
+                distance = math.sqrt(
+                    (node.position.x - other.position.x)**2 +
+                    (node.position.y - other.position.y)**2
+                )
+                if distance < overlap_threshold:
+                    # 向右偏移
+                    node.position.x += 300
+                    logger.info(f"Position overlap: shifted {node.id} to x={node.position.x}")
+
+        return nodes
+
+    def _merge_edges(self, original_edges: List[Edge], ai_edges: List[Edge]) -> List[Edge]:
+        """智能合并边，确保原始边不丢失"""
+
+        # 1. 为原始边建立索引（使用 source→target 作为签名）
+        original_edge_map = {}
+        for edge in original_edges:
+            sig = (edge.source, edge.target)
+            original_edge_map[sig] = edge
+
+        # 2. 检查 AI 是否删除了原始边
+        ai_edge_sigs = {(e.source, e.target) for e in ai_edges}
+        original_edge_sigs = set(original_edge_map.keys())
+
+        missing_edge_sigs = original_edge_sigs - ai_edge_sigs
+        if missing_edge_sigs:
+            logger.warning(
+                f"AI deleted {len(missing_edge_sigs)} edges: {missing_edge_sigs}, "
+                f"restoring them"
+            )
+
+        # 3. 合并：原始边 + AI 新增的边
+        merged = list(original_edges)  # 确保所有原始边都保留
+
+        for edge in ai_edges:
+            sig = (edge.source, edge.target)
+            if sig not in original_edge_map:
+                # 这是 AI 新增的边
+                merged.append(edge)
+            else:
+                # 这是原始边，检查 AI 是否修改了 label
+                original_edge = original_edge_map[sig]
+                if edge.label != original_edge.label and original_edge.label:
+                    logger.warning(
+                        f"Edge label changed: {sig} "
+                        f"({original_edge.label} → {edge.label}), "
+                        f"keeping original"
+                    )
+                    # 已经在 merged 中保留了原始边，不需要额外操作
+
+        return merged
+
     async def generate_flowchart(
         self,
         request: ChatGenerationRequest,
@@ -1146,13 +1577,45 @@ Generate a well-laid-out flowchart. Focus on clarity and visual balance. Return 
                 model_name=config.get("model_name"),
             )
 
+            # 🔧 Fix: 使用配置中的实际 provider，而不是请求中的 provider
+            # 这样可以确保 _call_ai_text_generation 使用正确的方法
+            selected_provider = config["provider"]
+
+            # 🆕 增量生成模式：检查并获取现有架构
+            existing_nodes = []
+            existing_edges = []
+            session_id = request.session_id
+
+            if request.incremental_mode and request.session_id:
+                logger.info(f"[INCREMENTAL] Incremental mode enabled, loading session: {request.session_id}")
+                session_manager = get_session_manager()
+                session_data = session_manager.get_session(request.session_id)
+
+                if session_data:
+                    existing_nodes = [Node(**n) for n in session_data["nodes"]]
+                    existing_edges = [Edge(**e) for e in session_data["edges"]]
+                    logger.info(
+                        f"[INCREMENTAL] Loaded {len(existing_nodes)} nodes, {len(existing_edges)} edges"
+                    )
+                else:
+                    logger.warning(
+                        f"[INCREMENTAL] Session {request.session_id} not found or expired, "
+                        "falling back to full generation"
+                    )
+                    request.incremental_mode = False
+
+            # 构建 Prompt（增量或全新）
             prompt_request = request.model_copy(update={"diagram_type": effective_diagram_type})
-            prompt = self._build_generation_prompt(prompt_request)
+            if request.incremental_mode and existing_nodes:
+                logger.info("[INCREMENTAL] Building incremental prompt")
+                prompt = self._build_incremental_prompt(prompt_request, existing_nodes, existing_edges)
+            else:
+                prompt = self._build_generation_prompt(prompt_request)
 
             logger.info(f"[CHAT-GEN] Calling AI with provider: {selected_provider}")
             logger.info(f"[CHAT-GEN] Prompt (first 200 chars): {prompt[:200]}...")
             ai_raw = await self._call_ai_text_generation(vision_service, prompt, selected_provider)
-            logger.info(f"[CHAT-GEN] AI raw response (first 500 chars): {ai_raw[:500]}...")
+            logger.info(f"[CHAT-GEN] AI raw response type: {type(ai_raw)}, keys: {list(ai_raw.keys()) if isinstance(ai_raw, dict) else 'N/A'}")
             ai_data = self._safe_json(ai_raw)
             logger.info(f"[CHAT-GEN] Parsed AI data keys: {list(ai_data.keys())}")
 
@@ -1170,6 +1633,16 @@ Generate a well-laid-out flowchart. Focus on clarity and visual balance. Return 
                 nodes, edges, mermaid_code = self._normalize_ai_graph(ai_data)
 
             logger.info(f"[CHAT-GEN] After normalization: {len(nodes)} nodes, {len(edges)} edges")
+
+            # 🆕 增量模式验证和合并
+            if request.incremental_mode and existing_nodes:
+                logger.info("[INCREMENTAL] Validating and merging incremental results")
+                nodes = self._validate_incremental_result(existing_nodes, nodes)
+                edges = self._merge_edges(existing_edges, edges)
+                logger.info(
+                    f"[INCREMENTAL] After merge: {len(nodes)} nodes (+{len(nodes) - len(existing_nodes)} new), "
+                    f"{len(edges)} edges (+{len(edges) - len(existing_edges)} new)"
+                )
 
             if not nodes:
                 logger.warning(
@@ -1209,12 +1682,24 @@ Generate a well-laid-out flowchart. Focus on clarity and visual balance. Return 
             logger.info(
                 f"[CHAT-GEN] Generated via {selected_provider}: {len(nodes)} nodes, {len(edges)} edges"
             )
+
+            # 🆕 更新会话（增量模式或首次保存）
+            if request.incremental_mode or session_id:
+                session_manager = get_session_manager()
+                session_id = session_manager.create_or_update_session(
+                    session_id=session_id,
+                    nodes=nodes,
+                    edges=edges
+                )
+                logger.info(f"[SESSION] Updated session: {session_id}")
+
             return ChatGenerationResponse(
                 nodes=nodes,
                 edges=edges,
                 mermaid_code=mermaid_code,
                 success=True,
                 message=message,
+                session_id=session_id  # 🆕 返回 session_id
             )
 
         except Exception as e:

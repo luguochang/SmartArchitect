@@ -305,6 +305,10 @@ class ChatGenerationRequest(BaseModel):
     base_url: Optional[str] = None
     model_name: Optional[str] = None
 
+    # 🆕 增量生成参数
+    incremental_mode: Optional[bool] = False  # 是否启用增量模式
+    session_id: Optional[str] = None  # 会话 ID（用于获取现有画板）
+
 
 # Chat generation response
 class ChatGenerationResponse(BaseModel):
@@ -313,6 +317,50 @@ class ChatGenerationResponse(BaseModel):
     mermaid_code: str
     success: bool = True
     message: Optional[str] = None
+    session_id: Optional[str] = None  # 🆕 返回会话 ID（供前端后续使用）
+
+
+# ============================================================
+# Canvas Session Management (增量生成会话管理)
+# ============================================================
+
+# Canvas session save request
+class CanvasSaveRequest(BaseModel):
+    session_id: Optional[str] = None  # 可选，空则创建新会话
+    nodes: List[Node]
+    edges: List[Edge]
+
+
+# Canvas session save response
+class CanvasSaveResponse(BaseModel):
+    success: bool = True
+    session_id: str
+    message: Optional[str] = None
+    node_count: int
+    edge_count: int
+
+
+# Canvas session data
+class CanvasSessionData(BaseModel):
+    nodes: List[Node]
+    edges: List[Edge]
+    node_count: int
+    edge_count: int
+    timestamp: str
+    created_at: str
+
+
+# Canvas session get response
+class CanvasSessionResponse(BaseModel):
+    success: bool = True
+    session: Optional[CanvasSessionData] = None
+    message: Optional[str] = None
+
+
+# Canvas session delete response
+class CanvasSessionDeleteResponse(BaseModel):
+    success: bool = True
+    message: str
 
 
 # ============================================================
