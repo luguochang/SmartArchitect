@@ -384,8 +384,9 @@ export const DefaultNode = memo(({ id, data }: NodeProps) => {
     );
   }
 
-  // Legacy circle
-  if (shape === "circle") {
+  // Circle, Start, and End (flowchart shapes)
+  if (shape === "circle" || shape === "start" || shape === "end") {
+    const borderWidth = shape === "end" ? "3px" : nodeStyle.container.borderWidth;
     return (
       <div
         className={`${shapeConfig.className} shadow-lg`}
@@ -396,7 +397,7 @@ export const DefaultNode = memo(({ id, data }: NodeProps) => {
           alignItems: "center",
           justifyContent: "center",
           borderColor: borderColor,
-          borderWidth: nodeStyle.container.borderWidth,
+          borderWidth: borderWidth,
           borderStyle: "solid",
           backgroundColor: backgroundColor,
           boxShadow: nodeStyle.container.boxShadow,
@@ -507,6 +508,17 @@ export const DefaultNode = memo(({ id, data }: NodeProps) => {
   }
 
   // CSS-based shapes (rectangle, circle, rounded rectangle, etc.)
+  // Extract borderRadius from className (rounded-2xl, rounded-xl, rounded-lg, etc.)
+  const borderRadius = shapeConfig.className?.includes("rounded-2xl")
+    ? "16px"
+    : shapeConfig.className?.includes("rounded-xl")
+    ? "12px"
+    : shapeConfig.className?.includes("rounded-lg")
+    ? "8px"
+    : shapeConfig.className?.includes("rounded-full")
+    ? "9999px"
+    : "4px";
+
   return (
     <div
       className="glass-node"
@@ -514,6 +526,7 @@ export const DefaultNode = memo(({ id, data }: NodeProps) => {
         ...nodeStyle.container,
         width: shapeConfig.width,
         height: shapeConfig.height,
+        borderRadius,
         }}
       >
         {renderOrthogonalHandles(borderColor)}

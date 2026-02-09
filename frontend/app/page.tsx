@@ -7,12 +7,49 @@ import ThemeSwitcher from "@/components/ThemeSwitcher";
 import ModelPresetsManager from "@/components/ModelPresetsManager";
 import { LayoutDashboard, Settings, Sparkles, Info, Github } from "lucide-react";
 import { useArchitectStore } from "@/lib/store/useArchitectStore";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { API_ENDPOINTS } from "@/lib/api-config";
 
 export default function Home() {
-  const { canvasMode, setCanvasMode, modelConfig } = useArchitectStore();
+  const { canvasMode, setCanvasMode, modelConfig, setModelConfig } = useArchitectStore();
   const [showPresetsManager, setShowPresetsManager] = useState(false);
   const [showConfigTooltip, setShowConfigTooltip] = useState(false);
+
+  // 🔧 自动加载默认配置（页面加载时）
+  useEffect(() => {
+    const loadDefaultConfig = async () => {
+      try {
+        const response = await fetch(API_ENDPOINTS.modelPresets);
+        if (response.ok) {
+          const data = await response.json();
+          const defaultPreset = data.presets?.find((p: any) => p.is_default);
+
+          if (defaultPreset) {
+            // 获取完整配置（包含真实 API key）
+            const fullConfigResponse = await fetch(API_ENDPOINTS.modelPresetFull(defaultPreset.id));
+            if (fullConfigResponse.ok) {
+              const fullData = await fullConfigResponse.json();
+              const fullPreset = fullData.preset;
+
+              // 自动设置到 store
+              setModelConfig({
+                provider: fullPreset.provider,
+                apiKey: fullPreset.api_key,
+                baseUrl: fullPreset.base_url || "",
+                modelName: fullPreset.model_name,
+              });
+
+              console.log("✅ 自动加载默认配置:", fullPreset.name);
+            }
+          }
+        }
+      } catch (error) {
+        console.error("加载默认配置失败:", error);
+      }
+    };
+
+    loadDefaultConfig();
+  }, []); // 只在组件挂载时执行一次
 
   const apiReady = useMemo(() => Boolean(modelConfig.apiKey && modelConfig.apiKey.trim()), [modelConfig.apiKey]);
 

@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import "@excalidraw/excalidraw/index.css";
 import { useEffect, useRef, useCallback } from "react";
-import { useArchitectStore } from "@/lib/store/useArchitectStore";
+import { useArchitectStore, ExcalidrawScene } from "@/lib/store/useArchitectStore";
 import { toast } from "sonner";
 
 // Type import - using any to avoid build-time type errors

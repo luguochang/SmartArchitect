@@ -645,8 +645,8 @@ export function AiControlPanel() {
                 />
               </div>
 
-              {/* 🆕 增量生成模式切换 */}
-              <div className="flex items-center gap-2 text-sm">
+              {/* 🆕 增量生成模式切换 - 暂时隐藏 */}
+              {/* <div className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
                   id="incremental-mode"
@@ -679,7 +679,7 @@ export function AiControlPanel() {
                 <div className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10 rounded-lg px-3 py-2">
                   💡 将在现有 {nodes.length} 个节点基础上追加
                 </div>
-              )}
+              )} */}
 
               <button
                 onClick={handleGenerateFlow}
