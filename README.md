@@ -11,7 +11,7 @@ AI 驱动的思维可视化工具 · 让复杂的想法一目了然
 [![Next.js](https://img.shields.io/badge/Next.js-14.2-black?logo=next.js)](https://nextjs.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi)](https://fastapi.tiangolo.com/)
 
-[English](./README.md) | 简体中文
+[English](./README_EN.md) | 简体中文
 
 [快速体验](#-快速开始) · [核心理念](#-核心理念) · [应用场景](#-应用场景) · [功能演示](#-功能演示)
 
