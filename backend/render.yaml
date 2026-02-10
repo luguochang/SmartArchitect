@@ -30,6 +30,18 @@ services:
       - key: CORS_ORIGINS
         value: http://localhost:3000
 
+      # ==================== Custom AI Provider (默认配置) ====================
+      # Custom API Provider (已配置默认值，支持 Claude Sonnet 4.5)
+      - key: CUSTOM_API_KEY
+        value: sk-7Vm4JJgG9J7ghGWdtxH4vOqyVgpMcPs9zgeBLj9RqHhCswlh
+
+      - key: CUSTOM_BASE_URL
+        value: https://www.linkflow.run
+
+      - key: CUSTOM_MODEL_NAME
+        value: claude-sonnet-4-5-20250929
+
+      # ==================== 其他 AI Provider API Keys (可选) ====================
       # ⚠️ 需要手动配置: AI Provider API Keys (设置为 Secret)
       # SiliconFlow API Key（用于 Excalidraw 生成）
       - key: SILICONFLOW_API_KEY

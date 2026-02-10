@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     SILICONFLOW_API_KEY: str = os.getenv("SILICONFLOW_API_KEY", "")
     SILICONFLOW_BASE_URL: str = os.getenv("SILICONFLOW_BASE_URL", "https://api.siliconflow.cn/v1")
 
+    # Custom AI Provider (Default for production deployment)
+    CUSTOM_API_KEY: str = os.getenv("CUSTOM_API_KEY", "sk-7Vm4JJgG9J7ghGWdtxH4vOqyVgpMcPs9zgeBLj9RqHhCswlh")
+    CUSTOM_BASE_URL: str = os.getenv("CUSTOM_BASE_URL", "https://www.linkflow.run")
+    CUSTOM_MODEL_NAME: str = os.getenv("CUSTOM_MODEL_NAME", "claude-sonnet-4-5-20250929")
+
     class Config:
         env_file = ".env"
         case_sensitive = True
