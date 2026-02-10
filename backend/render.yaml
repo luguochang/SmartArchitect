@@ -27,7 +27,8 @@ services:
 
       # ⚠️ 需要手动配置: CORS 允许的前端域名（部署 Vercel 后更新）
       # 格式: https://your-app.vercel.app,https://your-app-custom-domain.com
-      - key: CORS_ORIGINS
+      # 注意: 多个域名用逗号分隔，不要有空格
+      - key: CORS_ORIGINS_STR
         value: http://localhost:3000
 
       # ==================== Custom AI Provider (默认配置) ====================
