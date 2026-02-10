@@ -7,6 +7,9 @@
 **阅读时间**: 约 30 分钟
 **技术栈**: FastAPI, React, OpenAI/Claude/Gemini API, Server-Sent Events
 
+**📦 开源项目**: [SmartArchitect AI on GitHub](https://github.com/luguochang/SmartArchitect)
+**⭐ 如果这篇文章对你有帮助，欢迎给项目一个 Star！你的支持是我们持续更新的动力 🙏**
+
 ---
 
 ## 为什么写这篇文章？
@@ -2070,6 +2073,30 @@ def _validate_scene(ai_data):
 
 ---
 
+## 💡 想体验完整的 AI 图形应用？
+
+**SmartArchitect AI** 是一个开源的 AI 驱动架构图设计平台，完整实现了本文所有技术方案：
+
+✨ **核心功能**：
+- 🎨 **多模态输入**：支持自然语言、图片、Mermaid 代码生成架构图
+- 🔄 **增量编辑**：智能追加节点，自动修复冲突
+- ⚡ **流式渲染**：实时显示 AI 生成过程，无卡顿
+- 🎯 **零重叠保证**：后端自动修复节点碰撞
+- 📊 **多格式导出**：支持 PPT、Slidev、Excalidraw
+- 🧠 **RAG 知识库**：上传文档，AI 基于领域知识生成
+
+🔗 **项目地址**：https://github.com/luguochang/SmartArchitect
+
+**⭐ 如果本文对你有帮助，请给项目一个 Star！**
+你的支持是我们持续更新和开源的最大动力 🙏
+
+技术栈：
+- **后端**：FastAPI + ChromaDB + OpenAI/Claude/Gemini API
+- **前端**：Next.js 14 + React Flow + Excalidraw
+- **测试**：pytest 测试覆盖率 97%+
+
+---
+
 ## 总结：AI 图形应用开发的 6 大经验
 
 经过半年的实战，我们总结出以下核心经验：
@@ -2119,11 +2146,18 @@ AI 应用开发是一个快速变化的领域，今天的最佳实践明天可�
 
 如果你也在做 AI 图形应用，欢迎交流！你可以：
 
-- ⭐ Star 我们的 [GitHub 项目](https://github.com/your-repo)
-- 💬 在 Issues 中分享你的经验和问题
-- 📧 联系我们：your-email@example.com
+- ⭐ **Star 项目**：https://github.com/luguochang/SmartArchitect
+- 💬 **提 Issue**：在 GitHub Issues 中分享你的经验和问题
+- 🔀 **贡献代码**：欢迎提交 Pull Request
+- 📧 **技术交流**：通过 GitHub Discussions 讨论技术问题
 
 **让我们一起推动 AI 图形应用的发展！**
+
+---
+
+**🌟 觉得有帮助？请给项目一个 Star！🌟**
+
+[![GitHub stars](https://img.shields.io/github/stars/luguochang/SmartArchitect?style=social)](https://github.com/luguochang/SmartArchitect)
 
 ---
 
@@ -2215,9 +2249,17 @@ AI 应用开发是一个快速变化的领域，今天的最佳实践明天可�
 
 ---
 
-**项目**: SmartArchitect AI
-**文档维护**: SmartArchitect Team
-**最后更新**: 2026-02-09
-**版本**: 1.1 (专业版)
-**贡献者**: 感谢所有开源社区和学术界的贡献
+## 📚 关于 SmartArchitect AI
+
+**SmartArchitect AI** 是一个开源的 AI 驱动架构图设计平台，本文所有技术方案均已在生产环境中验证。
+
+- **🔗 项目地址**: https://github.com/luguochang/SmartArchitect
+- **📖 文档维护**: SmartArchitect Team
+- **📅 最后更新**: 2026-02-09
+- **📌 版本**: 1.1 (专业版)
+- **🙏 致谢**: 感谢所有开源社区和学术界的贡献
+
+**⭐ 如果觉得有用，请给项目一个 Star 支持我们！**
+
+[![Star History Chart](https://api.star-history.com/svg?repos=luguochang/SmartArchitect&type=Date)](https://github.com/luguochang/SmartArchitect)
 
