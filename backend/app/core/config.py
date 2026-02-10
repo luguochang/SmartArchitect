@@ -22,12 +22,12 @@ class Settings(BaseSettings):
     LOG_DIR: str = "logs"                # 日志目录（相对于 backend/）
     ENVIRONMENT: str = "development"     # 环境模式 (development, production)
 
-    # AI Model API Keys (Optional)
-    GEMINI_API_KEY: str = ""
-    OPENAI_API_KEY: str = ""
-    ANTHROPIC_API_KEY: str = ""
-    SILICONFLOW_API_KEY: str = "sk-labtoeibcevkdzanpprwezzivdokslxnspigjnapxyogvpgp"
-    SILICONFLOW_BASE_URL: str = "https://api.siliconflow.cn/v1"
+    # AI Model API Keys (Optional - can be configured via UI or environment variables)
+    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+    ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
+    SILICONFLOW_API_KEY: str = os.getenv("SILICONFLOW_API_KEY", "")
+    SILICONFLOW_BASE_URL: str = os.getenv("SILICONFLOW_BASE_URL", "https://api.siliconflow.cn/v1")
 
     class Config:
         env_file = ".env"
