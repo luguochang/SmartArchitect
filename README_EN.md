@@ -13,9 +13,54 @@ AI-Driven Visual Thinking Tool · Make Complex Ideas Crystal Clear
 
 [English](./README_EN.md) | [简体中文](./README.md)
 
-[Quick Start](#-quick-start) · [Core Philosophy](#-core-philosophy) · [Use Cases](#-use-cases) · [Features](#-features)
+[Online Demo](#-online-demo) · [Quick Start](#-quick-start) · [Core Philosophy](#-core-philosophy) · [Use Cases](#-use-cases) · [Features](#-features)
 
 </div>
+
+---
+
+## 🌐 Online Demo
+
+### Try It Now, No Installation Required
+
+**Live Demo**: [https://smart-architect.vercel.app/](https://smart-architect.vercel.app/)
+
+<div align="center">
+
+[![Online Demo](https://img.shields.io/badge/🚀_Live_Demo-Try_Now-blue?style=for-the-badge)](https://smart-architect.vercel.app/)
+
+</div>
+
+### 📌 Important Notes
+
+The project is deployed on free cloud platforms (Vercel + Render), allowing you to experience it directly without local installation.
+
+**⚠️ Please Note:**
+
+- 🕐 **First-time Loading**: Due to the free backend service (Render Free Plan), the backend automatically sleeps after 15 minutes of inactivity
+- ⏱️ **Cold Start Time**: First visit or after long inactivity requires **30-60 seconds** to wake up the backend service
+- ⚡ **Subsequent Access**: Once awake, response time is normal (< 3 seconds)
+- 💾 **Data Persistence**: Canvas session data is lost after service restart (session TTL is 60 minutes, limited impact)
+
+**Recommendations**:
+- Please be patient during the first visit while the service wakes up
+- If no response for a long time, please refresh the page and retry
+- For frequent use, consider [local deployment](#-quick-start) following the instructions below
+
+### 🏗️ Deployment Architecture
+
+```
+┌─────────────────┐         ┌─────────────────┐
+│   Vercel        │         │   Render        │
+│  (Frontend)     │────────▶│  (Backend API)  │
+│  Next.js 14     │  HTTPS  │  FastAPI        │
+│  Global CDN     │         │  Python 3.12    │
+└─────────────────┘         └─────────────────┘
+```
+
+**Deployment Cost**: Completely Free ($0/month)
+
+**Detailed Deployment Guide**: See [docs/DEPLOYMENT_GUIDE.md](./docs/DEPLOYMENT_GUIDE.md)
 
 ---
 
@@ -293,51 +338,45 @@ Never worry about losing whiteboard content again.
 
 ## 🎬 Feature Demos
 
-### AI Conversational Generation
+### Core Functionality Showcase
 
-![AI Generation Demo](./docs/assets/demo-ai-generation.gif)
+<div align="center">
 
-*Describe idea → AI generates → Continuous refinement*
+![ArchBoard Core Features](./docs/assets/gif/main.gif)
 
-### Flow Canvas Editing
+*ArchBoard Complete Feature Showcase: From Conversational Generation to Visual Editing*
 
-![Flow Canvas Demo](./docs/assets/demo-flow-canvas.gif)
+</div>
 
-*Drag, connect, auto-layout*
+---
 
-### Excalidraw Whiteboard
-
-![Excalidraw Demo](./docs/assets/demo-excalidraw.gif)
-
-*Hand-drawn style, free creation*
-
-<details>
-<summary>📊 View More Real Examples</summary>
+### Featured Capabilities
 
 <table>
 <tr>
 <td width="50%" align="center">
-<img src="./docs/assets/example-1.png" width="100%">
-<p><b>E-commerce Business Flow</b></p>
+<img src="./docs/assets/gif/architect.gif" width="100%">
+<p><b>🏗️ Architecture Generation</b></p>
+<p><i>Intelligently identify system components, auto-generate technical architecture diagrams</i></p>
 </td>
 <td width="50%" align="center">
-<img src="./docs/assets/example-2.png" width="100%">
-<p><b>Technical Architecture Design</b></p>
+<img src="./docs/assets/gif/githubExcalidraw.gif" width="100%">
+<p><b>✏️ Excalidraw Integration</b></p>
+<p><i>Hand-drawn style whiteboard, supports freeform creation and collaboration</i></p>
 </td>
 </tr>
 <tr>
 <td width="50%" align="center">
-<img src="./docs/assets/example-3.png" width="100%">
-<p><b>Troubleshooting Workflow</b></p>
+<img src="./docs/assets/gif/pic2excalidraw.gif" width="100%">
+<p><b>📸 Intelligent Image Recognition</b></p>
+<p><i>Upload whiteboard photos, AI automatically converts to editable flowcharts</i></p>
 </td>
 <td width="50%" align="center">
-<img src="./docs/assets/example-4.png" width="100%">
-<p><b>Algorithm Visualization</b></p>
+<p><b>🎨 More Features</b></p>
+<p><i>• Multi-theme switching<br>• Code sync editing<br>• Multi-format export<br>• RAG knowledge base</i></p>
 </td>
 </tr>
 </table>
-
-</details>
 
 ---
 

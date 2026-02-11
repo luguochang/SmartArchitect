@@ -13,9 +13,54 @@ AI 驱动的思维可视化工具 · 让复杂的想法一目了然
 
 [English](./README_EN.md) | 简体中文
 
-[快速体验](#-快速开始) · [核心理念](#-核心理念) · [应用场景](#-应用场景) · [功能演示](#-功能演示)
+[在线演示](#-在线演示) · [快速体验](#-快速开始) · [核心理念](#-核心理念) · [应用场景](#-应用场景) · [功能演示](#-功能演示)
 
 </div>
+
+---
+
+## 🌐 在线演示
+
+### 立即体验，无需安装
+
+**在线地址**: [https://smart-architect.vercel.app/](https://smart-architect.vercel.app/)
+
+<div align="center">
+
+[![在线演示](https://img.shields.io/badge/🚀_在线演示-立即体验-blue?style=for-the-badge)](https://smart-architect.vercel.app/)
+
+</div>
+
+### 📌 使用说明
+
+本项目已部署在免费的云平台上（Vercel + Render），您可以直接访问体验，无需本地安装。
+
+**⚠️ 重要提示：**
+
+- 🕐 **首次访问加载时间**：由于使用免费的后端服务（Render Free Plan），后端会在闲置 15 分钟后自动休眠
+- ⏱️ **冷启动时间**：首次访问或长时间未使用后，需要 **30-60 秒**唤醒后端服务
+- ⚡ **后续访问**：服务唤醒后，响应速度正常（< 3 秒）
+- 💾 **数据说明**：Canvas 会话数据在服务重启后会丢失（会话 TTL 60 分钟，影响有限）
+
+**建议**：
+- 首次访问时请耐心等待服务唤醒
+- 如果长时间无响应，请刷新页面重试
+- 如需频繁使用，建议参考下方[本地部署](#-快速开始)说明在本地运行
+
+### 🏗️ 部署架构
+
+```
+┌─────────────────┐         ┌─────────────────┐
+│   Vercel        │         │   Render        │
+│  (前端托管)      │────────▶│  (后端 API)      │
+│  Next.js 14     │  HTTPS  │  FastAPI        │
+│  全球 CDN       │         │  Python 3.12    │
+└─────────────────┘         └─────────────────┘
+```
+
+**部署成本**: 完全免费 ($0/月)
+
+**详细部署指南**: 参见 [docs/DEPLOYMENT_GUIDE.md](./docs/DEPLOYMENT_GUIDE.md)
 
 ---
 
@@ -292,51 +337,45 @@ AI: [补充异常处理]
 
 ## 🎬 功能演示
 
-### AI 对话生成
+### 核心功能演示
 
-![AI 生成演示](./docs/assets/demo-ai-generation.gif)
+<div align="center">
 
-*描述想法 → AI 生成 → 持续优化*
+![ArchBoard 核心功能展示](./docs/assets/gif/main.gif)
 
-### Flow Canvas 编辑
+*ArchBoard 完整功能展示：从对话生成到可视化编辑*
 
-![Flow Canvas 演示](./docs/assets/demo-flow-canvas.gif)
+</div>
 
-*拖拽、连线、自动布局*
+---
 
-### Excalidraw 白板
-
-![Excalidraw 演示](./docs/assets/demo-excalidraw.gif)
-
-*手绘风格、自由创作*
-
-<details>
-<summary>📊 查看更多实际案例</summary>
+### 特色功能详解
 
 <table>
 <tr>
 <td width="50%" align="center">
-<img src="./docs/assets/example-1.png" width="100%">
-<p><b>电商业务流程</b></p>
+<img src="./docs/assets/gif/architect.gif" width="100%">
+<p><b>🏗️ 架构图生成</b></p>
+<p><i>智能识别系统组件，自动生成技术架构图</i></p>
 </td>
 <td width="50%" align="center">
-<img src="./docs/assets/example-2.png" width="100%">
-<p><b>技术架构设计</b></p>
+<img src="./docs/assets/gif/githubExcalidraw.gif" width="100%">
+<p><b>✏️ Excalidraw 集成</b></p>
+<p><i>手绘风格白板，支持自由创作和协作</i></p>
 </td>
 </tr>
 <tr>
 <td width="50%" align="center">
-<img src="./docs/assets/example-3.png" width="100%">
-<p><b>故障排查流程</b></p>
+<img src="./docs/assets/gif/pic2excalidraw.gif" width="100%">
+<p><b>📸 图片智能识别</b></p>
+<p><i>上传白板照片，AI 自动转换为可编辑流程图</i></p>
 </td>
 <td width="50%" align="center">
-<img src="./docs/assets/example-4.png" width="100%">
-<p><b>算法可视化</b></p>
+<p><b>🎨 更多功能</b></p>
+<p><i>• 多主题切换<br>• 代码同步编辑<br>• 多格式导出<br>• RAG 知识库</i></p>
 </td>
 </tr>
 </table>
-
-</details>
 
 ---
 
