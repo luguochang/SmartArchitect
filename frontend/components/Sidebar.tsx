@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback } from "react";
 import { Search, ChevronDown, ChevronRight } from "lucide-react";
 import { useArchitectStore } from "@/lib/store/useArchitectStore";
-import { ShapeRenderer } from "./nodes/ShapeRenderer";
+import { NodePreview } from "./nodes/NodePreview";
 import { NodeShape } from "@/lib/utils/nodeShapes";
 
 // 节点配置接口
@@ -271,67 +271,6 @@ export function Sidebar() {
       ],
     },
     {
-      id: "bpmn",
-      name: "BPMN",
-      defaultExpanded: false,
-      items: [
-        {
-          id: "bpmn-start",
-          label: "开始事件",
-          shape: "bpmn-start-event",
-          iconType: "play-circle",
-          color: colorMap["text-green-600"],
-          description: "BPMN开始",
-          nodeConfig: { type: "default", shape: "bpmn-start-event", iconType: "play-circle" },
-        },
-        {
-          id: "bpmn-end",
-          label: "结束事件",
-          shape: "bpmn-end-event",
-          iconType: "stop-circle",
-          color: colorMap["text-red-600"],
-          description: "BPMN结束",
-          nodeConfig: { type: "default", shape: "bpmn-end-event", iconType: "stop-circle" },
-        },
-        {
-          id: "bpmn-intermediate",
-          label: "中间事件",
-          shape: "bpmn-intermediate-event",
-          iconType: "alert-circle",
-          color: colorMap["text-yellow-600"],
-          description: "BPMN中间事件",
-          nodeConfig: { type: "default", shape: "bpmn-intermediate-event", iconType: "alert-circle" },
-        },
-        {
-          id: "bpmn-task",
-          label: "任务",
-          shape: "bpmn-task",
-          iconType: "process",
-          color: colorMap["text-blue-600"],
-          description: "BPMN任务",
-          nodeConfig: { type: "default", shape: "bpmn-task", iconType: "process" },
-        },
-        {
-          id: "bpmn-gateway",
-          label: "网关",
-          shape: "bpmn-gateway",
-          iconType: "decision",
-          color: colorMap["text-orange-600"],
-          description: "BPMN网关",
-          nodeConfig: { type: "default", shape: "bpmn-gateway", iconType: "decision" },
-        },
-        {
-          id: "bpmn-subprocess",
-          label: "子流程",
-          shape: "bpmn-subprocess",
-          iconType: "subprocess",
-          color: colorMap["text-purple-600"],
-          description: "BPMN子流程",
-          nodeConfig: { type: "default", shape: "bpmn-subprocess", iconType: "subprocess" },
-        },
-      ],
-    },
-    {
       id: "architecture",
       name: "架构组件",
       defaultExpanded: false,
@@ -560,31 +499,27 @@ export function Sidebar() {
 
               {/* 节点网格 */}
               {isExpanded && !isEmpty && (
-                <div className="mt-2 grid grid-cols-3 gap-2">
+                <div className="mt-2 grid grid-cols-3 gap-3">
                   {category.items.map((item) => (
                     <button
                       key={item.id}
                       onClick={() => handleAddNode(item)}
                       draggable
                       onDragStart={(event) => handleDragStart(event, item)}
-                      className="group flex flex-col items-center justify-center rounded-lg
-                               border-2 border-slate-200 bg-white p-3 transition-all
-                               hover:border-blue-400 hover:shadow-md active:scale-95
-                               dark:border-slate-700 dark:bg-slate-800 dark:hover:border-blue-500"
+                      className="group flex flex-col items-center justify-center gap-2
+                               rounded-xl p-2 transition-all
+                               hover:bg-slate-50/80 hover:scale-105 active:scale-95
+                               dark:hover:bg-slate-800/60"
                       title={item.description || `添加 ${item.label}`}
                     >
-                      {/* 使用 ShapeRenderer 渲染预览 */}
-                      <div className="mb-1">
-                        <ShapeRenderer
-                          shape={item.shape}
-                          iconType={item.iconType}
-                          color={item.color}
-                          size="small"
-                          showLabel={false}
-                          showIcon={true}
-                        />
-                      </div>
-                      <span className="text-xs font-medium text-slate-700 dark:text-slate-300 text-center">
+                      {/* 使用 NodePreview 渲染预览 */}
+                      <NodePreview
+                        shape={item.shape}
+                        iconType={item.iconType}
+                        color={item.color}
+                        className="group-hover:shadow-lg group-hover:shadow-blue-500/10"
+                      />
+                      <span className="text-xs font-medium text-slate-700 dark:text-slate-300 text-center leading-tight">
                         {item.label}
                       </span>
                     </button>
