@@ -23,8 +23,8 @@ pip install -r requirements.txt
 
 # Run development server
 python -m app.main
-# Server runs on http://localhost:8000
-# API docs available at http://localhost:8000/docs
+# Server runs on http://localhost:8003
+# API docs available at http://localhost:8003/docs
 
 # Run all tests
 "venv\Scripts\python.exe" -m pytest tests/ -v --tb=short
@@ -105,14 +105,15 @@ SmartArchitect/
 5. **Prompter API** (`/api/prompter/*`) - Architecture refactoring scenarios
 6. **Export API** (`/api/export/ppt`, `/api/export/slidev`, `/api/export/script`) - PowerPoint, Slidev, speech script generation
 7. **RAG API** (`/api/rag/*`) - Document upload, semantic search, ChromaDB vector database
-8. **Chat Generator API** (`/api/chat-generator/*`) - Natural language to flowchart conversion
+8. **Chat Generator API** (`/api/chat-generator/*`) - Natural language to flowchart conversion with streaming support, incremental generation mode, and session management (`/session/save`, `/session/{id}`, `/session/{id}` DELETE)
 9. **Excalidraw API** (`/api/excalidraw/generate`) - AI-powered Excalidraw scene generation
 
 **Key Services:**
 
 - **RAG Service** (`services/rag.py`) - ChromaDB integration with sentence-transformers embeddings (all-MiniLM-L6-v2), chunking strategy: 1000 chars with 200 overlap
 - **AI Vision Service** (`services/ai_vision.py`) - Multi-provider abstraction layer for Gemini/OpenAI/Claude/SiliconFlow
-- **Chat Generator Service** (`services/chat_generator.py`) - Natural language to flowchart/architecture diagram converter with template system
+- **Chat Generator Service** (`services/chat_generator.py`) - Natural language to flowchart/architecture diagram converter with template system and incremental generation support
+- **Session Manager** (`services/session_manager.py`) - Canvas session management with TTL, in-memory storage, and file persistence
 - **Excalidraw Generator** (`services/excalidraw_generator.py`) - AI-powered Excalidraw scene generation with fallback mock data
 - **PPT Exporter** (`services/ppt_exporter.py`) - python-pptx based presentation generator
 - **Slidev Exporter** (`services/slidev_exporter.py`) - Markdown slide deck generator
@@ -133,6 +134,12 @@ SmartArchitect/
 - `PrompterModal` - Architecture refactoring scenario selector
 - `DocumentUploadModal` - RAG knowledge base document upload
 - `ExportMenu` - Multi-format export (PPT, Slidev, Speech Script)
+
+**Node System:**
+- Node types defined in `components/nodes/` - Each node type has its own component (ApiNode, ServiceNode, DatabaseNode, etc.)
+- Node shapes configured in `lib/utils/nodeShapes.ts` - Centralized shape configuration with dimensions, styling, and render methods
+- Shape types: CSS-based (rectangles, circles, rounded) and SVG-based (diamonds, hexagons, stars, etc.)
+- BPMN shapes: start-event, end-event, intermediate-event, task, gateway (all with specific styling rules)
 
 **React Flow Integration:**
 - Custom node components with developer-focused icons (Lucide React)
@@ -177,13 +184,38 @@ class ModelConfig(BaseModel):
 
 **Phase 5 Schemas (Chat Generator & Excalidraw):**
 ```python
-# Chat generation supports streaming responses
+# Chat generation supports streaming responses and incremental mode
 class ChatGenerationRequest(BaseModel):
     user_input: str
     template_id: Optional[str] = None
     provider: Optional[Literal["gemini", "openai", "claude", "siliconflow", "custom"]] = "gemini"
     diagram_type: Literal["flow", "architecture"] = "flow"
     api_key: Optional[str] = None
+
+    # 🆕 Incremental generation parameters (Phase 5.1)
+    incremental_mode: Optional[bool] = False  # Enable incremental mode
+    session_id: Optional[str] = None          # Canvas session ID
+
+class ChatGenerationResponse(BaseModel):
+    nodes: List[Node]
+    edges: List[Edge]
+    mermaid_code: str
+    success: bool = True
+    message: Optional[str] = None
+    session_id: Optional[str] = None  # 🆕 Returned session ID
+
+# 🆕 Session management schemas (Phase 5.1)
+class CanvasSaveRequest(BaseModel):
+    session_id: Optional[str] = None  # Omit to create new session
+    nodes: List[Node]
+    edges: List[Edge]
+
+class CanvasSaveResponse(BaseModel):
+    success: bool = True
+    session_id: str
+    node_count: int
+    edge_count: int
+    message: Optional[str] = None
 
 # Excalidraw generation with AI
 class ExcalidrawGenerateRequest(BaseModel):
@@ -345,7 +377,7 @@ SILICONFLOW_BASE_URL = "https://api.siliconflow.cn/v1"
 ```
 
 **Frontend Port:** 3000 (configurable, auto-discovery in production)
-**Backend Port:** 8000
+**Backend Port:** 8003
 
 ## Phase History & Features
 
@@ -379,6 +411,16 @@ SILICONFLOW_BASE_URL = "https://api.siliconflow.cn/v1"
 - Support for both "flow" (flowchart) and "architecture" diagram types
 - Enhanced BPMN node support (start-event, end-event, intermediate-event, task)
 
+**Phase 5.1 (Complete):** Incremental Generation
+- Canvas session management with 60-minute TTL
+- Incremental mode UI toggle for appending to existing architectures
+- Backend validation to auto-recover deleted nodes and fix conflicts
+- Prompt engineering to preserve existing nodes during AI generation
+- Session persistence with file backup (data/canvas_sessions/)
+- Automatic session cleanup and size limits (5MB max per session)
+- Comprehensive test coverage (9/9 unit tests, 5/5 API tests passing)
+- See INCREMENTAL_GENERATION_TEST_REPORT.md for detailed test results
+
 ## Known Issues & Limitations
 
 1. **First RAG Query Latency:** ~26 seconds for embedding model initialization (subsequent queries: 100-200ms)
@@ -387,6 +429,7 @@ SILICONFLOW_BASE_URL = "https://api.siliconflow.cn/v1"
 4. **Security Gaps:** No authentication, no rate limiting (documented in SYSTEM_REVIEW.md for production deployment)
 5. **Excalidraw Generation:** AI generation may fail or timeout; automatic fallback to mock scene ensures reliability
 6. **Streaming Edge Cases:** Network interruptions during streaming may require client-side retry logic
+7. **Incremental Generation Session Expiry:** Canvas sessions expire after 60 minutes; automatic fallback to full generation when session not found (graceful degradation implemented)
 
 ## Code Patterns & Conventions
 
@@ -473,7 +516,7 @@ async def generate_with_streaming(self, user_input: str):
 **API Communication:**
 ```typescript
 // Fetch pattern used throughout
-const response = await fetch('http://localhost:8000/api/endpoint', {
+const response = await fetch('http://localhost:8003/api/endpoint', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify(data)
@@ -505,6 +548,47 @@ const generateScene = async (prompt: string) => {
 // Backend automatically provides mock data on errors
 ```
 
+**Node Styling Architecture:**
+
+The application uses a sophisticated CSS system to style React Flow nodes. Key patterns:
+
+```css
+/* globals.css - Critical styling rules */
+
+/* React Flow nodes have transparent containers by default */
+.react-flow__node {
+  border: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+/* Only non-circular nodes get rounded corners and shadows */
+.react-flow__node:not(:has(.glass-node.rounded-full)):not(:has(.svg-shape-node)) {
+  @apply rounded-lg shadow-md;
+}
+
+/* Circular nodes (start-event, end-event, circle, etc.) must be fully transparent */
+.react-flow__node:has(.glass-node.rounded-full) {
+  border-radius: 9999px !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  /* This prevents square boxes around circular nodes */
+}
+```
+
+**Node Component Patterns:**
+- All node components use `.glass-node` class for consistent styling
+- Circular BPMN nodes (start-event, end-event, intermediate-event) use `.rounded-full` class
+- **IMPORTANT**: Do not add background boxes or frames around icons - icons should render directly
+- Node type labels (API, SVC, DB, etc.) were removed to keep UI clean
+- Icon components from Lucide React render with color via inline styles: `style={{ color: "var(--api-icon)" }}`
+
+**Common Styling Pitfalls:**
+- Adding `.rounded-lg` or `.shadow-md` to `.react-flow__node` will create square boxes around circular nodes
+- Icon containers with `bg-white/80` or similar backgrounds create unwanted boxes - remove them
+- React Flow's default node styling must be overridden with `!important` rules
+- The `.glass-node` class provides consistent glassmorphism effects across all node types
+
 ## Performance Characteristics
 
 **Backend Response Times:**
@@ -526,4 +610,4 @@ const generateScene = async (prompt: string) => {
 - `SYSTEM_REVIEW.md` - Comprehensive production readiness assessment
 - `TEST_COVERAGE_REPORT.md` - Detailed test results and recommendations
 - `README.md` - Project overview and quick start (Chinese)
-- `http://localhost:8000/docs` - Interactive OpenAPI documentation (when backend running)
+- `http://localhost:8003/docs` - Interactive OpenAPI documentation (when backend running)

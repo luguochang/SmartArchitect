@@ -300,9 +300,14 @@ class ChatGenerationRequest(BaseModel):
     template_id: Optional[str] = None
     provider: Optional[Literal["gemini", "openai", "claude", "siliconflow", "custom"]] = "gemini"
     diagram_type: Literal["flow", "architecture"] = "flow"
+    architecture_type: Optional[Literal["layered", "business", "technical", "deployment", "domain"]] = "layered"
     api_key: Optional[str] = None
     base_url: Optional[str] = None
     model_name: Optional[str] = None
+
+    # 🆕 增量生成参数
+    incremental_mode: Optional[bool] = False  # 是否启用增量模式
+    session_id: Optional[str] = None  # 会话 ID（用于获取现有画板）
 
 
 # Chat generation response
@@ -312,6 +317,50 @@ class ChatGenerationResponse(BaseModel):
     mermaid_code: str
     success: bool = True
     message: Optional[str] = None
+    session_id: Optional[str] = None  # 🆕 返回会话 ID（供前端后续使用）
+
+
+# ============================================================
+# Canvas Session Management (增量生成会话管理)
+# ============================================================
+
+# Canvas session save request
+class CanvasSaveRequest(BaseModel):
+    session_id: Optional[str] = None  # 可选，空则创建新会话
+    nodes: List[Node]
+    edges: List[Edge]
+
+
+# Canvas session save response
+class CanvasSaveResponse(BaseModel):
+    success: bool = True
+    session_id: str
+    message: Optional[str] = None
+    node_count: int
+    edge_count: int
+
+
+# Canvas session data
+class CanvasSessionData(BaseModel):
+    nodes: List[Node]
+    edges: List[Edge]
+    node_count: int
+    edge_count: int
+    timestamp: str
+    created_at: str
+
+
+# Canvas session get response
+class CanvasSessionResponse(BaseModel):
+    success: bool = True
+    session: Optional[CanvasSessionData] = None
+    message: Optional[str] = None
+
+
+# Canvas session delete response
+class CanvasSessionDeleteResponse(BaseModel):
+    success: bool = True
+    message: str
 
 
 # ============================================================
@@ -427,3 +476,80 @@ class EnhancedSpeechScriptRequest(BaseModel):
     edges: List[Edge]
     duration: Literal["30s", "2min", "5min"]
     options: ScriptOptions = Field(default_factory=ScriptOptions)
+
+
+# ========== Vision to Diagram: 图片转流程图/架构图 ==========
+
+# Vision to Excalidraw request
+class VisionToExcalidrawRequest(BaseModel):
+    image_data: str = Field(..., description="Base64 encoded image (with data:image prefix or without)")
+    prompt: Optional[str] = Field(None, description="Additional context or instructions")
+    provider: Literal["gemini", "openai", "claude", "siliconflow", "custom"] = "custom"
+    api_key: Optional[str] = Field(None, description="API key for the provider")
+    base_url: Optional[str] = Field(None, description="Base URL for custom provider")
+    model_name: Optional[str] = Field(None, description="Model name (e.g., claude-sonnet-4-5-20250929)")
+    width: Optional[int] = Field(1200, description="Canvas width")
+    height: Optional[int] = Field(800, description="Canvas height")
+
+
+# Vision to React Flow request
+class VisionToReactFlowRequest(BaseModel):
+    image_data: str = Field(..., description="Base64 encoded image (with data:image prefix or without)")
+    prompt: Optional[str] = Field(None, description="Additional context or instructions")
+    provider: Literal["gemini", "openai", "claude", "siliconflow", "custom"] = "custom"
+    api_key: Optional[str] = Field(None, description="API key for the provider")
+    base_url: Optional[str] = Field(None, description="Base URL for custom provider")
+    model_name: Optional[str] = Field(None, description="Model name")
+    preserve_layout: bool = Field(True, description="Preserve original node positions")
+    fast_mode: bool = Field(True, description="Use fast mode (simplified prompt)")
+
+
+
+# Excalidraw element (simplified, compatible with Excalidraw JSON format)
+class ExcalidrawElement(BaseModel):
+    id: str
+    type: Literal["rectangle", "ellipse", "diamond", "arrow", "line", "text", "freedraw", "image"]
+    x: float
+    y: float
+    width: Optional[float] = None
+    height: Optional[float] = None
+    angle: Optional[float] = 0
+    strokeColor: Optional[str] = "#000000"
+    backgroundColor: Optional[str] = "#ffffff"
+    fillStyle: Optional[str] = "hachure"
+    strokeWidth: Optional[int] = 1
+    strokeStyle: Optional[str] = "solid"
+    roughness: Optional[int] = 1
+    opacity: Optional[int] = 100
+    points: Optional[List[List[float]]] = None  # For arrows and lines
+    text: Optional[str] = None  # For text elements
+    fontSize: Optional[int] = 20
+    fontFamily: Optional[int] = 1
+    textAlign: Optional[str] = "center"
+    verticalAlign: Optional[str] = "middle"
+    startBinding: Optional[dict] = None
+    endBinding: Optional[dict] = None
+
+
+# Excalidraw scene
+class ExcalidrawScene(BaseModel):
+    elements: List[dict]  # Use dict to allow flexible Excalidraw schema
+    appState: Optional[dict] = Field(default_factory=lambda: {"viewBackgroundColor": "#ffffff"})
+    files: Optional[dict] = Field(default_factory=dict)
+
+
+# Vision to Excalidraw response
+class VisionToExcalidrawResponse(BaseModel):
+    success: bool
+    scene: Optional[ExcalidrawScene] = None
+    message: Optional[str] = None
+    raw_response: Optional[str] = None  # For debugging
+
+
+# Vision to React Flow response
+class VisionToReactFlowResponse(BaseModel):
+    success: bool
+    nodes: Optional[List[Node]] = None
+    edges: Optional[List[Edge]] = None
+    message: Optional[str] = None
+    raw_response: Optional[str] = None  # For debugging

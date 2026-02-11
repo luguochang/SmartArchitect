@@ -18,8 +18,8 @@ echo ========================================
 echo SmartArchitect AI is starting!
 echo ========================================
 echo Frontend: http://localhost:3000
-echo Backend:  http://localhost:8000
-echo API Docs: http://localhost:8000/docs
+echo Backend:  http://localhost:8003
+echo API Docs: http://localhost:8003/docs
 echo ========================================
 echo.
 echo Press any key to exit this window...

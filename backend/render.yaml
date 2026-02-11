@@ -1,0 +1,69 @@
+# Render 部署配置
+# 文档: https://render.com/docs/deploy-fastapi
+#
+# 使用说明：
+# 1. 在 Render Dashboard 创建 Web Service
+# 2. 连接 GitHub 仓库: luguochang/SmartArchitect
+# 3. 选择分支: dev20260129
+# 4. Root Directory: backend
+# 5. 在 Environment 标签页添加下方标记为 "需要手动配置" 的环境变量
+# 6. API Keys 请设置为 Secret 类型
+
+services:
+  - type: web
+    name: smartarchitect-backend
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      # Python 版本配置
+      - key: PYTHON_VERSION
+        value: 3.12.0
+
+      # 端口配置（Render 自动分配，无需修改）
+      - key: PORT
+        sync: false
+
+      # ⚠️ 需要手动配置: CORS 允许的前端域名（部署 Vercel 后更新）
+      # 格式: https://your-app.vercel.app,https://your-app-custom-domain.com
+      # 注意: 多个域名用逗号分隔，不要有空格
+      - key: CORS_ORIGINS_STR
+        value: http://localhost:3000
+
+      # ==================== Custom AI Provider (默认配置) ====================
+      # Custom API Provider (已配置默认值，支持 Claude Sonnet 4.5)
+      - key: CUSTOM_API_KEY
+        value: sk-7Vm4JJgG9J7ghGWdtxH4vOqyVgpMcPs9zgeBLj9RqHhCswlh
+
+      - key: CUSTOM_BASE_URL
+        value: https://www.linkflow.run
+
+      - key: CUSTOM_MODEL_NAME
+        value: claude-sonnet-4-5-20250929
+
+      # ==================== 其他 AI Provider API Keys (可选) ====================
+      # ⚠️ 需要手动配置: AI Provider API Keys (设置为 Secret)
+      # SiliconFlow API Key（用于 Excalidraw 生成）
+      - key: SILICONFLOW_API_KEY
+        sync: false
+
+      # 可选: Google Gemini API Key
+      - key: GEMINI_API_KEY
+        sync: false
+
+      # 可选: OpenAI API Key
+      - key: OPENAI_API_KEY
+        sync: false
+
+      # 可选: Anthropic Claude API Key
+      - key: ANTHROPIC_API_KEY
+        sync: false
+
+      # 环境模式
+      - key: ENVIRONMENT
+        value: production
+
+      # 日志级别
+      - key: LOG_LEVEL
+        value: INFO

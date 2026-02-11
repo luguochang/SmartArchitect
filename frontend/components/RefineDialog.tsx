@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X, Sparkles, Loader2 } from "lucide-react";
 import type { ScriptSection } from "@/types/script";
 import { QUICK_REFINEMENT_ACTIONS, formatSection } from "@/types/script";
@@ -11,6 +11,7 @@ interface RefineDialogProps {
   isRefining: boolean;
   onRefine: (section: ScriptSection, feedback: string) => void;
   onClose: () => void;
+  initialFeedback?: string;  // 新增：支持预填充反馈
 }
 
 export default function RefineDialog({
@@ -19,8 +20,16 @@ export default function RefineDialog({
   isRefining,
   onRefine,
   onClose,
+  initialFeedback = "",
 }: RefineDialogProps) {
-  const [feedback, setFeedback] = useState("");
+  const [feedback, setFeedback] = useState(initialFeedback);
+
+  // 当对话框打开或 initialFeedback 改变时，更新 feedback
+  useEffect(() => {
+    if (isOpen) {
+      setFeedback(initialFeedback);
+    }
+  }, [isOpen, initialFeedback]);
 
   const handleSubmit = () => {
     if (!feedback.trim()) {

@@ -124,200 +124,123 @@ class ExcalidrawGeneratorService:
 
     def _build_prompt(self, prompt: str, style: Optional[str], width: int, height: int) -> str:
         """
-        Build Excalidraw generation prompt - balanced between quality and parsability.
+        Build Excalidraw generation prompt - inspired by FlowPilot's concise approach.
+        Simple, clear instructions lead to more stable AI output.
         """
-        return f"""
-You are an Excalidraw Expert. Generate a COMPLETE hand-drawn style diagram based on the user's request.
+        return f"""You are an Excalidraw expert. Produce a finished, readable diagram as pure JSON (no prose).
 
-CRITICAL OUTPUT FORMAT:
-- Output ONLY valid JSON (no markdown fences, no explanations, no truncation)
-- Start directly with {{ and end with }}
-- Use proper commas between all array elements and properties
-- NO trailing commas
-- IMPORTANT: Generate the COMPLETE JSON structure - do NOT stop mid-generation
-
-Required JSON structure (MUST be complete):
+OUTPUT FORMAT (must be valid JSON):
 {{
   "elements": [...],
-  "appState": {{"viewBackgroundColor": "#ffffff"}},
+  "appState": {{}},
   "files": {{}}
 }}
 
-Element Requirements:
-- Create 10-15 elements for rich, complete diagrams (use rectangles, ellipses, arrows, lines, text)
-- Each element MUST have ALL these fields (no shortcuts):
-  id, type, x, y, width, height, angle, strokeColor, backgroundColor,
-  fillStyle, strokeWidth, strokeStyle, roughness, opacity, groupIds,
-  frameId, roundness, seed, version, versionNonce, isDeleted,
-  boundElements, updated, link, locked
+CRITICAL RULES:
+1) For "line"/"arrow": include "points" (e.g. [[0,0],[50,50]]) and set "startArrowhead"/"endArrowhead" when directional.
+2) Every element must have: id (string), type, x, y, width, height, angle, strokeColor, backgroundColor, fillStyle, strokeWidth, strokeStyle, roughness, opacity, groupIds (array), boundElements (array), seed, version, versionNonce, isDeleted=false.
+3) Use "arrow" to connect shapes; prefer "text" for labels (include "text", "fontSize", "textAlign").
+4) Do NOT return images/icons; use basic shapes and arrows only. Ensure the JSON is closed (ends with "}}").
 
-- For arrows/lines, add: points (array of [x,y]), startBinding, endBinding
-- For text elements, add: text, fontSize, fontFamily, textAlign, verticalAlign, baseline, containerId, originalText
+REQUIRED ELEMENT MIX:
+- Total 12-18 elements.
+- At least 6 shape nodes (rectangle/ellipse/diamond) for the main content.
+- At least 4 connectors (arrow/line) linking the shapes into a flow.
+- At least 2 text labels to annotate nodes or flows.
 
-Valid types: rectangle, diamond, ellipse, arrow, line, text
+LAYOUT:
+- Canvas: {width}x{height}px. Keep a 40px margin; avoid overlap; distribute nodes evenly left-to-right/top-to-bottom.
+- Make connectors clean and direct; avoid zero-length points.
 
-Layout Guidelines:
-- Canvas size: {width}x{height}px
-- Place elements within x:[100,{width-100}], y:[100,{height-100}]
-- Distribute elements evenly across the canvas
-- Use arrows to connect related shapes
-- Add labels with text elements for clarity
+STYLE (hand-drawn):
+- strokeColor: choose from ["#1e1e1e","#2563eb","#dc2626","#059669"]
+- backgroundColor: choose from ["transparent","#a5d8ff","#fde68a","#bbf7d0"]
+- fillStyle: "hachure" or "solid"; roughness: 1 for sketch feel; strokeWidth: 2.
 
-Colors (hand-drawn style):
-- strokeColor: "#1e1e1e", "#2563eb", "#dc2626", "#059669", "#8b5cf6"
-- backgroundColor: "#a5d8ff", "#fde68a", "#bbf7d0", "#ddd6fe", "transparent"
-- fillStyle: "hachure" or "solid"
-- roughness: 1 (hand-drawn) or 0 (smooth)
+USER REQUEST: "{prompt}"
 
-User request: "{prompt}"
-
-CRITICAL: Generate the COMPLETE JSON now. Make sure to close all arrays and objects properly. Do NOT stop mid-generation.
-Output format: raw JSON only (no markdown fences, no ```json, just {{ ... }}):"""
+Return ONLY the JSON structure above. Generate the full set of elements; do not stop early."""
 
     def _safe_json(self, payload):
-        """Sanitize AI response into valid JSON dict with aggressive cleaning."""
+        """
+        Sanitize AI response into valid JSON dict with FlowPilot-inspired simple strategy.
+
+        Strategy:
+        1. Extract JSON from markdown code blocks or find { } boundaries
+        2. Try direct parsing
+        3. If failed, use simple bracket tracking repair (FlowPilot method)
+        4. If still failed, return None to trigger mock scene fallback
+
+        This simplified approach is more reliable than aggressive multi-strategy repair.
+        """
         if payload is None:
-            return {}
+            return None
         if isinstance(payload, dict):
             return payload
         if hasattr(payload, "model_dump"):
             return payload.model_dump()
 
         if isinstance(payload, str):
-            # FlowPilot-inspired code block extraction using regex
             text = payload.strip()
-
-            # Extract from markdown code block if present (more robust than line-by-line)
             import re
+
+            # Step 1: Extract from markdown code block if present
             code_block_match = re.search(r'```(?:json)?\s*\n?([^`]*?)(?:```|$)', text, re.IGNORECASE | re.DOTALL)
             if code_block_match:
                 text = code_block_match.group(1).strip()
 
-            # If not in code block, find JSON object boundaries
+            # Step 2: Find JSON object boundaries { ... }
             if not text.startswith("{"):
                 start_idx = text.find("{")
                 if start_idx >= 0:
                     text = text[start_idx:]
+                else:
+                    logger.warning("No JSON object found in payload")
+                    return None
 
-            # Find last closing brace
+            # Find last closing brace (simple heuristic)
             if not text.endswith("}"):
                 end_idx = text.rfind("}")
                 if end_idx > 0:
                     text = text[:end_idx+1]
 
-            # Try parsing as-is
+            # Step 3: Try direct parsing (fast path)
             try:
-                return json.loads(text)
+                result = json.loads(text)
+                logger.debug("JSON parsed successfully without repair")
+                return result
             except json.JSONDecodeError as e:
-                logger.warning(f"JSON decode failed: {e}. Attempting repair...")
+                logger.info(f"JSON parse failed: {e}. Attempting simple repair...")
 
-                # Strategy 0: Use FlowPilot-inspired bracket tracking repair FIRST
-                # This handles incomplete/unclosed JSON from streaming
-                repaired_result = safe_parse_partial_json(text)
+            # Step 4: Use FlowPilot's simple bracket tracking repair
+            repaired_result = safe_parse_partial_json(text)
+            if repaired_result is not None:
+                logger.info("JSON repaired successfully with FlowPilot bracket tracking")
+                return repaired_result
+
+            # Step 5: One additional strategy - fix missing commas between array elements
+            # This is a common AI mistake: } { without comma
+            if "Expecting ',' delimiter" in str(e):
+                text_with_commas = re.sub(r'}\s+{', '}, {', text)
+                text_with_commas = re.sub(r'}\n\s*{', '},\n{', text_with_commas)
+
+                repaired_result = safe_parse_partial_json(text_with_commas)
                 if repaired_result is not None:
-                    logger.info("JSON repaired successfully with bracket tracking")
+                    logger.info("JSON repaired by fixing missing commas")
                     return repaired_result
 
-                # Strategy 1: Aggressive comma insertion for "} {" patterns
-                # Common when AI forgets commas between array elements
-                if "Expecting ',' delimiter" in str(e):
-                    import re
-                    # Fix missing commas between array elements: } { → }, {
-                    text_with_commas = re.sub(r'}\s+{', '}, {', text)
-                    # Fix missing commas between array items: }\n{ → },\n{
-                    text_with_commas = re.sub(r'}\n\s*{', '},\n{', text_with_commas)
-                    # Fix missing commas between properties: "key": value "key2" → "key": value, "key2"
-                    text_with_commas = re.sub(r'"\s*\n\s*"', '",\n"', text_with_commas)
-                    text_with_commas = re.sub(r'(\d+)\s+(")', r'\1, \2', text_with_commas)
-                    text_with_commas = re.sub(r'(true|false|null)\s+(")', r'\1, \2', text_with_commas)
+            # Final fallback: Log and return None to trigger mock scene
+            logger.warning(f"All JSON repair strategies failed. Payload length: {len(payload)}")
+            logger.debug(f"First 300 chars: {payload[:300]}")
+            logger.debug(f"Last 300 chars: {payload[-300:]}")
+            return None
 
-                    try:
-                        result = json.loads(text_with_commas)
-                        logger.info("JSON repaired by inserting commas via regex")
-                        return result
-                    except json.JSONDecodeError:
-                        # Try bracket tracking on the comma-fixed version
-                        repaired_result = safe_parse_partial_json(text_with_commas)
-                        if repaired_result is not None:
-                            logger.info("JSON repaired by combining comma fix + bracket tracking")
-                            return repaired_result
-
-                # Strategy 2: Find the last valid closing brace for "elements" array
-                # Many LLMs fail mid-generation, leaving incomplete JSON
-                try:
-                    # Find where "elements" array ends
-                    elements_start = text.find('"elements"')
-                    if elements_start > 0:
-                        # Find the closing ] after elements array
-                        bracket_count = 0
-                        elements_end = -1
-                        in_elements = False
-                        for i in range(elements_start, len(text)):
-                            if text[i] == '[':
-                                in_elements = True
-                                bracket_count += 1
-                            elif text[i] == ']':
-                                bracket_count -= 1
-                                if bracket_count == 0 and in_elements:
-                                    elements_end = i
-                                    break
-
-                        if elements_end > 0:
-                            # Reconstruct JSON with valid closure
-                            truncated = text[:elements_end+1] + '], "appState": {}, "files": {}}'
-                            return json.loads(truncated)
-                except Exception:
-                    pass
-
-                # Strategy 3: Fix common JSON syntax errors
-                try:
-                    # Remove newlines that might break parsing
-                    text_normalized = text.replace("\n", " ")
-
-                    # Fix missing commas between object properties
-                    # Pattern: "key": value "key2": value2  →  "key": value, "key2": value2
-                    import re
-                    text_normalized = re.sub(r'"\s*"', '", "', text_normalized)
-
-                    # Fix missing commas between array elements
-                    # Pattern: } {  →  }, {
-                    text_normalized = re.sub(r'\}\s*\{', '}, {', text_normalized)
-
-                    # Fix trailing commas
-                    text_normalized = text_normalized.replace(",]", "]").replace(",}", "}")
-
-                    # Fix single quotes
-                    text_normalized = text_normalized.replace("'", '"')
-
-                    return json.loads(text_normalized)
-                except json.JSONDecodeError:
-                    pass
-
-                # Strategy 4: Last resort - extract elements array only
-                try:
-                    elements_match = re.search(r'"elements"\s*:\s*\[(.*?)\]', text, re.DOTALL)
-                    if elements_match:
-                        elements_text = elements_match.group(1)
-                        # Try to build a minimal valid JSON
-                        reconstructed = f'{{"elements": [{elements_text}], "appState": {{}}, "files": {{}}}}'
-                        return json.loads(reconstructed)
-                except Exception:
-                    pass
-
-                # Log full payload for debugging
-                logger.error(f"All JSON repair strategies failed. Payload length: {len(payload)}")
-                logger.error(f"First 500 chars: {payload[:500]}")
-                logger.error(f"Last 500 chars: {payload[-500:]}")
-
-                # Return None to trigger fallback to mock scene
-                # DO NOT return empty dict as it will cause downstream issues
-                return None
-
-        # Last resort: convert to JSON string and parse
+        # Last resort for non-string types
         try:
             return json.loads(json.dumps(payload, default=str))
-        except Exception:
-            return {}
+        except Exception as ex:
+            logger.error(f"Failed to convert payload to JSON: {ex}")
+            return None
 
     def _validate_scene(self, ai_data: dict, width: int, height: int) -> ExcalidrawScene:
         """
@@ -336,38 +259,38 @@ Output format: raw JSON only (no markdown fences, no ```json, just {{ ... }}):""
             elements = []
 
         cleaned = []
-        max_elems = 25
+        max_elems = 50  # ✅ Increased from 25 to 50 to support complex diagrams
         seen_ids = set()  # Track unique IDs
 
         for elem in elements[:max_elems]:
             # Deep validation: filter out invalid elements
             if not isinstance(elem, dict):
-                logger.debug(f"Skipping non-dict element: {type(elem)}")
+                logger.warning(f"❌ Skipping non-dict element: {type(elem)}")
                 continue
 
             # Type and ID must be strings (MANDATORY)
             etype = elem.get("type")
             elem_id = elem.get("id")
             if not isinstance(etype, str) or not isinstance(elem_id, str):
-                logger.debug(f"Skipping element with invalid type/id: type={type(etype)}, id={type(elem_id)}")
+                logger.warning(f"❌ Skipping element with invalid type/id: type={type(etype)}, id={type(elem_id)}")
                 continue
 
             # Ensure ID uniqueness
             if elem_id in seen_ids:
-                logger.warning(f"Duplicate ID detected: {elem_id}, regenerating...")
+                logger.warning(f"⚠️ Duplicate ID detected: {elem_id}, regenerating...")
                 elem_id = f"{elem_id}-{random.randint(1000,9999)}"
             seen_ids.add(elem_id)
 
             # Validate element type
             if etype not in ["rectangle", "ellipse", "diamond", "freedraw", "line", "arrow", "text"]:
-                logger.debug(f"Skipping unsupported element type: {etype}")
+                logger.warning(f"❌ Skipping unsupported element type: {etype}")
                 continue
 
             # CRITICAL: Linear elements MUST have valid points array
             if etype in ["line", "arrow", "draw", "freedraw"]:
                 points = elem.get("points", [])
                 if not isinstance(points, list) or len(points) == 0:
-                    logger.debug(f"Skipping {etype} element without points array")
+                    logger.warning(f"❌ Skipping {etype} element '{elem_id}' without points array")
                     continue
 
                 # Validate each point is [number, number] format
@@ -377,14 +300,17 @@ Output format: raw JSON only (no markdown fences, no ```json, just {{ ... }}):""
                     for p in points
                 )
                 if not are_points_valid:
-                    logger.debug(f"Skipping {etype} with invalid points format")
+                    logger.warning(f"❌ Skipping {etype} element '{elem_id}' with invalid points format")
                     continue
 
             # Text elements MUST have text property
             if etype == "text":
                 if not isinstance(elem.get("text"), str):
-                    logger.debug(f"Skipping text element without text property")
+                    logger.warning(f"❌ Skipping text element '{elem_id}' without text property")
                     continue
+
+            # ✅ Element passed all validation, add to cleaned list
+            logger.debug(f"✅ Validated element '{elem_id}' (type: {etype})")
 
             # Create base element with defaults
             base = self._base_element(
@@ -476,10 +402,12 @@ Output format: raw JSON only (no markdown fences, no ```json, just {{ ... }}):""
 
         # If no valid elements after cleaning, return mock scene
         if not cleaned:
-            logger.warning("No valid elements after cleaning, returning mock scene")
+            logger.warning(f"⚠️ No valid elements after cleaning (started with {len(elements)} raw elements), returning mock scene")
             mock = self._mock_scene()
             mock.appState["message"] = "AI generated invalid elements, showing fallback scene"
             return mock
+
+        logger.info(f"✅ Validation complete: {len(cleaned)}/{len(elements[:max_elems])} elements passed (filtered {len(elements[:max_elems]) - len(cleaned)})")
 
         # Validate and clean appState
         app_state = ai_data.get("appState") or {}

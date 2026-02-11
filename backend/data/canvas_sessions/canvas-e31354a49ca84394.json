@@ -1,0 +1,104 @@
+{
+  "nodes": [
+    {
+      "id": "api-1",
+      "type": "api",
+      "position": {
+        "x": 100.0,
+        "y": 100.0
+      },
+      "data": {
+        "label": "API Gateway",
+        "shape": null,
+        "iconType": null,
+        "color": null
+      }
+    },
+    {
+      "id": "service-1",
+      "type": "service",
+      "position": {
+        "x": 400.0,
+        "y": 100.0
+      },
+      "data": {
+        "label": "User Service",
+        "shape": null,
+        "iconType": null,
+        "color": null
+      }
+    },
+    {
+      "id": "service-2",
+      "type": "service",
+      "position": {
+        "x": 400.0,
+        "y": 300.0
+      },
+      "data": {
+        "label": "Order Service",
+        "shape": null,
+        "iconType": null,
+        "color": null
+      }
+    },
+    {
+      "id": "db-1",
+      "type": "database",
+      "position": {
+        "x": 700.0,
+        "y": 100.0
+      },
+      "data": {
+        "label": "User DB",
+        "shape": null,
+        "iconType": null,
+        "color": null
+      }
+    },
+    {
+      "id": "db-2",
+      "type": "database",
+      "position": {
+        "x": 700.0,
+        "y": 300.0
+      },
+      "data": {
+        "label": "Order DB",
+        "shape": null,
+        "iconType": null,
+        "color": null
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "api-1",
+      "target": "service-1",
+      "label": "HTTP"
+    },
+    {
+      "id": "e2",
+      "source": "api-1",
+      "target": "service-2",
+      "label": "HTTP"
+    },
+    {
+      "id": "e3",
+      "source": "service-1",
+      "target": "db-1",
+      "label": "SQL"
+    },
+    {
+      "id": "e4",
+      "source": "service-2",
+      "target": "db-2",
+      "label": "SQL"
+    }
+  ],
+  "timestamp": "2026-02-06T17:07:19.801526",
+  "node_count": 5,
+  "edge_count": 4,
+  "created_at": "2026-02-06T17:07:19.801526"
+}

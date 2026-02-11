@@ -1,13 +1,22 @@
 from fastapi import APIRouter, HTTPException
 from typing import Optional
 import logging
+import asyncio
 
 from app.models.schemas import (
     FlowTemplateList,
     ChatGenerationRequest,
-    ChatGenerationResponse
+    ChatGenerationResponse,
+    CanvasSaveRequest,
+    CanvasSaveResponse,
+    CanvasSessionResponse,
+    CanvasSessionData,
+    CanvasSessionDeleteResponse,
+    Node,
+    Edge
 )
 from app.services.chat_generator import create_chat_generator_service
+from app.services.session_manager import get_session_manager
 from fastapi.responses import StreamingResponse
 import json
 from app.services.ai_vision import create_vision_service
@@ -118,33 +127,129 @@ async def generate_flowchart_stream(request: ChatGenerationRequest):
                     accumulated = ""
                     logger.info(f"[STREAM] Creating streaming request to {selected_provider} with model {vision_service.model_name}")
 
-                    stream = vision_service.client.chat.completions.create(
-                        model=vision_service.model_name,
-                        messages=[{"role": "user", "content": prompt}],
-                        max_tokens=4096,
-                        temperature=0.2,
-                        stream=True,
+                    # 检测是否需要使用 raw HTTP（ikuncode.cc 会阻拦 SDK）
+                    use_raw_http = (
+                        selected_provider == "custom" and
+                        vision_service.custom_base_url and
+                        "ikuncode.cc" in vision_service.custom_base_url.lower()
                     )
+
+                    if use_raw_http:
+                        # ikuncode.cc：使用 raw HTTP streaming
+                        logger.info("[STREAM] Detected ikuncode.cc, using raw HTTP streaming")
+                        import httpx
+
+                        # 清理 base_url
+                        clean_base_url = vision_service.custom_base_url.rstrip('/')
+                        if clean_base_url.endswith('/v1'):
+                            clean_base_url = clean_base_url[:-3]
+
+                        headers = {
+                            "x-api-key": vision_service.custom_api_key,
+                            "anthropic-version": "2023-06-01",
+                            "content-type": "application/json"
+                        }
+
+                        data = {
+                            "model": vision_service.model_name,
+                            "max_tokens": 4096,
+                            "messages": [{"role": "user", "content": prompt}],
+                            "stream": True
+                        }
+
+                        logger.info(f"[STREAM] Sending request to: {clean_base_url}/v1/messages")
+
+                        # 直接在这里处理流式响应
+                        async with httpx.AsyncClient(timeout=120.0) as http_client:
+                            async with http_client.stream("POST", f"{clean_base_url}/v1/messages", headers=headers, json=data) as response:
+                                if response.status_code != 200:
+                                    error_text = await response.aread()
+                                    logger.error(f"[STREAM] API error: {response.status_code} - {error_text}")
+                                    yield f"data: [ERROR] API request failed: {response.status_code}\n\n"
+                                    return
+
+                                logger.info("[STREAM] Starting raw HTTP token streaming...")
+                                current_event = None
+                                buffer = ""
+
+                                async for chunk in response.aiter_bytes():
+                                    buffer += chunk.decode('utf-8')
+
+                                    while '\n' in buffer:
+                                        line, buffer = buffer.split('\n', 1)
+                                        line = line.strip()
+
+                                        if not line:
+                                            continue
+
+                                        if line.startswith("event: "):
+                                            current_event = line[7:]
+                                        elif line.startswith("data: "):
+                                            data_str = line[6:]
+                                            try:
+                                                data_json = json.loads(data_str)
+                                                if current_event == "content_block_delta":
+                                                    delta = data_json.get("delta", {})
+                                                    if delta.get("type") == "text_delta":
+                                                        text = delta.get("text", "")
+                                                        if text:
+                                                            accumulated += text
+                                                            yield f"data: [TOKEN] {text}\n\n"
+                                            except json.JSONDecodeError:
+                                                continue
+
+                    else:
+                        # 检测是否是 Claude 模型（linkflow.run 等）
+                        is_claude_model = selected_provider == "custom" and vision_service.model_name and "claude" in vision_service.model_name.lower()
+
+                        if is_claude_model:
+                            # 使用 Anthropic streaming API
+                            logger.info("[STREAM] Using Anthropic streaming API")
+                            stream = vision_service.client.messages.stream(
+                                model=vision_service.model_name,
+                                messages=[{"role": "user", "content": prompt}],
+                                max_tokens=4096,
+                                temperature=0.2,
+                            )
+                        else:
+                            # 使用 OpenAI streaming API
+                            stream = vision_service.client.chat.completions.create(
+                                model=vision_service.model_name,
+                                messages=[{"role": "user", "content": prompt}],
+                                max_tokens=4096,
+                                temperature=0.2,
+                                stream=True,
+                            )
                 except Exception as init_error:
                     logger.error(f"[STREAM] Failed to initialize streaming: {init_error}", exc_info=True)
                     yield f"data: [ERROR] Failed to initialize AI streaming: {str(init_error)}\n\n"
                     return
 
-                try:
-                    for chunk in stream:
-                        # Some providers may emit empty heartbeats; guard against missing choices
-                        if not getattr(chunk, "choices", None):
-                            continue
-                        delta = chunk.choices[0].delta.content if chunk.choices[0].delta else None
-                        if not delta:
-                            continue
-                        text = "".join(delta)
-                        accumulated += text
-                        yield f"data: [TOKEN] {text}\n\n"
-                except Exception as stream_error:
-                    logger.error(f"[STREAM] Error during streaming: {stream_error}", exc_info=True)
-                    yield f"data: [ERROR] Streaming interrupted: {str(stream_error)}\n\n"
-                    return
+                # 只有非 raw HTTP 的情况才需要这里处理流式
+                if not use_raw_http:
+                    try:
+                        if is_claude_model:
+                            # Anthropic streaming API使用context manager
+                            with stream as s:
+                                for text in s.text_stream:
+                                    accumulated += text
+                                    yield f"data: [TOKEN] {text}\n\n"
+                        else:
+                            # OpenAI streaming API
+                            for chunk in stream:
+                                # Some providers may emit empty heartbeats; guard against missing choices
+                                if not getattr(chunk, "choices", None):
+                                    continue
+                                delta = chunk.choices[0].delta.content if chunk.choices[0].delta else None
+                                if not delta:
+                                    continue
+                                text = "".join(delta)
+                                accumulated += text
+                                yield f"data: [TOKEN] {text}\n\n"
+                    except Exception as stream_error:
+                        logger.error(f"[STREAM] Error during streaming: {stream_error}", exc_info=True)
+                        yield f"data: [ERROR] Streaming interrupted: {str(stream_error)}\n\n"
+                        return
 
                 # Parse final JSON and normalize; if parse fails, fall back to non-stream path
                 try:
@@ -165,17 +270,46 @@ async def generate_flowchart_stream(request: ChatGenerationRequest):
 
                     logger.info(f"[STREAM] After normalization: {len(nodes)} nodes, {len(edges)} edges")
 
-                    # Don't replace AI result with mock - return what AI generated
-                    payload = ChatGenerationResponse(
-                        nodes=nodes,
-                        edges=edges,
-                        mermaid_code=mermaid_code,
-                        success=True,
-                        message=f"Generated via {selected_provider} (stream)",
-                    ).model_dump()
+                    # 🎬 流式发送节点和边，实现真正的流式画图效果
+                    # 1. 先发送完整数据用于前端布局计算
+                    layout_data = {
+                        "nodes": [n.model_dump() if hasattr(n, 'model_dump') else n for n in nodes],
+                        "edges": [e.model_dump() if hasattr(e, 'model_dump') else e for e in edges],
+                        "diagram_type": effective_diagram_type,
+                        "mermaid_code": mermaid_code
+                    }
+                    yield f"data: [LAYOUT_DATA] {json.dumps(layout_data, ensure_ascii=False)}\n\n"
+                    logger.info(f"[STREAM] Sent LAYOUT_DATA with {len(nodes)} nodes")
+
+                    # 2. 短暂等待，让前端完成布局计算
+                    await asyncio.sleep(0.15)
+
+                    # 3. 逐个发送节点显示指令
                     yield f"data: [RESULT] nodes={len(nodes)}, edges={len(edges)}\n\n"
-                    yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                    for i, node in enumerate(nodes):
+                        node_data = node.model_dump() if hasattr(node, 'model_dump') else node
+                        node_id = node_data.get('id')
+                        yield f"data: [NODE_SHOW] {node_id}\n\n"
+                        logger.info(f"[STREAM] Sent NODE_SHOW {i+1}/{len(nodes)}: {node_id}")
+                        # 控制显示速度：200ms/节点
+                        if i < len(nodes) - 1:
+                            await asyncio.sleep(0.2)
+
+                    # 4. 短暂延迟后开始显示边
+                    await asyncio.sleep(0.3)
+
+                    # 5. 逐个发送边显示指令
+                    for i, edge in enumerate(edges):
+                        edge_data = edge.model_dump() if hasattr(edge, 'model_dump') else edge
+                        edge_id = edge_data.get('id')
+                        yield f"data: [EDGE_SHOW] {edge_id}\n\n"
+                        logger.info(f"[STREAM] Sent EDGE_SHOW {i+1}/{len(edges)}: {edge_id}")
+                        # 控制显示速度：100ms/边
+                        if i < len(edges) - 1:
+                            await asyncio.sleep(0.1)
+
                     yield "data: [END] done\n\n"
+                    logger.info("[STREAM] Completed progressive rendering")
                     return
                 except Exception as parse_err:
                     logger.warning(f"[STREAM] JSON parse failed; falling back to non-stream: {parse_err}")
@@ -191,9 +325,36 @@ async def generate_flowchart_stream(request: ChatGenerationRequest):
                 base_url=request.base_url,
                 model_name=request.model_name
             )
+
+            # 🎬 同样使用流式发送
+            # 1. 先发送布局数据
+            layout_data = {
+                "nodes": [n.model_dump() if hasattr(n, 'model_dump') else n for n in result.nodes],
+                "edges": [e.model_dump() if hasattr(e, 'model_dump') else e for e in result.edges],
+                "diagram_type": effective_diagram_type,
+                "mermaid_code": result.mermaid_code
+            }
+            yield f"data: [LAYOUT_DATA] {json.dumps(layout_data, ensure_ascii=False)}\n\n"
+            await asyncio.sleep(0.15)
+
+            # 2. 逐个发送节点
             yield f"data: [RESULT] nodes={len(result.nodes)}, edges={len(result.edges)}\n\n"
-            payload = result.model_dump()
-            yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+            for i, node in enumerate(result.nodes):
+                node_data = node.model_dump() if hasattr(node, 'model_dump') else node
+                node_id = node_data.get('id')
+                yield f"data: [NODE_SHOW] {node_id}\n\n"
+                if i < len(result.nodes) - 1:
+                    await asyncio.sleep(0.2)
+
+            # 3. 延迟后发送边
+            await asyncio.sleep(0.3)
+            for i, edge in enumerate(result.edges):
+                edge_data = edge.model_dump() if hasattr(edge, 'model_dump') else edge
+                edge_id = edge_data.get('id')
+                yield f"data: [EDGE_SHOW] {edge_id}\n\n"
+                if i < len(result.edges) - 1:
+                    await asyncio.sleep(0.1)
+
             yield "data: [END] done\n\n"
         except Exception as e:
             logger.error(f"Stream generation failed: {e}", exc_info=True)
@@ -210,3 +371,153 @@ async def generate_flowchart_stream(request: ChatGenerationRequest):
             "Transfer-Encoding": "chunked",
         },
     )
+
+
+# ============================================================
+# Canvas Session Management (增量生成会话管理)
+# ============================================================
+
+@router.post("/chat-generator/session/save", response_model=CanvasSaveResponse)
+async def save_canvas_session(request: CanvasSaveRequest):
+    """
+    保存当前画布到会话
+
+    Args:
+        request: 包含 session_id (可选), nodes, edges
+
+    Returns:
+        CanvasSaveResponse: 包含 session_id, node_count, edge_count
+    """
+    try:
+        logger.info(
+            f"Saving canvas session: session_id={request.session_id}, "
+            f"nodes={len(request.nodes)}, edges={len(request.edges)}"
+        )
+
+        session_manager = get_session_manager()
+
+        # 创建或更新会话
+        session_id = session_manager.create_or_update_session(
+            session_id=request.session_id,
+            nodes=request.nodes,
+            edges=request.edges
+        )
+
+        logger.info(f"Canvas session saved: {session_id}")
+
+        return CanvasSaveResponse(
+            success=True,
+            session_id=session_id,
+            message="Canvas session saved successfully",
+            node_count=len(request.nodes),
+            edge_count=len(request.edges)
+        )
+
+    except ValueError as ve:
+        # 会话过大或其他验证错误
+        logger.error(f"Failed to save session: {ve}")
+        raise HTTPException(status_code=413, detail=str(ve))
+
+    except Exception as e:
+        logger.error(f"Failed to save canvas session: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to save session: {str(e)}"
+        )
+
+
+@router.get("/chat-generator/session/{session_id}", response_model=CanvasSessionResponse)
+async def get_canvas_session(session_id: str):
+    """
+    获取会话数据
+
+    Args:
+        session_id: 会话 ID
+
+    Returns:
+        CanvasSessionResponse: 包含 nodes, edges, node_count, edge_count 等
+    """
+    try:
+        logger.info(f"Retrieving canvas session: {session_id}")
+
+        session_manager = get_session_manager()
+        session_data = session_manager.get_session(session_id)
+
+        if not session_data:
+            logger.warning(f"Session not found or expired: {session_id}")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Session not found or expired: {session_id}"
+            )
+
+        # 转换为响应格式
+        nodes = [Node(**n) for n in session_data["nodes"]]
+        edges = [Edge(**e) for e in session_data["edges"]]
+
+        session_response = CanvasSessionData(
+            nodes=nodes,
+            edges=edges,
+            node_count=session_data["node_count"],
+            edge_count=session_data["edge_count"],
+            timestamp=session_data["timestamp"].isoformat(),
+            created_at=session_data["created_at"].isoformat()
+        )
+
+        logger.info(
+            f"Session retrieved: {session_id} "
+            f"({session_data['node_count']} nodes, {session_data['edge_count']} edges)"
+        )
+
+        return CanvasSessionResponse(
+            success=True,
+            session=session_response
+        )
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        logger.error(f"Failed to get canvas session: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get session: {str(e)}"
+        )
+
+
+@router.delete("/chat-generator/session/{session_id}", response_model=CanvasSessionDeleteResponse)
+async def delete_canvas_session(session_id: str):
+    """
+    删除会话（用户清空画布时调用）
+
+    Args:
+        session_id: 会话 ID
+
+    Returns:
+        CanvasSessionDeleteResponse: 删除结果
+    """
+    try:
+        logger.info(f"Deleting canvas session: {session_id}")
+
+        session_manager = get_session_manager()
+        existed = session_manager.delete_session(session_id)
+
+        if existed:
+            logger.info(f"Session deleted: {session_id}")
+            return CanvasSessionDeleteResponse(
+                success=True,
+                message=f"Session deleted: {session_id}"
+            )
+        else:
+            logger.warning(f"Session not found for deletion: {session_id}")
+            return CanvasSessionDeleteResponse(
+                success=True,
+                message=f"Session not found: {session_id}"
+            )
+
+    except Exception as e:
+        logger.error(f"Failed to delete canvas session: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete session: {str(e)}"
+        )
+

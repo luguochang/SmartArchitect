@@ -9,12 +9,16 @@ Date: 2026-01-22
 from typing import List, Optional, Dict, AsyncGenerator
 from collections import Counter
 import json
+import logging
+import asyncio
 from pathlib import Path
 
 from app.models.schemas import (
     Node, Edge, ScriptOptions, ScriptContent, ScriptMetadata,
     StreamEvent, EnhancedSpeechScriptRequest
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ProfessionalPromptBuilder:
@@ -31,7 +35,7 @@ class ProfessionalPromptBuilder:
         # 演讲稿必需要素（约束大模型生成高质量内容）
         self.duration_specs = {
             "30s": {
-                "words": "60-80",
+                "words": "120-160",
                 "structure": "Hook (10s) + Value Proposition (15s) + Call-to-Action (5s)",
                 "required_elements": [
                     "开场Hook（用问题或数据吸引注意）",
@@ -42,7 +46,7 @@ class ProfessionalPromptBuilder:
                 "tone": "简洁有力，聚焦价值"
             },
             "2min": {
-                "words": "280-320",
+                "words": "560-640",
                 "structure": "开场(30s) + 问题背景(30s) + 解决方案(45s) + 价值证明(30s) + 结尾(15s)",
                 "required_elements": [
                     "开场故事或场景（引发共鸣）",
@@ -55,7 +59,7 @@ class ProfessionalPromptBuilder:
                 "tone": "专业但易懂，逻辑清晰"
             },
             "5min": {
-                "words": "700-800",
+                "words": "1400-1600",
                 "structure": "开场(1min) + 背景(1min) + 架构设计(2min) + 风险与对策(0.5min) + Q&A引导(0.5min)",
                 "required_elements": [
                     "引人入胜的开场（故事/统计/问题）",
@@ -294,7 +298,7 @@ class ProfessionalPromptBuilder:
 
     def _generate_intro_template(self, spec: Dict) -> str:
         """生成开场模板"""
-        if spec['words'].startswith('60'):
+        if spec['words'].startswith('120'):
             return """
 （30秒电梯演讲）
 - 用1个问题或数据开场（吸引注意）
@@ -302,9 +306,9 @@ class ProfessionalPromptBuilder:
 - 1个核心亮点或指标
 - 行动号召
 """
-        elif spec['words'].startswith('280'):
+        elif spec['words'].startswith('560'):
             return """
-（2分钟开场 - 约60字）
+（2分钟开场 - 约120字）
 - 讲一个3-5句话的故事或场景（引发共鸣）
 - 或者用一个令人惊讶的数据/事实开场
 - 快速过渡到当前痛点
@@ -314,7 +318,7 @@ class ProfessionalPromptBuilder:
 """
         else:
             return """
-（5分钟开场 - 约150字）
+（5分钟开场 - 约300字）
 - 用故事/统计数据/行业趋势开场（1-2分钟）
 - 建立业务背景：为什么需要这个架构？
 - 技术挑战：面临哪些具体问题？
@@ -325,53 +329,53 @@ class ProfessionalPromptBuilder:
 
     def _generate_body_template(self, spec: Dict, nodes: List[Node], edges: List[Edge]) -> str:
         """生成主体模板"""
-        if spec['words'].startswith('60'):
+        if spec['words'].startswith('120'):
             return "（30秒主体）直接说核心价值和关键指标，不展开细节"
-        elif spec['words'].startswith('280'):
+        elif spec['words'].startswith('560'):
             return """
-（2分钟主体 - 约200字）
+（2分钟主体 - 约400字）
 
 分3个段落:
 
-**段落1: 架构设计核心思路（60字）**
+**段落1: 架构设计核心思路（120字）**
 - 我们采用了什么架构模式？（从RAG上下文引用）
 - 为什么选择这个方案？（权衡决策）
 - 与传统方案的对比
 
-**段落2: 关键组件和数据流（80字）**
+**段落2: 关键组件和数据流（160字）**
 - 3个最重要的组件及其职责
 - 核心数据流路径
 - 用类比让非技术受众也能理解
 
-**段落3: 价值证明（60字）**
+**段落3: 价值证明（120字）**
 - 性能提升: XX%（具体数字）
 - 成本优化: 节省XX（具体金额）
 - 或引用RAG中的相似案例: "这种架构在XX公司也取得了类似效果..."
 """
         else:
             return """
-（5分钟主体 - 约500字）
+（5分钟主体 - 约1000字）
 
 分5个段落:
 
-**段落1: 架构设计理念（100字）**
+**段落1: 架构设计理念（200字）**
 - 设计原则（如：高内聚低耦合、单一职责）
 - 为什么选择这些原则？（结合业务场景）
 - 从RAG引用业界最佳实践
 
-**段落2-4: 核心组件深入讲解（每个组件80-100字）**
+**段落2-4: 核心组件深入讲解（每个组件160-200字）**
 选择3-4个最重要的组件:
 - 组件的职责和设计考量
 - 技术选型的权衡（为什么用Redis而不是Memcached？）
 - 性能数据或压测结果
 - 从RAG引用相似案例或反模式
 
-**段落5: 风险与对策（100字）**
+**段落5: 风险与对策（200字）**
 - 已知的技术风险（不要回避）
 - 缓解措施和备选方案
 - 监控和告警策略
 
-**段落6: 价值总结（100字）**
+**段落6: 价值总结（200字）**
 - 量化的业务价值
 - 技术债务的改善
 - 团队效能提升
@@ -379,11 +383,11 @@ class ProfessionalPromptBuilder:
 
     def _generate_conclusion_template(self, spec: Dict) -> str:
         """生成结尾模板"""
-        if spec['words'].startswith('60'):
+        if spec['words'].startswith('120'):
             return "（10秒结尾）清晰的行动号召: 'Let's discuss' / '欢迎试用' / '我们可以帮你实现'"
-        elif spec['words'].startswith('280'):
+        elif spec['words'].startswith('560'):
             return """
-（2分钟结尾 - 约40字）
+（2分钟结尾 - 约80字）
 - 回顾核心价值（1句话）
 - 行动号召或下一步建议
 - 留一个开放式问题引发思考
@@ -392,7 +396,7 @@ class ProfessionalPromptBuilder:
 """
         else:
             return """
-（5分钟结尾 - 约100字）
+（5分钟结尾 - 约200字）
 - 总结3个关键要点（呼应开场）
 - 未来演进方向
 - 抛出2-3个思考问题引导Q&A
@@ -471,6 +475,7 @@ class RAGSpeechScriptGenerator:
         self.prompt_builder = ProfessionalPromptBuilder()
         self.rag_service = rag_service
         self.ai_service = ai_service
+        logger.info(f"RAGSpeechScriptGenerator initialized with AI service: {ai_service is not None}")
 
     async def generate_speech_script_stream(
         self,
@@ -546,42 +551,97 @@ class RAGSpeechScriptGenerator:
             )
 
             # Phase 3: 流式生成
-            yield StreamEvent(type="GENERATION_START", data={})
+            yield StreamEvent(
+                type="GENERATION_START",
+                data={"message": "AI正在创作演讲稿，请稍候..."}
+            )
 
             accumulated = ""
             current_section = "intro"
 
-            # 这里需要集成AI服务的流式接口
-            # 临时使用mock数据演示流程
-            mock_script = self._generate_mock_script(nodes, edges, duration)
+            # 使用AI服务生成演讲稿
+            if self.ai_service:
+                logger.info("Using AI service to generate speech script with streaming")
+                try:
+                    # 使用真正的流式生成
+                    async for chunk in self.ai_service.generate_speech_script_stream(
+                        nodes=nodes,
+                        edges=edges,
+                        duration=duration
+                    ):
+                        accumulated += chunk
 
-            # 模拟流式输出
-            for char in mock_script:
-                accumulated += char
-                yield StreamEvent(
-                    type="TOKEN",
-                    data={"token": char, "section": current_section}
-                )
+                        # 发送chunks
+                        yield StreamEvent(
+                            type="TOKEN",
+                            data={"token": chunk, "section": current_section}
+                        )
 
-                # 检测章节切换
-                if "[BODY]" in accumulated and current_section == "intro":
-                    current_section = "body"
+                        # 检测章节切换（基于常见的段落模式）
+                        if "\n\n" in accumulated[-30:] and len(accumulated) > 100:
+                            # 简单启发式判断章节
+                            word_count = self._count_words(accumulated)
+                            target = self._get_target_words(duration)
+
+                            if current_section == "intro" and word_count > target * 0.2:
+                                current_section = "body"
+                                yield StreamEvent(
+                                    type="SECTION_COMPLETE",
+                                    data={
+                                        "section": "intro",
+                                        "content": ""
+                                    }
+                                )
+                            elif current_section == "body" and word_count > target * 0.8:
+                                current_section = "conclusion"
+                                yield StreamEvent(
+                                    type="SECTION_COMPLETE",
+                                    data={
+                                        "section": "body",
+                                        "content": ""
+                                    }
+                                )
+
+                    logger.info(f"Streaming generation completed, total length: {len(accumulated)}")
+
+                except Exception as ai_error:
+                    logger.error(f"AI service generation failed: {ai_error}", exc_info=True)
+                    logger.warning("Falling back to mock data")
+                    # 降级到Mock数据
+                    accumulated = self._generate_mock_script(nodes, edges, duration)
+            else:
+                logger.warning("No AI service configured, using mock data")
+                # 没有AI服务，使用Mock数据
+                mock_script = self._generate_mock_script(nodes, edges, duration)
+
+                # 模拟流式输出
+                for char in mock_script:
+                    accumulated += char
                     yield StreamEvent(
-                        type="SECTION_COMPLETE",
-                        data={
-                            "section": "intro",
-                            "content": self.extract_section(accumulated, "intro")
-                        }
+                        type="TOKEN",
+                        data={"token": char, "section": current_section}
                     )
-                elif "[CONCLUSION]" in accumulated and current_section == "body":
-                    current_section = "conclusion"
-                    yield StreamEvent(
-                        type="SECTION_COMPLETE",
-                        data={
-                            "section": "body",
-                            "content": self.extract_section(accumulated, "body")
-                        }
-                    )
+                    await asyncio.sleep(0.001)
+
+                    # 检测章节切换
+                    if "[BODY]" in accumulated and current_section == "intro":
+                        current_section = "body"
+                        yield StreamEvent(
+                            type="SECTION_COMPLETE",
+                            data={
+                                "section": "intro",
+                                "content": self.extract_section(accumulated, "intro")
+                            }
+                        )
+                    elif "[CONCLUSION]" in accumulated and current_section == "body":
+                        current_section = "conclusion"
+                        yield StreamEvent(
+                            type="SECTION_COMPLETE",
+                            data={
+                                "section": "body",
+                                "content": self.extract_section(accumulated, "body")
+                            }
+                        )
 
             # Phase 4: 后处理
             final_script = self.post_process_script(accumulated, duration)
@@ -697,6 +757,15 @@ class RAGSpeechScriptGenerator:
 
         return total
 
+    def _get_target_words(self, duration: str) -> int:
+        """获取目标字数"""
+        targets = {
+            "30s": 140,
+            "2min": 600,
+            "5min": 1500
+        }
+        return targets.get(duration, 600)
+
     def extract_section(self, accumulated: str, section: str) -> str:
         """提取特定章节"""
         if section == "intro":
@@ -807,17 +876,39 @@ class RAGSpeechScriptGenerator:
 # Service Factory (Singleton Pattern)
 # ============================================================
 
-_rag_speech_script_generator: Optional[RAGSpeechScriptGenerator] = None
+# 不再使用单例模式，每次调用都创建新实例以支持不同的provider和api_key
 
 
-def get_rag_speech_script_generator() -> RAGSpeechScriptGenerator:
+def get_rag_speech_script_generator(
+    provider: str = "gemini",
+    api_key: Optional[str] = None,
+    base_url: Optional[str] = None,
+    model_name: Optional[str] = None
+) -> RAGSpeechScriptGenerator:
     """
-    Get RAGSpeechScriptGenerator singleton instance
+    Get RAGSpeechScriptGenerator instance with AI service
+
+    Args:
+        provider: AI provider (gemini, openai, claude, siliconflow, custom)
+        api_key: API key for the provider
+        base_url: Base URL for custom provider
+        model_name: Model name for the provider
 
     Returns:
-        RAGSpeechScriptGenerator instance
+        RAGSpeechScriptGenerator instance with AI service configured
     """
-    global _rag_speech_script_generator
-    if _rag_speech_script_generator is None:
-        _rag_speech_script_generator = RAGSpeechScriptGenerator()
-    return _rag_speech_script_generator
+    from app.services.ai_vision import create_vision_service
+
+    # 创建AI视觉服务，传递所有配置参数
+    ai_service = create_vision_service(
+        provider=provider,
+        api_key=api_key,
+        base_url=base_url,
+        model_name=model_name
+    )
+
+    # 创建RAG演讲稿生成器（暂时不集成RAG服务）
+    generator = RAGSpeechScriptGenerator(rag_service=None, ai_service=ai_service)
+
+    logger.info(f"Created RAGSpeechScriptGenerator with provider: {provider}, model: {model_name or 'default'}")
+    return generator

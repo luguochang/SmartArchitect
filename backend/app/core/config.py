@@ -1,27 +1,41 @@
 from pydantic_settings import BaseSettings
 from typing import List
+import os
 
 
 class Settings(BaseSettings):
     # API Configuration
     API_HOST: str = "0.0.0.0"
-    API_PORT: int = 8000
+    # 支持 Railway/Render 的 PORT 环境变量
+    API_PORT: int = int(os.getenv("PORT", 8003))
     API_RELOAD: bool = True
 
     # CORS Configuration
-    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    # 支持从环境变量读取多个域名（用逗号分隔）
+    # 格式: "https://example.com,https://example2.com"
+    CORS_ORIGINS_STR: str = "http://localhost:3000,http://127.0.0.1:3000"
+
+    @property
+    def CORS_ORIGINS(self) -> List[str]:
+        """Parse CORS origins from comma-separated string"""
+        return [origin.strip() for origin in self.CORS_ORIGINS_STR.split(",") if origin.strip()]
 
     # Logging Configuration
     LOG_LEVEL: str = "INFO"              # 日志级别 (DEBUG, INFO, WARNING, ERROR, CRITICAL)
     LOG_DIR: str = "logs"                # 日志目录（相对于 backend/）
     ENVIRONMENT: str = "development"     # 环境模式 (development, production)
 
-    # AI Model API Keys (Optional)
-    GEMINI_API_KEY: str = ""
-    OPENAI_API_KEY: str = ""
-    ANTHROPIC_API_KEY: str = ""
-    SILICONFLOW_API_KEY: str = "sk-labtoeibcevkdzanpprwezzivdokslxnspigjnapxyogvpgp"
-    SILICONFLOW_BASE_URL: str = "https://api.siliconflow.cn/v1"
+    # AI Model API Keys (Optional - can be configured via UI or environment variables)
+    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+    ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
+    SILICONFLOW_API_KEY: str = os.getenv("SILICONFLOW_API_KEY", "")
+    SILICONFLOW_BASE_URL: str = os.getenv("SILICONFLOW_BASE_URL", "https://api.siliconflow.cn/v1")
+
+    # Custom AI Provider (Default for production deployment)
+    CUSTOM_API_KEY: str = os.getenv("CUSTOM_API_KEY", "sk-7Vm4JJgG9J7ghGWdtxH4vOqyVgpMcPs9zgeBLj9RqHhCswlh")
+    CUSTOM_BASE_URL: str = os.getenv("CUSTOM_BASE_URL", "https://www.linkflow.run")
+    CUSTOM_MODEL_NAME: str = os.getenv("CUSTOM_MODEL_NAME", "claude-sonnet-4-5-20250929")
 
     class Config:
         env_file = ".env"

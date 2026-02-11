@@ -4,11 +4,15 @@ import { memo, useState, useCallback } from "react";
 import { Handle, Position, NodeProps } from "reactflow";
 import { Layers } from "lucide-react";
 import { useArchitectStore } from "@/lib/store/useArchitectStore";
+import { useNodeStyle } from "@/lib/hooks/useNodeStyle";
 
 export const QueueNode = memo(({ id, data }: NodeProps) => {
   const [isEditing, setIsEditing] = useState(false);
   const [label, setLabel] = useState(data.label);
   const updateNodeLabel = useArchitectStore((state) => state.updateNodeLabel);
+
+  // 获取样式配置
+  const nodeStyle = useNodeStyle("queue", data.shape, (data as any)?.color);
 
   const handleDoubleClick = useCallback(() => {
     setIsEditing(true);
@@ -35,30 +39,79 @@ export const QueueNode = memo(({ id, data }: NodeProps) => {
 
   return (
     <div
-      className="glass-node relative rounded-xl border-2 px-4 py-3 shadow-lg"
-      style={{
-        borderColor: "var(--queue-border)",
-        backgroundColor: "var(--queue-background)",
-        boxShadow: "var(--queue-shadow, 0 10px 15px -3px rgba(0,0,0,0.1))",
-      }}
+      className="glass-node relative"
+      style={nodeStyle.container}
     >
+      {/* Input handles - Top and Left */}
       <Handle
+        id="target-top"
+        type="target"
+        position={Position.Top}
+        style={{
+          backgroundColor: nodeStyle.borderColor,
+          top: 0,
+          left: "50%",
+          transform: "translate(-50%, -50%)"
+        }}
+      />
+      <Handle
+        id="target-left"
         type="target"
         position={Position.Left}
-        style={{ backgroundColor: "var(--queue-border)" }}
+        style={{
+          backgroundColor: nodeStyle.borderColor,
+          top: "50%",
+          left: 0,
+          transform: "translate(-50%, -50%)"
+        }}
       />
 
-      <span
-        className="absolute left-2 top-2 h-[calc(100%-16px)] w-[5px] rounded-full opacity-80"
-        style={{ backgroundColor: "var(--queue-border)" }}
+      {/* Output handles - Right and Bottom */}
+      <Handle
+        id="source-right"
+        type="source"
+        position={Position.Right}
+        style={{
+          backgroundColor: nodeStyle.borderColor,
+          top: "50%",
+          right: 0,
+          transform: "translate(50%, -50%)"
+        }}
+      />
+      <Handle
+        id="source-bottom"
+        type="source"
+        position={Position.Bottom}
+        style={{
+          backgroundColor: nodeStyle.borderColor,
+          bottom: 0,
+          left: "50%",
+          transform: "translate(-50%, 50%)"
+        }}
       />
 
-      <div className="flex items-center gap-3">
-        <div className="rounded-lg bg-white/80 px-2 py-1 text-[11px] font-semibold text-slate-600 shadow-sm dark:bg-slate-800/80 dark:text-slate-200">
-          QUEUE
-        </div>
-        <Layers className="h-5 w-5 transition-transform duration-200 hover:scale-110" style={{ color: "var(--queue-icon)" }} />
-        <div className="flex-1">
+      {/* 只在非专业模式下显示装饰条 */}
+      {nodeStyle.showIcons && (
+        <span
+          className="absolute left-2 top-2 h-[calc(100%-16px)] w-[5px] rounded-full opacity-80"
+          style={{ backgroundColor: nodeStyle.borderColor }}
+        />
+      )}
+
+      <div className="flex items-center gap-3" style={{
+        justifyContent: nodeStyle.showIcons ? "flex-start" : "center",
+      }}>
+        {/* 只在showIcons为true时显示图标 */}
+        {nodeStyle.showIcons && (
+          <Layers
+            className="h-5 w-5 transition-transform duration-200 hover:scale-110"
+            style={{ color: nodeStyle.borderColor }}
+          />
+        )}
+
+        <div className="flex-1" style={{
+          textAlign: nodeStyle.showIcons ? "left" : "center",
+        }}>
           {isEditing ? (
             <input
               type="text"
@@ -67,46 +120,24 @@ export const QueueNode = memo(({ id, data }: NodeProps) => {
               onBlur={handleBlur}
               onKeyDown={handleKeyDown}
               autoFocus
-              className="nodrag font-semibold bg-transparent border-b-2 outline-none"
+              className="nodrag bg-transparent border-b-2 outline-none"
               style={{
-                color: "var(--queue-text)",
-                borderColor: "var(--queue-border)",
-                fontSize: "var(--font-size-node)",
-                fontWeight: "var(--font-weight-bold)",
+                ...nodeStyle.typography,
+                borderColor: nodeStyle.borderColor,
                 width: `${Math.max(label.length, 8)}ch`,
               }}
             />
           ) : (
             <div
               onDoubleClick={handleDoubleClick}
-              className="font-semibold cursor-text"
-              style={{
-                color: "var(--queue-text)",
-                fontSize: "var(--font-size-node)",
-                fontWeight: "var(--font-weight-bold)",
-              }}
+              className="cursor-text"
+              style={nodeStyle.typography}
             >
               {data.label}
             </div>
           )}
-          <div
-            className="text-xs"
-            style={{
-              color: "var(--queue-text)",
-              opacity: 0.7,
-              fontSize: "var(--font-size-label)",
-            }}
-          >
-            Queue
-          </div>
         </div>
       </div>
-
-      <Handle
-        type="source"
-        position={Position.Right}
-        style={{ backgroundColor: "var(--queue-border)" }}
-      />
     </div>
   );
 });

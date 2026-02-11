@@ -25,6 +25,7 @@ from app.models.schemas import (
 from app.services.ppt_exporter import create_ppt_exporter
 from app.services.slidev_exporter import create_slidev_exporter
 from app.services.ai_vision import create_vision_service
+from app.services.model_presets import get_model_presets_service
 from app.services.speech_script_rag import get_rag_speech_script_generator
 from app.services.script_editor import get_script_editor_service
 
@@ -120,10 +121,25 @@ async def generate_script(
     try:
         logger.info(f"Generating {request.duration} speech script")
 
-        # Create AI vision service
-        vision_service = create_vision_service(
+        # 获取有效配置
+        presets_service = get_model_presets_service()
+        config = presets_service.get_active_config(
             provider=provider,
             api_key=api_key
+        )
+
+        if not config:
+            raise HTTPException(
+                status_code=400,
+                detail="No AI configuration found. Please configure AI model in settings or provide API key."
+            )
+
+        # Create AI vision service
+        vision_service = create_vision_service(
+            provider=config["provider"],
+            api_key=config["api_key"],
+            base_url=config.get("base_url"),
+            model_name=config.get("model_name")
         )
 
         # Generate script
@@ -183,7 +199,9 @@ async def export_health():
 async def generate_script_stream(
     request: EnhancedSpeechScriptRequest,
     provider: Optional[str] = "gemini",
-    api_key: Optional[str] = None
+    api_key: Optional[str] = None,
+    base_url: Optional[str] = None,
+    model_name: Optional[str] = None
 ):
     """
     Generate professional speech script with streaming (Server-Sent Events)
@@ -195,6 +213,8 @@ async def generate_script_stream(
         request: Enhanced script generation request with nodes, edges, duration, options
         provider: AI provider (gemini, openai, claude, siliconflow, custom)
         api_key: API key for the provider
+        base_url: Base URL for custom provider
+        model_name: Model name for the provider
 
     Returns:
         text/event-stream (SSE) with StreamEvent objects
@@ -214,34 +234,146 @@ async def generate_script_stream(
             f"(audience: {request.options.audience}, tone: {request.options.tone})"
         )
 
-        # Get the RAG-powered script generator
-        generator = get_rag_speech_script_generator()
-
         async def event_generator():
             """Async generator for SSE events"""
             try:
-                # Stream generation events
-                async for event in generator.generate_speech_script_stream(
-                    nodes=request.nodes,
-                    edges=request.edges,
-                    duration=request.duration,
-                    options=request.options
-                ):
-                    # Convert StreamEvent to SSE format
-                    event_data = json.dumps(
-                        {
-                            "type": event.type,
-                            "data": event.data
-                        },
-                        ensure_ascii=False
-                    )
-                    yield f"data: {event_data}\n\n"
+                # Phase 1: 发送开始事件
+                start_data = {'type': 'GENERATION_START', 'data': {'message': 'AI正在创作演讲稿...'}}
+                yield f"data: {json.dumps(start_data, ensure_ascii=False)}\n\n"
+                logger.info("[SCRIPT-STREAM] Sent GENERATION_START event")
 
-                    # Small delay to prevent overwhelming the client
-                    await asyncio.sleep(0.01)
+                # 获取有效配置
+                presets_service = get_model_presets_service()
+                config = presets_service.get_active_config(
+                    provider=provider,
+                    api_key=api_key,
+                    base_url=base_url,
+                    model_name=model_name
+                )
+
+                if not config:
+                    error_data = {'type': 'ERROR', 'data': {'message': 'No AI configuration found. Please configure AI model in settings.'}}
+                    yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
+                    return
+
+                # Create AI service for streaming
+                from app.services.ai_vision import create_vision_service
+                ai_service = create_vision_service(
+                    provider=config["provider"],
+                    api_key=config["api_key"],
+                    base_url=config.get("base_url"),
+                    model_name=config.get("model_name")
+                )
+
+                # Build prompt
+                arch_desc = f"Architecture with {len(request.nodes)} components and {len(request.edges)} connections:\n\n"
+                arch_desc += "Components:\n"
+                for node in request.nodes:
+                    arch_desc += f"- {node.data.label} (type: {node.type or 'default'})\n"
+                arch_desc += "\nConnections:\n"
+                for edge in request.edges:
+                    source_node = next((n for n in request.nodes if n.id == edge.source), None)
+                    target_node = next((n for n in request.nodes if n.id == edge.target), None)
+                    if source_node and target_node:
+                        label_text = f" ({edge.label})" if edge.label else ""
+                        arch_desc += f"- {source_node.data.label} → {target_node.data.label}{label_text}\n"
+
+                duration_prompts = {
+                    "30s": "生成一个30秒的电梯演讲稿（约150字）。聚焦核心价值主张。",
+                    "2min": "生成一个2分钟的演讲稿（约600字）。涵盖架构概览、核心组件和优势。",
+                    "5min": "生成一个5分钟的详细演讲稿（约1500字）。包含开场、架构概览、组件细节、数据流和结论。"
+                }
+
+                prompt = f'''你是一位专业的技术演讲者，正在创建一份演讲稿。
+
+{arch_desc}
+
+{duration_prompts.get(request.duration, duration_prompts["2min"])}
+
+要求：
+1. 使用清晰、专业的中文表达
+2. 用通俗易懂的方式解释技术概念
+3. 突出架构的优势和设计决策
+4. 段落之间过渡自然流畅
+5. 以有力的结论收尾
+6. 只返回演讲稿文本，不要返回JSON或其他格式
+
+现在开始创作演讲稿：'''
+
+                # Stream generation - 完全复制chat_generator的方式
+                if provider in ["openai", "siliconflow", "custom"]:
+                    logger.info(f"[SCRIPT-STREAM] Starting streaming with {provider}, model={ai_service.model_name}")
+
+                    stream = ai_service.client.chat.completions.create(
+                        model=ai_service.model_name,
+                        messages=[{"role": "user", "content": prompt}],
+                        temperature=0.7,
+                        max_tokens=4000,
+                        stream=True,
+                    )
+
+                    accumulated = ""
+                    logger.info("[SCRIPT-STREAM] Stream created, starting iteration")
+
+                    for chunk in stream:
+                        # Guard against empty chunks
+                        if not getattr(chunk, "choices", None):
+                            continue
+                        delta = chunk.choices[0].delta.content if chunk.choices[0].delta else None
+                        if not delta:
+                            continue
+
+                        text = delta
+                        accumulated += text
+                        # 立即yield - 不要任何延迟
+                        token_data = {'type': 'TOKEN', 'data': {'token': text}}
+                        yield f"data: {json.dumps(token_data, ensure_ascii=False)}\n\n"
+
+                    # 完成后发送COMPLETE事件
+                    logger.info(f"[SCRIPT-STREAM] Streaming completed, total length: {len(accumulated)}")
+                    sections = {
+                        "intro": accumulated[:len(accumulated)//3] if accumulated else "",
+                        "body": accumulated[len(accumulated)//3:len(accumulated)*2//3] if accumulated else "",
+                        "conclusion": accumulated[len(accumulated)*2//3:] if accumulated else ""
+                    }
+                    complete_data = {
+                        'type': 'COMPLETE',
+                        'data': {
+                            'script': {
+                                'intro': sections['intro'],
+                                'body': sections['body'],
+                                'conclusion': sections['conclusion'],
+                                'full_text': accumulated
+                            },
+                            'word_count': len(accumulated),
+                            'estimated_seconds': int(len(accumulated) / 2.5)
+                        }
+                    }
+                    yield f"data: {json.dumps(complete_data, ensure_ascii=False)}\n\n"
+                else:
+                    # 降级到非流式
+                    logger.info(f"[SCRIPT-STREAM] Provider {provider} doesn't support streaming, using non-streaming")
+                    result = await ai_service.generate_speech_script(request.nodes, request.edges, request.duration)
+                    token_data = {'type': 'TOKEN', 'data': {'token': result}}
+                    yield f"data: {json.dumps(token_data, ensure_ascii=False)}\n\n"
+                    sections = {"intro": result[:len(result)//3], "body": result[len(result)//3:len(result)*2//3], "conclusion": result[len(result)*2//3:]}
+                    complete_data = {
+                        'type': 'COMPLETE',
+                        'data': {
+                            'script': {
+                                'intro': sections['intro'],
+                                'body': sections['body'],
+                                'conclusion': sections['conclusion'],
+                                'full_text': result
+                            },
+                            'word_count': len(result),
+                            'estimated_seconds': int(len(result) / 2.5)
+                        }
+                    }
+                    yield f"data: {json.dumps(complete_data, ensure_ascii=False)}\n\n"
 
             except Exception as e:
-                logger.error(f"Stream generation error: {e}", exc_info=True)
+                logger.error(f"[SCRIPT-STREAM] Stream generation error: {e}", exc_info=True)
                 error_event = json.dumps(
                     {
                         "type": "ERROR",
@@ -255,9 +387,11 @@ async def generate_script_stream(
             event_generator(),
             media_type="text/event-stream",
             headers={
-                "Cache-Control": "no-cache",
+                "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
                 "Connection": "keep-alive",
-                "X-Accel-Buffering": "no"  # Disable nginx buffering
+                "X-Accel-Buffering": "no",
+                "Content-Encoding": "none",
+                "Transfer-Encoding": "chunked",
             }
         )
 

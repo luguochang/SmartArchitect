@@ -13,6 +13,7 @@ from app.models.schemas import (
     ImageAnalysisResponse
 )
 from app.services.ai_vision import create_vision_service
+from app.services.model_presets import get_model_presets_service
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -121,13 +122,32 @@ Do NOT include any explanatory text outside the JSON. The response must be parse
 
         logger.debug(f"Prompter full prompt:\n{full_prompt}")
 
-        # 5. 调用 AI Vision Service (text-only mode)
+        # 5. 获取有效配置并调用 AI Vision Service
         try:
-            vision_service = create_vision_service(
+            # 获取有效配置
+            presets_service = get_model_presets_service()
+            config = presets_service.get_active_config(
                 provider=provider,
                 api_key=api_key,
                 base_url=base_url,
                 model_name=model_name
+            )
+
+            if not config:
+                return PromptExecutionResponse(
+                    nodes=request.nodes,
+                    edges=request.edges,
+                    mermaid_code=request.mermaid_code or "",
+                    ai_explanation="No AI configuration found. Please configure AI model in settings.",
+                    success=False,
+                    message="No AI configuration found"
+                )
+
+            vision_service = create_vision_service(
+                provider=config["provider"],
+                api_key=config["api_key"],
+                base_url=config.get("base_url"),
+                model_name=config.get("model_name")
             )
 
             # 使用 AI 生成优化后的架构

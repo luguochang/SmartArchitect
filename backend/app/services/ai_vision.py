@@ -118,21 +118,43 @@ class AIVisionService:
                 logger.info(f"SiliconFlow client initialized with base_url: {base_url}")
 
             elif self.provider == "custom":
-                # 自定义 provider 使用 OpenAI SDK（支持 OpenAI 兼容的 API）
-                if not OpenAI:
-                    raise ImportError("openai not installed")
+                # 自定义 provider
+                # 如果模型名称包含 claude，使用 Anthropic SDK（兼容 Claude API 代理）
+                # 否则使用 OpenAI SDK（兼容 OpenAI API）
                 if not self.custom_api_key:
                     raise ValueError("Custom API key not provided")
                 if not self.custom_base_url:
                     raise ValueError("Custom base URL not provided")
 
-                self.client = OpenAI(
-                    api_key=self.custom_api_key,
-                    base_url=self.custom_base_url,
-                    timeout=120.0,  # 2 minutes timeout for streaming responses
-                    max_retries=2   # Limit retries to fail fast on errors
-                )
-                logger.info(f"Custom provider initialized with base_url: {self.custom_base_url}")
+                # 检测是否是 Claude 模型
+                is_claude_model = "claude" in self.model_name.lower()
+
+                if is_claude_model:
+                    # 使用 Anthropic SDK 处理 Claude 代理（如 linkflow.run）
+                    if not Anthropic:
+                        raise ImportError("anthropic not installed")
+
+                    # Anthropic SDK 会自动添加 /v1 路径，所以需要去掉 base_url 中的 /v1
+                    clean_base_url = self.custom_base_url.rstrip('/')
+                    if clean_base_url.endswith('/v1'):
+                        clean_base_url = clean_base_url[:-3]
+
+                    self.client = Anthropic(
+                        api_key=self.custom_api_key,
+                        base_url=clean_base_url
+                    )
+                    logger.info(f"Custom Claude provider initialized with base_url: {clean_base_url} (original: {self.custom_base_url})")
+                else:
+                    # 使用 OpenAI SDK 处理 OpenAI 兼容的 API
+                    if not OpenAI:
+                        raise ImportError("openai not installed")
+                    self.client = OpenAI(
+                        api_key=self.custom_api_key,
+                        base_url=self.custom_base_url,
+                        timeout=120.0,
+                        max_retries=2
+                    )
+                    logger.info(f"Custom provider initialized with base_url: {self.custom_base_url}")
 
             else:
                 raise ValueError(f"Unsupported provider: {self.provider}")
@@ -248,9 +270,211 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
         - 处理时间约 60-120 秒
         """
 
-        layout_hint = "preserve node positions" if preserve_layout else "use auto layout"
+        if preserve_layout:
+            layout_instruction = """
+**🎯 STRICT PRIORITIES (Non-Negotiable Order):**
+
+1. **PRIORITY 1: Zero Coordinate Collisions**
+   - NO overlapping bounding boxes under ANY circumstances
+   - Before outputting ANY coordinate, verify it doesn't collide with existing nodes
+   - Mental collision check: For every node pair, verify separation ≥ minimum spacing
+
+2. **PRIORITY 2: Minimum Spacing Enforcement**
+   - **Horizontal spacing: ABSOLUTE MINIMUM 220px** (center to center)
+   - **Vertical spacing: ABSOLUTE MINIMUM 160px** (center to center)
+   - These are HARD CONSTRAINTS - violating them = automatic collision
+
+3. **PRIORITY 3: Preserve Image Layout Structure**
+   - Maintain same flow direction (horizontal/vertical/mixed)
+   - Keep relative positions (top/bottom/left/right relationships)
+   - Preserve visual hierarchy
+
+**📏 Node Dimensions (Critical for Collision Calculation):**
+
+**BPMN Shapes:**
+- start-event/end-event: **56px × 56px** (small circles)
+- task: **140px × 80px** (rounded rectangles)
+- diamond (decision): **100px × 100px**
+
+**Common Shapes:**
+- rectangle: **180px × 90px** (default flowchart box)
+- circle: **80px × 80px** (general purpose)
+- hexagon: **120px × 100px** (preparation)
+- parallelogram: **140px × 80px** (data I/O)
+- cloud: **140px × 80px** (cloud/external)
+- cylinder: **100px × 120px** (database)
+
+**🧮 Spacing Calculation Rules:**
+
+**IMPORTANT: Use SMART spacing, not rigid formulas**
+
+The goal is: **Preserve original image layout while preventing overlaps**
+
+1. **Measure the original image spacing first:**
+   - If original dx between nodes is 100-150px → keep similar (e.g., 120-160px)
+   - If original dx is 200-300px → keep similar (e.g., 220-320px)
+   - Only expand if original spacing would cause collision
+
+2. **Minimum Safe Spacing (collision prevention):**
+   - For small nodes (start-event, circle): minimum 100px center-to-center
+   - For medium nodes (task, parallelogram): minimum 180px center-to-center
+   - For large nodes (rectangle): minimum 220px center-to-center
+   - Vertical rows: minimum 120px center-to-center
+
+3. **Spacing Formula (when in doubt):**
+```
+safe_spacing = max(original_spacing, node_width + 40px)
+
+Example 1 (tight layout in image):
+- Original: 2 rectangles 120px apart
+- Calculation: max(120, 180+40) = 220px ✅ expand to prevent collision
+
+Example 2 (loose layout in image):
+- Original: 2 rectangles 350px apart
+- Calculation: max(350, 180+40) = 350px ✅ keep original spacing
+
+Example 3 (small nodes):
+- Original: 2 start-events 80px apart
+- Calculation: max(80, 56+40) = 96px ✅ slightly expand
+```
+
+4. **Smart Layout Strategy:**
+   - **DON'T force uniform spacing** - original images have natural variation
+   - **DO preserve relative density** - if left side is dense, keep it dense (but safe)
+   - **DO preserve flow patterns** - horizontal flows, vertical flows, tree structures
+
+**✅ PRE-OUTPUT VALIDATION (MANDATORY):**
+
+Run this mental checklist BEFORE generating JSON:
+
+1. ✓ List all node pairs that could potentially collide
+2. ✓ For each pair, calculate: |center1_x - center2_x| and |center1_y - center2_y|
+3. ✓ Verify: horizontal_distance ≥ 220px OR vertical_distance ≥ 160px
+4. ✓ If ANY pair fails: STOP and adjust coordinates
+5. ✓ Re-check after adjustment before proceeding
+
+**Example Collision Check:**
+```
+Node A: x=100, y=100, size=180×90 → center=(190, 145), bounds=[100,280]×[100,190]
+Node B: x=250, y=100, size=140×80 → center=(320, 140), bounds=[250,390]×[100,180]
+
+Check: |320-190| = 130px
+Node A width/2 + Node B width/2 + MIN_GAP = 90 + 70 + 40 = 200px required
+130px < 200px → ❌ COLLISION
+
+Adjusted Node B: x=330, y=100 → center=(400, 140)
+Check: |400-190| = 210px ≥ 200px ✅ SAFE
+```
+
+**🎨 Layout Strategy (UPDATED - Smart Preservation):**
+
+**Step 1: Analyze Original Image**
+- Identify layout type: horizontal flow / vertical flow / tree / grid
+- Count rows and columns
+- Measure average spacing in original image
+- Note: dense areas vs sparse areas
+
+**Step 2: Preserve Structure with Smart Spacing**
+```
+For horizontal flow (e.g., A → B → C → D):
+- Preserve left-to-right order
+- Use consistent spacing: original_avg + safety_margin
+- Example: if original avg 150px, use 180-200px
+
+For vertical flow (e.g., top-to-bottom):
+- Preserve top-to-bottom order
+- Vertical spacing: 120-160px (enough for 80-90px tall nodes + gap)
+
+For tree structure (branching):
+- Preserve parent-child relationships
+- Horizontal spacing between siblings: 180-220px
+- Vertical spacing parent-to-child: 140-180px
+
+For grid layout:
+- Preserve row/column structure
+- Row spacing: 140-180px
+- Column spacing: 200-250px
+```
+
+**Step 3: Coordinate Assignment**
+```python
+# Pseudo-algorithm
+for each row in layout:
+    y = base_y + row_index * vertical_spacing
+    x = start_x
+    for each node in row:
+        node.position = (x, y)
+        x += node.width + horizontal_gap  # adaptive gap based on density
+```
+
+**⚠️ Critical Balance:**
+- **Priority 1:** Zero collisions (NON-NEGOTIABLE)
+- **Priority 2:** Preserve flow structure (directional relationships)
+- **Priority 3:** Match original spacing (when collision-free)
+
+If original image is too dense:
+- Expand ALL spacing proportionally (don't just push overlapping nodes)
+- Keep relative positions (node A still left of node B)
+"""
+        else:
+            layout_instruction = """
+**Auto Layout Mode:**
+- Use standard vertical layout (top to bottom)
+- Nodes at x=100, y values: 100, 280, 460, 640...
+- 180px vertical spacing between nodes
+"""
 
         prompt = f"""Analyze this flowchart image and extract nodes and edges.
+
+{layout_instruction}
+
+**🔗 EDGES (Connections/Arrows) - CRITICAL:**
+
+**You MUST extract ALL visible connections between nodes:**
+
+1. **Arrow Detection Rules:**
+   - Look for: solid lines, dashed lines, arrows, connectors
+   - Follow each line from start node to end node
+   - Even simple straight lines between nodes = edges
+   - Curved arrows, orthogonal lines (right-angle) = all are edges
+
+2. **Edge Types:**
+   - Solid arrow (→): Normal flow, no label usually
+   - Dashed arrow (⇢): Alternative path, optional
+   - Line with label: Extract the label text (e.g., "Yes", "No", "Success", "Error")
+   - Bidirectional (↔): Create two edges (A→B and B→A)
+
+3. **IMPORTANT - Don't Miss Edges:**
+   - **Count carefully:** If you see 5 arrows in image, output 5 edges
+   - **Branch points:** Diamond nodes typically have 2+ outgoing edges
+   - **Loops:** Node connecting back to itself or previous node = valid edge
+   - **Parallel flows:** Multiple nodes at same level may connect to same target
+
+4. **Edge Label Extraction:**
+   - Look for text ON or NEAR the arrow
+   - Common labels: "是"/"否", "Yes"/"No", "Success"/"Fail", "通过"/"拒绝"
+   - If no label visible: use empty string ""
+
+5. **Edge ID Convention:**
+   - Format: "edge_{number}" or "edge_{source}_{target}"
+   - Example: "edge_1", "edge_2" or "edge_node1_node2"
+
+**Example Edge Recognition:**
+```
+Image shows:
+[Start] → [Process A] → [Decision B] ⇒ [End]
+                              ↓
+                          [Process C] → [End]
+
+Must output:
+edges: [
+  {"id": "edge_1", "source": "start", "target": "process_a", "label": ""},
+  {"id": "edge_2", "source": "process_a", "target": "decision_b", "label": ""},
+  {"id": "edge_3", "source": "decision_b", "target": "end", "label": "Yes"},
+  {"id": "edge_4", "source": "decision_b", "target": "process_c", "label": "No"},
+  {"id": "edge_5", "source": "process_c", "target": "end", "label": ""}
+]
+```
 
 **Node Types** (by shape):
 - Circle → start-event (if text contains "Start"/"开始") or end-event (if "End"/"结束")
@@ -263,7 +487,7 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
 {{
   "nodes": [
     {{"id": "node_1", "type": "start-event", "position": {{"x": 100, "y": 50}}, "data": {{"label": "Start", "shape": "circle"}}}},
-    {{"id": "node_2", "type": "task", "position": {{"x": 100, "y": 200}}, "data": {{"label": "Task A", "shape": "rectangle"}}}}
+    {{"id": "node_2", "type": "task", "position": {{"x": 100, "y": 230}}, "data": {{"label": "Task A", "shape": "rectangle"}}}}
   ],
   "edges": [
     {{"id": "edge_1", "source": "node_1", "target": "node_2", "label": ""}}
@@ -273,11 +497,45 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
   "analysis": {{"total_nodes": 2, "total_branches": 0}}
 }}
 
+**🔍 FINAL VALIDATION CHECKLIST (MUST COMPLETE BEFORE OUTPUT):**
+
+**Node Validation:**
+Step 1: Count total nodes → N nodes = N*(N-1)/2 pairs to check
+Step 2: For each pair (i, j):
+   - Calculate horizontal distance: dx = |center_i.x - center_j.x|
+   - Calculate vertical distance: dy = |center_i.y - center_j.y|
+   - Verify bounding boxes don't overlap (consider node dimensions)
+   - If collision: adjust coordinates and re-validate
+
+**Edge Validation:**
+Step 3: Count visible arrows/connections in image → Must match edges array length
+   - If image has 5 arrows but you only have 3 edges: ❌ MISSING EDGES
+   - Review image carefully, extract ALL connections
+
+Step 4: Verify edge connectivity:
+   - Each edge.source must match a valid node.id
+   - Each edge.target must match a valid node.id
+   - No dangling edges (source/target doesn't exist)
+
+Step 5: Check for logical flow:
+   - Start nodes should have outgoing edges
+   - End nodes should have incoming edges
+   - Decision nodes should have 2+ outgoing edges (typically)
+
+**Final Checks:**
+Step 6: Zero JSON syntax errors (valid JSON structure)
+Step 7: Zero coordinate collisions (validated above)
+Step 8: All arrows in image are represented as edges
+Step 9: If any validation fails: FIX before output, then re-validate
+
 **Requirements:**
-- All nodes must have position (x, y)
+- Zero JSON syntax errors (valid JSON structure)
+- Zero coordinate collisions (validated above)
+- ALL visible connections extracted as edges
+- All nodes must have position (x, y) with safe spacing
 - Extract text labels from nodes and edges
-- {layout_hint}
-- Return pure JSON only
+- Maintain flow structure while ensuring spacing
+- Return pure JSON only (no markdown wrapper)
 """
 
         return prompt
@@ -516,8 +774,8 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
         """
         prompt = self._build_flowchart_prompt(preserve_layout, fast_mode)
 
-        # 根据 fast_mode 设置 max_tokens（进一步优化）
-        max_tokens = 1500 if fast_mode else 4096
+        # 根据 fast_mode 设置 max_tokens（足够大以避免JSON截断）
+        max_tokens = 4096 if fast_mode else 8192
 
         # 设置超时时间
         self._flowchart_timeout = 240.0 if fast_mode else 300.0
@@ -722,7 +980,7 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
             raise
 
     async def _analyze_with_custom(self, image_data: bytes, prompt: str, max_tokens: int = 4096) -> ImageAnalysisResponse:
-        """使用自定义 provider 分析（OpenAI 兼容 API）"""
+        """使用自定义 provider 分析（支持 OpenAI 和 Claude 格式）"""
         try:
             logger.info(f"[CUSTOM] Starting vision analysis, max_tokens: {max_tokens}")
             image_b64 = base64.b64encode(image_data).decode("utf-8")
@@ -732,27 +990,145 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
 
             logger.info(f"[CUSTOM] Using model: {model}, base_url: {self.custom_base_url}")
 
-            # 使用 asyncio.to_thread 包装同步调用
-            response = await asyncio.to_thread(
-                self.client.chat.completions.create,
-                model=model,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
+            # 检测是否是 Claude 模型（检查模型名是否包含 claude）
+            is_claude_model = "claude" in model.lower()
+
+            if is_claude_model:
+                # Claude API 使用 Anthropic 格式
+                logger.info("[CUSTOM] Detected Claude model, using Anthropic image format")
+
+                # 检测图片类型
+                import imghdr
+                media_type = imghdr.what(None, h=image_data)
+                if media_type == "jpeg":
+                    media_type = "image/jpeg"
+                elif media_type == "png":
+                    media_type = "image/png"
+                elif media_type == "webp":
+                    media_type = "image/webp"
+                elif media_type == "gif":
+                    media_type = "image/gif"
+                else:
+                    media_type = "image/jpeg"  # 默认 JPEG
+
+                logger.info(f"[CUSTOM] Image media type: {media_type}")
+
+                # 检测是否是 ikuncode.cc
+                use_ikuncode_raw_http = (
+                    self.custom_base_url and
+                    "ikuncode.cc" in self.custom_base_url.lower()
+                )
+
+                if use_ikuncode_raw_http:
+                    # ikuncode.cc: 使用 raw HTTP 避免 User-Agent 阻拦
+                    logger.info(f"[CUSTOM] Using raw HTTP for ikuncode.cc: {self.custom_base_url}")
+                    import httpx
+
+                    # 清理 base_url
+                    clean_base_url = self.custom_base_url.rstrip('/')
+                    if clean_base_url.endswith('/v1'):
+                        clean_base_url = clean_base_url[:-3]
+
+                    headers = {
+                        "x-api-key": self.custom_api_key,
+                        "anthropic-version": "2023-06-01",
+                        "content-type": "application/json"
+                    }
+
+                    data = {
+                        "model": model,
+                        "max_tokens": max_tokens,
+                        "temperature": 0.2,
+                        "messages": [
                             {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/jpeg;base64,{image_b64}"
-                                }
+                                "role": "user",
+                                "content": [
+                                    {
+                                        "type": "image",
+                                        "source": {
+                                            "type": "base64",
+                                            "media_type": media_type,
+                                            "data": image_b64
+                                        }
+                                    },
+                                    {"type": "text", "text": prompt}
+                                ]
                             }
                         ]
                     }
-                ],
-                max_tokens=max_tokens,
-                temperature=0.2
-            )
+
+                    logger.info(f"[CUSTOM] Sending raw HTTP request to: {clean_base_url}/v1/messages")
+
+                    async with httpx.AsyncClient(timeout=300.0) as http_client:
+                        http_response = await http_client.post(
+                            f"{clean_base_url}/v1/messages",
+                            headers=headers,
+                            json=data
+                        )
+
+                        if http_response.status_code != 200:
+                            error_text = http_response.text
+                            logger.error(f"[CUSTOM] Claude API error: {http_response.status_code} - {error_text}")
+                            raise ValueError(f"Claude API request failed: {http_response.status_code} - {error_text}")
+
+                        response_json = http_response.json()
+                        logger.info(f"[CUSTOM] Raw HTTP response received")
+
+                        # 构造一个兼容的响应对象
+                        class RawHTTPResponse:
+                            def __init__(self, json_data):
+                                self.content = json_data.get('content', [])
+                                self._json = json_data
+
+                        response = RawHTTPResponse(response_json)
+                else:
+                    # linkflow.run 等: 使用 Anthropic SDK
+                    logger.info("[CUSTOM] Using Anthropic SDK")
+                    response = await asyncio.to_thread(
+                        self.client.messages.create,
+                        model=model,
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": [
+                                    {
+                                        "type": "image",
+                                        "source": {
+                                            "type": "base64",
+                                            "media_type": media_type,
+                                            "data": image_b64
+                                        }
+                                    },
+                                    {"type": "text", "text": prompt}
+                                ]
+                            }
+                        ],
+                        max_tokens=max_tokens,
+                        temperature=0.2
+                    )
+            else:
+                # OpenAI 格式（默认）
+                logger.info("[CUSTOM] Using OpenAI image_url format")
+                response = await asyncio.to_thread(
+                    self.client.chat.completions.create,
+                    model=model,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/jpeg;base64,{image_b64}"
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    max_tokens=max_tokens,
+                    temperature=0.2
+                )
 
             logger.info(f"[CUSTOM] Response type: {type(response)}")
 
@@ -778,8 +1154,21 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
             # 处理不同的响应格式
             content = None
 
+            # Anthropic SDK 标准格式：response.content[0].text
+            if is_claude_model and hasattr(response, 'content') and response.content:
+                logger.info("[CUSTOM] Using Anthropic 'content' format")
+                for content_block in response.content:
+                    if hasattr(content_block, 'text'):
+                        content = content_block.text
+                        logger.info(f"[CUSTOM] Extracted from Anthropic format, length: {len(content)}")
+                        break
+                    elif isinstance(content_block, dict) and 'text' in content_block:
+                        content = content_block['text']
+                        logger.info(f"[CUSTOM] Extracted from Anthropic dict format, length: {len(content)}")
+                        break
+
             # 某些中转站的格式：response.output[0].content[0].text
-            if hasattr(response, 'output') and response.output:
+            elif hasattr(response, 'output') and response.output:
                 logger.info("[CUSTOM] Using 'output' format")
                 output_item = response.output[0]
                 logger.info(f"[CUSTOM] output_item type: {type(output_item)}")
@@ -831,15 +1220,58 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
                     logger.error(f"[CUSTOM] Response dump: {response.model_dump()}")
                 raise ValueError("Unable to extract content from API response")
 
-            result_json = self._extract_json_from_response(content)
+            # 检查是否因为长度限制被截断
+            is_truncated = False
+            if hasattr(response, 'choices') and response.choices:
+                finish_reason = response.choices[0].finish_reason
+                is_truncated = finish_reason == 'length'
+                if is_truncated:
+                    logger.warning(f"[CUSTOM] Response was truncated due to max_tokens limit (finish_reason='length')")
+
+            result_json = self._extract_json_from_response(content, is_truncated=is_truncated)
             return self._build_response(result_json)
 
         except Exception as e:
             logger.error(f"Custom provider analysis failed: {e}")
             raise
 
-    def _extract_json_from_response(self, text: str) -> Dict[str, Any]:
+    def _extract_json_from_response(self, text: str, is_truncated: bool = False) -> Dict[str, Any]:
         """Extract JSON from AI response with aggressive cleaning and multiple fallback strategies."""
+
+        def _repair_truncated_json(raw: str) -> str:
+            """尝试修复被截断的JSON"""
+            # 移除markdown代码块标记
+            cleaned = re.sub(r"```(?:json)?", "", raw).strip()
+
+            # 提取JSON边界
+            start = cleaned.find("{")
+            if start != -1:
+                cleaned = cleaned[start:]
+
+            # 检查并修复截断的字符串
+            # 如果最后一个字符不是闭合的，尝试补全
+            if cleaned and not cleaned.endswith("}"):
+                # 查找最后一个完整的结构
+                # 尝试找到最后一个完整的数组或对象
+
+                # 统计未闭合的括号
+                open_brackets = cleaned.count("[") - cleaned.count("]")
+                open_braces = cleaned.count("{") - cleaned.count("}")
+                open_quotes = cleaned.count('"') - cleaned.count('\\"')
+
+                # 如果有未闭合的引号，先闭合它
+                if open_quotes % 2 != 0:
+                    cleaned += '"'
+
+                # 闭合未闭合的数组
+                cleaned += "]" * open_brackets
+
+                # 闭合未闭合的对象
+                cleaned += "}" * open_braces
+
+                logger.info(f"[JSON REPAIR] Fixed {open_quotes % 2} quotes, {open_brackets} brackets, {open_braces} braces")
+
+            return cleaned
 
         def _sanitize_json(raw: str) -> str:
             """Aggressive JSON sanitization with multiple repair strategies."""
@@ -859,6 +1291,18 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
             cleaned = cleaned.replace("\n", " ")  # Remove newlines
 
             return cleaned
+
+        # Strategy 0: If truncated, try to repair first
+        if is_truncated:
+            try:
+                logger.info("[JSON REPAIR] Attempting to repair truncated JSON")
+                repaired = _repair_truncated_json(text)
+                result = json.loads(repaired)
+                logger.info("[JSON REPAIR] Successfully parsed repaired truncated JSON")
+                return result
+            except json.JSONDecodeError as e:
+                logger.warning(f"[JSON REPAIR] Failed to parse repaired JSON: {e}")
+                # Continue to other strategies
 
         # Strategy 1: Try direct JSON parse of full text
         try:
@@ -966,6 +1410,191 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
             logger.error(f"Failed to build response: {e}")
             raise ValueError(f"Invalid response structure: {str(e)}")
 
+    # ========== Vision-to-Text Generation (for Excalidraw/ReactFlow) ==========
+
+    async def generate_with_vision(self, image_data: bytes, prompt: str) -> str:
+        """
+        Generate text response from image using vision AI.
+        Returns raw text output (typically JSON) for diagram generation.
+
+        Args:
+            image_data: Image bytes
+            prompt: Text prompt with instructions
+
+        Returns:
+            Raw text response from AI model
+        """
+        try:
+            logger.info(f"[VISION GEN] Generating with {self.provider}")
+
+            if self.provider == "gemini":
+                return await self._generate_with_gemini_vision(image_data, prompt)
+            elif self.provider == "openai":
+                return await self._generate_with_openai_vision(image_data, prompt)
+            elif self.provider == "claude":
+                return await self._generate_with_claude_vision(image_data, prompt)
+            elif self.provider == "siliconflow":
+                return await self._generate_with_siliconflow_vision(image_data, prompt)
+            elif self.provider == "custom":
+                return await self._generate_with_custom_vision(image_data, prompt)
+            else:
+                raise ValueError(f"Unsupported provider: {self.provider}")
+
+        except Exception as e:
+            logger.error(f"Vision generation failed: {e}", exc_info=True)
+            raise
+
+    async def _generate_with_gemini_vision(self, image_data: bytes, prompt: str) -> str:
+        """Gemini vision generation"""
+        import PIL.Image
+        import io
+
+        image = PIL.Image.open(io.BytesIO(image_data))
+        response = self.client.generate_content([prompt, image])
+        return response.text
+
+    async def _generate_with_openai_vision(self, image_data: bytes, prompt: str) -> str:
+        """OpenAI vision generation"""
+        import base64
+
+        base64_image = base64.b64encode(image_data).decode()
+
+        response = self.client.chat.completions.create(
+            model=self.model_name,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{base64_image}"}
+                    }
+                ]
+            }],
+            max_tokens=16384,
+            temperature=0.7
+        )
+
+        return response.choices[0].message.content
+
+    async def _generate_with_claude_vision(self, image_data: bytes, prompt: str) -> str:
+        """Claude vision generation"""
+        import base64
+
+        base64_image = base64.b64encode(image_data).decode()
+
+        response = self.client.messages.create(
+            model=self.model_name,
+            max_tokens=16384,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "image/png",
+                            "data": base64_image
+                        }
+                    }
+                ]
+            }]
+        )
+
+        return response.content[0].text
+
+    async def _generate_with_siliconflow_vision(self, image_data: bytes, prompt: str) -> str:
+        """SiliconFlow vision generation"""
+        import base64
+
+        base64_image = base64.b64encode(image_data).decode()
+
+        response = self.client.chat.completions.create(
+            model=self.model_name,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{base64_image}"}
+                    }
+                ]
+            }],
+            max_tokens=16384,
+            temperature=0.7
+        )
+
+        return response.choices[0].message.content
+
+    async def _generate_with_custom_vision(self, image_data: bytes, prompt: str) -> str:
+        """Custom provider vision generation (auto-detect Claude vs OpenAI format)"""
+        import base64
+
+        base64_image = base64.b64encode(image_data).decode()
+
+        # Check if this is a Claude-native endpoint (linkflow, anthropic)
+        is_claude_format = (
+            self.custom_base_url and
+            ("linkflow" in self.custom_base_url.lower() or
+             "anthropic" in self.custom_base_url.lower())
+        )
+
+        if is_claude_format:
+            # Use Anthropic's native API format
+            from anthropic import Anthropic
+
+            # Remove /v1 suffix from base_url if present (Anthropic SDK adds it automatically)
+            anthropic_base_url = self.custom_base_url.rstrip("/")
+            if anthropic_base_url.endswith("/v1"):
+                anthropic_base_url = anthropic_base_url[:-3]
+
+            client = Anthropic(
+                api_key=self.custom_api_key,
+                base_url=anthropic_base_url
+            )
+
+            response = client.messages.create(
+                model=self.model_name,
+                max_tokens=16384,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/png",
+                                "data": base64_image
+                            }
+                        }
+                    ]
+                }]
+            )
+
+            return response.content[0].text
+        else:
+            # Use OpenAI-compatible format
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{base64_image}"}
+                        }
+                    ]
+                }],
+                max_tokens=16384,
+                temperature=0.7
+            )
+
+            return response.choices[0].message.content
+
     # ========== Unified Streaming Methods (for SSE streaming to frontend) ==========
 
     async def generate_with_stream(self, prompt: str):
@@ -992,7 +1621,7 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
                             messages=[{"role": "user", "content": prompt}],
                             stream=True,
                             temperature=0.2,
-                            max_tokens=8192,  # Increased for complete Excalidraw JSON generation
+                            max_tokens=16384,  # Increased to 16K for complete Excalidraw JSON generation
                         )
                         logger.info("[STREAM] OpenAI stream created, starting iteration")
                         for chunk in stream:
@@ -1018,30 +1647,102 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
                     else:
                         yield data
 
-            elif self.provider == "claude":
-                # Claude streaming with context manager
-                logger.info(f"[STREAM] Claude streaming with model: {self.model_name}")
+            elif self.provider == "claude" or (
+                self.provider == "custom" and "claude" in (self.model_name or "").lower()
+            ):
+                # Claude streaming with context manager (supports custom Claude endpoints)
+                logger.info(f"[STREAM] Claude streaming with model: {self.model_name} (provider={self.provider})")
+
+                # Detect ikuncode.cc specifically to avoid User-Agent blocking
+                use_ikuncode_raw_http = (
+                    self.provider == "custom" and
+                    self.custom_base_url and
+                    "ikuncode.cc" in self.custom_base_url.lower()
+                )
+
                 q = queue.Queue()
 
-                def _claude_stream():
-                    try:
-                        logger.info(f"[STREAM] Initiating Claude stream with model={self.model_name}")
-                        with self.client.messages.stream(
-                            model=self.model_name,
-                            max_tokens=8192,  # Increased for complete Excalidraw JSON generation
-                            temperature=0.2,
-                            messages=[{"role": "user", "content": prompt}],
-                        ) as stream:
-                            for text in stream.text_stream:
-                                q.put(("data", text))
-                        logger.info("[STREAM] Claude stream completed successfully")
-                        q.put(("done", None))
-                    except Exception as e:
-                        logger.error(f"[STREAM] Exception in _claude_stream: {e}", exc_info=True)
-                        q.put(("error", e))
+                if use_ikuncode_raw_http:
+                    # Use raw HTTP for ikuncode.cc to avoid User-Agent blocking
+                    logger.info(f"[STREAM] Using raw HTTP for ikuncode.cc: {self.custom_base_url}")
 
-                loop = asyncio.get_event_loop()
-                loop.run_in_executor(None, _claude_stream)
+                    def _claude_stream_raw_http():
+                        try:
+                            import httpx
+                            import json
+
+                            # Clean base_url to avoid /v1/v1/messages duplication
+                            clean_base_url = self.custom_base_url.rstrip('/')
+                            if clean_base_url.endswith('/v1'):
+                                clean_base_url = clean_base_url[:-3]
+
+                            logger.info(f"[STREAM] Initiating raw HTTP Claude stream to {clean_base_url}/v1/messages")
+
+                            with httpx.Client(timeout=300.0) as client:
+                                with client.stream(
+                                    "POST",
+                                    f"{clean_base_url}/v1/messages",
+                                    headers={
+                                        "anthropic-version": "2023-06-01",
+                                        "x-api-key": self.custom_api_key,
+                                        "content-type": "application/json",
+                                    },
+                                    json={
+                                        "model": self.model_name,
+                                        "max_tokens": 16384,
+                                        "temperature": 0.2,
+                                        "messages": [{"role": "user", "content": prompt}],
+                                        "stream": True,
+                                    },
+                                ) as response:
+                                    current_event = None
+                                    buffer = ""
+
+                                    for chunk in response.iter_bytes():
+                                        buffer += chunk.decode('utf-8')
+
+                                        while '\n' in buffer:
+                                            line, buffer = buffer.split('\n', 1)
+                                            line = line.strip()
+
+                                            if line.startswith("event: "):
+                                                current_event = line[7:]
+                                            elif line.startswith("data: "):
+                                                data = json.loads(line[6:])
+                                                if current_event == "content_block_delta":
+                                                    text = data.get("delta", {}).get("text", "")
+                                                    if text:
+                                                        q.put(("data", text))
+
+                            logger.info("[STREAM] Raw HTTP Claude stream completed successfully")
+                            q.put(("done", None))
+                        except Exception as e:
+                            logger.error(f"[STREAM] Exception in _claude_stream_raw_http: {e}", exc_info=True)
+                            q.put(("error", e))
+
+                    loop = asyncio.get_event_loop()
+                    loop.run_in_executor(None, _claude_stream_raw_http)
+                else:
+                    # Use standard Anthropic SDK for other providers (linkflow.run, etc.)
+                    def _claude_stream():
+                        try:
+                            logger.info(f"[STREAM] Initiating Claude stream with model={self.model_name}")
+                            with self.client.messages.stream(
+                                model=self.model_name,
+                                max_tokens=16384,  # Increased to 16K for complete Excalidraw JSON generation
+                                temperature=0.2,
+                                messages=[{"role": "user", "content": prompt}],
+                            ) as stream:
+                                for text in stream.text_stream:
+                                    q.put(("data", text))
+                            logger.info("[STREAM] Claude stream completed successfully")
+                            q.put(("done", None))
+                        except Exception as e:
+                            logger.error(f"[STREAM] Exception in _claude_stream: {e}", exc_info=True)
+                            q.put(("error", e))
+
+                    loop = asyncio.get_event_loop()
+                    loop.run_in_executor(None, _claude_stream)
 
                 while True:
                     msg_type, data = await loop.run_in_executor(None, q.get)
@@ -1063,86 +1764,36 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
                     if chunk.text:
                         yield chunk.text
 
-            elif self.provider == "siliconflow":
-                # SiliconFlow (OpenAI-compatible) - use queue for real-time streaming
-                logger.info(f"[STREAM] SiliconFlow streaming with model: {self.model_name}")
+            elif self.provider == "siliconflow" or self.provider == "custom":
+                # SiliconFlow/Custom (OpenAI-compatible) - use queue for real-time streaming
+                logger.info(f"[STREAM] {self.provider} streaming with model: {self.model_name}")
                 q = queue.Queue()
 
-                def _siliconflow_stream():
+                def _compatible_stream():
                     try:
-                        logger.info(f"[STREAM] Initiating SiliconFlow stream with model={self.model_name}")
+                        logger.info(f"[STREAM] Initiating {self.provider} stream")
                         stream = self.client.chat.completions.create(
                             model=self.model_name,
                             messages=[{"role": "user", "content": prompt}],
                             stream=True,
-                            temperature=0.3,
-                            top_p=0.7,
-                            frequency_penalty=0.5,
-                            max_tokens=8192,  # Increased for complete Excalidraw JSON generation
+                            max_tokens=16384,
+                            temperature=0.2,
                         )
-                        logger.info("[STREAM] SiliconFlow stream created, starting iteration")
+                        logger.info(f"[STREAM] {self.provider} stream created, iterating chunks")
                         for chunk in stream:
-                            # Some providers emit empty heartbeat chunks - guard against missing choices
-                            if not getattr(chunk, "choices", None):
-                                continue
-                            if not chunk.choices:
+                            if not getattr(chunk, "choices", None) or not chunk.choices:
                                 continue
                             delta = chunk.choices[0].delta.content if chunk.choices[0].delta else None
-                            if not delta:
-                                continue
-                            q.put(("data", delta))
-                        logger.info("[STREAM] SiliconFlow stream completed successfully")
+                            if delta:
+                                q.put(("data", delta))
+                        logger.info(f"[STREAM] {self.provider} stream completed")
                         q.put(("done", None))
                     except Exception as e:
-                        logger.error(f"[STREAM] Exception in _siliconflow_stream: {e}", exc_info=True)
+                        logger.error(f"[STREAM] Exception in {self.provider}_stream: {e}", exc_info=True)
                         q.put(("error", e))
 
                 loop = asyncio.get_event_loop()
-                loop.run_in_executor(None, _siliconflow_stream)
-
-                while True:
-                    msg_type, data = await loop.run_in_executor(None, q.get)
-                    if msg_type == "error":
-                        raise data
-                    elif msg_type == "done":
-                        break
-                    else:
-                        yield data
-
-            elif self.provider == "custom":
-                # Custom provider (OpenAI-compatible) - use queue for real-time streaming
-                logger.info(f"[STREAM] Custom provider streaming with model: {self.model_name}")
-                q = queue.Queue()
-
-                def _custom_stream():
-                    try:
-                        logger.info(f"[STREAM] Initiating stream with base_url={self.custom_base_url}, model={self.model_name}")
-                        stream = self.client.chat.completions.create(
-                            model=self.model_name,  # ✅ 使用 self.model_name 而非 custom_model_name
-                            messages=[{"role": "user", "content": prompt}],
-                            stream=True,
-                            max_tokens=8192,  # ✅ 增加到 8192，确保 JSON 能完整生成
-                            temperature=0.1,  # ✅ 降低温度，更确定性的输出
-                        )
-                        logger.info("[STREAM] Stream created successfully, starting to iterate chunks")
-                        for chunk in stream:
-                            # Some providers emit empty heartbeat chunks - guard against missing choices
-                            if not getattr(chunk, "choices", None):
-                                continue
-                            if not chunk.choices:
-                                continue
-                            delta = chunk.choices[0].delta.content if chunk.choices[0].delta else None
-                            if not delta:
-                                continue
-                            q.put(("data", delta))
-                        logger.info("[STREAM] Stream iteration completed successfully")
-                        q.put(("done", None))
-                    except Exception as e:
-                        logger.error(f"[STREAM] Exception in _custom_stream: {e}", exc_info=True)
-                        q.put(("error", e))
-
-                loop = asyncio.get_event_loop()
-                loop.run_in_executor(None, _custom_stream)
+                loop.run_in_executor(None, _compatible_stream)
 
                 while True:
                     msg_type, data = await loop.run_in_executor(None, q.get)
@@ -1154,10 +1805,257 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
                         yield data
 
             else:
-                raise ValueError(f"Unsupported provider for streaming: {self.provider}")
+                raise ValueError(f"Streaming not supported for provider: {self.provider}")
 
         except Exception as e:
             logger.error(f"Streaming failed for {self.provider}: {e}", exc_info=True)
+            raise
+
+    async def generate_with_vision_stream(self, image_data: bytes, prompt: str):
+        """
+        🔥 NEW: Streaming vision generation supporting image + text input.
+        Uses multimodal streaming APIs (Claude/GPT-4 Vision support streaming).
+        Yields tokens as they are generated.
+        """
+        import queue
+        import threading
+
+        try:
+            # 检查是否是 Claude 模型（官方或 custom）
+            is_claude_model = (
+                self.provider == "claude" or
+                (self.provider == "custom" and "claude" in self.model_name.lower())
+            )
+
+            if is_claude_model:
+                # Claude Vision streaming with multimodal content
+                logger.info(f"[VISION-STREAM] Claude streaming with model: {self.model_name}")
+
+                # 检测是否是 ikuncode.cc
+                use_ikuncode_raw_http = (
+                    self.provider == "custom" and
+                    self.custom_base_url and
+                    "ikuncode.cc" in self.custom_base_url.lower()
+                )
+
+                q = queue.Queue()
+
+                if use_ikuncode_raw_http:
+                    # ikuncode.cc: 使用 raw HTTP streaming
+                    def _claude_vision_stream_raw_http():
+                        try:
+                            import base64
+                            import httpx
+                            import json
+
+                            # Detect image format
+                            image_b64 = base64.b64encode(image_data).decode('utf-8')
+
+                            # Determine media type from image bytes
+                            media_type = "image/jpeg"
+                            if image_data.startswith(b'\x89PNG'):
+                                media_type = "image/png"
+                            elif image_data.startswith(b'GIF'):
+                                media_type = "image/gif"
+                            elif image_data.startswith(b'\xff\xd8\xff'):
+                                media_type = "image/jpeg"
+                            elif image_data.startswith(b'RIFF') and b'WEBP' in image_data[:20]:
+                                media_type = "image/webp"
+
+                            # Build multimodal content
+                            content = [
+                                {
+                                    "type": "image",
+                                    "source": {
+                                        "type": "base64",
+                                        "media_type": media_type,
+                                        "data": image_b64,
+                                    },
+                                },
+                                {
+                                    "type": "text",
+                                    "text": prompt,
+                                }
+                            ]
+
+                            # 清理 base_url
+                            clean_base_url = self.custom_base_url.rstrip('/')
+                            if clean_base_url.endswith('/v1'):
+                                clean_base_url = clean_base_url[:-3]
+
+                            logger.info(f"[VISION-STREAM] Using raw HTTP for ikuncode.cc: {clean_base_url}/v1/messages")
+
+                            with httpx.Client(timeout=300.0) as client:
+                                with client.stream(
+                                    "POST",
+                                    f"{clean_base_url}/v1/messages",
+                                    headers={
+                                        "anthropic-version": "2023-06-01",
+                                        "x-api-key": self.custom_api_key,
+                                        "content-type": "application/json",
+                                    },
+                                    json={
+                                        "model": self.model_name,
+                                        "max_tokens": 16384,
+                                        "temperature": 0.2,
+                                        "messages": [{"role": "user", "content": content}],
+                                        "stream": True,
+                                    },
+                                ) as response:
+                                    current_event = None
+                                    buffer = ""
+
+                                    for chunk in response.iter_bytes():
+                                        buffer += chunk.decode('utf-8')
+
+                                        while '\n' in buffer:
+                                            line, buffer = buffer.split('\n', 1)
+                                            line = line.strip()
+
+                                            if line.startswith("event: "):
+                                                current_event = line[7:]
+                                            elif line.startswith("data: "):
+                                                data = json.loads(line[6:])
+                                                if current_event == "content_block_delta":
+                                                    text = data.get("delta", {}).get("text", "")
+                                                    if text:
+                                                        q.put(("data", text))
+
+                            logger.info("[VISION-STREAM] Raw HTTP Claude stream completed")
+                            q.put(("done", None))
+                        except Exception as e:
+                            logger.error(f"[VISION-STREAM] Exception in raw HTTP: {e}", exc_info=True)
+                            q.put(("error", e))
+
+                    loop = asyncio.get_event_loop()
+                    loop.run_in_executor(None, _claude_vision_stream_raw_http)
+                else:
+                    # linkflow.run 等: 使用 Anthropic SDK
+                    def _claude_vision_stream():
+                        try:
+                            import base64
+                            # Detect image format
+                            image_b64 = base64.b64encode(image_data).decode('utf-8')
+
+                            # Determine media type from image bytes
+                            media_type = "image/jpeg"
+                            if image_data.startswith(b'\x89PNG'):
+                                media_type = "image/png"
+                            elif image_data.startswith(b'GIF'):
+                                media_type = "image/gif"
+                            elif image_data.startswith(b'\xff\xd8\xff'):
+                                media_type = "image/jpeg"
+                            elif image_data.startswith(b'RIFF') and b'WEBP' in image_data[:20]:
+                                media_type = "image/webp"
+
+                            # Build multimodal content
+                            content = [
+                                {
+                                    "type": "image",
+                                    "source": {
+                                        "type": "base64",
+                                        "media_type": media_type,
+                                        "data": image_b64,
+                                    },
+                                },
+                                {
+                                    "type": "text",
+                                    "text": prompt,
+                                }
+                            ]
+
+                            logger.info(f"[VISION-STREAM] Starting Claude vision stream with SDK")
+                            with self.client.messages.stream(
+                                model=self.model_name,
+                                max_tokens=16384,
+                                temperature=0.2,
+                                messages=[{"role": "user", "content": content}],
+                            ) as stream:
+                                for text in stream.text_stream:
+                                    q.put(("data", text))
+                            logger.info("[VISION-STREAM] Claude stream completed")
+                            q.put(("done", None))
+                        except Exception as e:
+                            logger.error(f"[VISION-STREAM] Exception: {e}", exc_info=True)
+                            q.put(("error", e))
+
+                    loop = asyncio.get_event_loop()
+                    loop.run_in_executor(None, _claude_vision_stream)
+
+                while True:
+                    msg_type, data = await loop.run_in_executor(None, q.get)
+                    if msg_type == "error":
+                        raise data
+                    elif msg_type == "done":
+                        break
+                    else:
+                        yield data
+
+            elif self.provider == "openai" or self.provider == "custom":
+                # OpenAI GPT-4 Vision streaming
+                logger.info(f"[VISION-STREAM] OpenAI streaming with model: {self.model_name}")
+                q = queue.Queue()
+
+                def _openai_vision_stream():
+                    try:
+                        import base64
+                        image_b64 = base64.b64encode(image_data).decode('utf-8')
+
+                        # Detect format
+                        if image_data.startswith(b'\x89PNG'):
+                            data_url = f"data:image/png;base64,{image_b64}"
+                        elif image_data.startswith(b'\xff\xd8\xff'):
+                            data_url = f"data:image/jpeg;base64,{image_b64}"
+                        else:
+                            data_url = f"data:image/jpeg;base64,{image_b64}"
+
+                        content = [
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": data_url}
+                            },
+                            {
+                                "type": "text",
+                                "text": prompt
+                            }
+                        ]
+
+                        logger.info("[VISION-STREAM] Starting OpenAI vision stream")
+                        stream = self.client.chat.completions.create(
+                            model=self.model_name,
+                            messages=[{"role": "user", "content": content}],
+                            stream=True,
+                            temperature=0.2,
+                            max_tokens=16384,
+                        )
+
+                        for chunk in stream:
+                            delta = chunk.choices[0].delta.content
+                            if delta:
+                                q.put(("data", delta))
+                        logger.info("[VISION-STREAM] OpenAI stream completed")
+                        q.put(("done", None))
+                    except Exception as e:
+                        logger.error(f"[VISION-STREAM] Exception: {e}", exc_info=True)
+                        q.put(("error", e))
+
+                loop = asyncio.get_event_loop()
+                loop.run_in_executor(None, _openai_vision_stream)
+
+                while True:
+                    msg_type, data = await loop.run_in_executor(None, q.get)
+                    if msg_type == "error":
+                        raise data
+                    elif msg_type == "done":
+                        break
+                    else:
+                        yield data
+
+            else:
+                raise ValueError(f"Streaming vision not supported for provider: {self.provider}")
+
+        except Exception as e:
+            logger.error(f"Vision stream failed: {e}", exc_info=True)
             raise
 
     # ========== Phase 3: Text-only Prompt Methods (for Prompter System) ==========
@@ -1171,7 +2069,7 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
                 prompt,
                 generation_config={
                     "temperature": 0.2,
-                    "max_output_tokens": 8192  # Increased for complete Excalidraw JSON generation
+                    "max_output_tokens": 16384  # Increased to 16K for complete Excalidraw JSON generation
                 }
             )
 
@@ -1198,7 +2096,7 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
                         "content": prompt
                     }
                 ],
-                max_tokens=8192,  # Increased for complete Excalidraw JSON generation
+                max_tokens=16384,  # Increased to 16K for complete Excalidraw JSON generation
                 temperature=0.2
             )
 
@@ -1220,7 +2118,7 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
 
             response = self.client.messages.create(
                 model="claude-3-5-sonnet-20241022",
-                max_tokens=8192,  # Increased for complete Excalidraw JSON generation
+                max_tokens=16384,  # Increased to 16K for complete Excalidraw JSON generation
                 temperature=0.2,
                 messages=[
                     {
@@ -1248,7 +2146,7 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
 
             # Detect if this is an Excalidraw prompt (needs more tokens for element arrays)
             is_excalidraw = "excalidraw" in prompt.lower() or "elements" in prompt.lower()
-            max_tokens = 8192 if is_excalidraw else 2000  # Increased from 4096 to 8192 for complete generation
+            max_tokens = 16384 if is_excalidraw else 2000  # Increased to 16K for complete Excalidraw generation
 
             logger.info(f"[SILICONFLOW TEXT] Using max_tokens={max_tokens}, is_excalidraw={is_excalidraw}")
 
@@ -1322,33 +2220,85 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
         try:
             logger.info("[CUSTOM TEXT] Starting text-only analysis")
 
-            response = self.client.chat.completions.create(
-                model=self.custom_model_name or "gpt-3.5-turbo",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                max_tokens=8192,  # Increased for complete Excalidraw JSON generation
-                temperature=0.2
-            )
+            # 检测是否是 Claude 模型
+            model_name = self.custom_model_name or "gpt-3.5-turbo"
+            is_claude_model = "claude" in model_name.lower()
 
-            # Handle different response formats
-            content = None
-            if hasattr(response, 'choices') and response.choices:
-                content = response.choices[0].message.content
-            elif hasattr(response, 'output') and response.output:
-                output_item = response.output[0]
-                if isinstance(output_item, dict):
-                    content_list = output_item.get('content', [])
-                    for content_item in content_list:
-                        if isinstance(content_item, dict) and 'text' in content_item:
-                            content = content_item['text']
-                            break
+            if is_claude_model:
+                # Claude 模型：使用 raw HTTP 请求避免 User-Agent 阻拦
+                logger.info(f"[CUSTOM TEXT] Detected Claude model: {model_name}, using raw HTTP")
+                import httpx
 
-            if not content:
-                raise ValueError("Unable to extract content from custom provider response")
+                # 清理 base_url，避免重复拼接 /v1
+                clean_base_url = self.custom_base_url.rstrip('/')
+                if clean_base_url.endswith('/v1'):
+                    clean_base_url = clean_base_url[:-3]
+
+                headers = {
+                    "x-api-key": self.custom_api_key,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json"
+                }
+
+                data = {
+                    "model": model_name,
+                    "max_tokens": 16384,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ]
+                }
+
+                logger.info(f"[CUSTOM TEXT] Sending request to: {clean_base_url}/v1/messages")
+
+                async with httpx.AsyncClient(timeout=120.0) as http_client:
+                    response = await http_client.post(
+                        f"{clean_base_url}/v1/messages",
+                        headers=headers,
+                        json=data
+                    )
+
+                    if response.status_code != 200:
+                        error_text = response.text
+                        logger.error(f"[CUSTOM TEXT] Claude API error: {response.status_code} - {error_text}")
+                        raise ValueError(f"Claude API request failed: {response.status_code} - {error_text}")
+
+                    result = response.json()
+                    content = result['content'][0]['text']
+                    logger.info(f"[CUSTOM TEXT] Claude response received, length: {len(content)}")
+
+            else:
+                # OpenAI 兼容模型：使用 OpenAI SDK
+                logger.info(f"[CUSTOM TEXT] Using OpenAI-compatible format for model: {model_name}")
+                response = self.client.chat.completions.create(
+                    model=model_name,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ],
+                    max_tokens=16384,
+                    temperature=0.2
+                )
+
+                # Handle different response formats
+                content = None
+                if hasattr(response, 'choices') and response.choices:
+                    content = response.choices[0].message.content
+                elif hasattr(response, 'output') and response.output:
+                    output_item = response.output[0]
+                    if isinstance(output_item, dict):
+                        content_list = output_item.get('content', [])
+                        for content_item in content_list:
+                            if isinstance(content_item, dict) and 'text' in content_item:
+                                content = content_item['text']
+                                break
+
+                if not content:
+                    raise ValueError("Unable to extract content from custom provider response")
 
             result_json = self._extract_json_from_response(content)
             logger.info(f"[CUSTOM TEXT] JSON extracted successfully")
@@ -1391,28 +2341,28 @@ Return ONLY the JSON. No markdown code blocks, no explanations.
                 label_text = f" ({edge.label})" if edge.label else ""
                 arch_desc += f"- {source_node.data.label} → {target_node.data.label}{label_text}\\n"
 
-        # Duration-specific prompts
+        # Duration-specific prompts (中文输出)
         duration_prompts = {
-            "30s": "Generate a 30-second elevator pitch script (approximately 75 words). Focus on the key value proposition.",
-            "2min": "Generate a 2-minute presentation script (approximately 300 words). Cover the architecture overview, key components, and benefits.",
-            "5min": "Generate a 5-minute detailed presentation script (approximately 750 words). Include introduction, architecture overview, component details, data flow, and conclusion."
+            "30s": "生成一个30秒的电梯演讲稿（约150字）。聚焦核心价值主张。",
+            "2min": "生成一个2分钟的演讲稿（约600字）。涵盖架构概览、核心组件和优势。",
+            "5min": "生成一个5分钟的详细演讲稿（约1500字）。包含开场、架构概览、组件细节、数据流和结论。"
         }
 
-        prompt = f'''You are a technical presenter creating a presentation script.
+        prompt = f'''你是一位专业的技术演讲者，正在创建一份演讲稿。
 
 {arch_desc}
 
 {duration_prompts.get(duration, duration_prompts["2min"])}
 
-Requirements:
-1. Use clear, professional language
-2. Explain technical concepts in an accessible way
-3. Highlight the architecture's strengths and design decisions
-4. Include smooth transitions between topics
-5. End with a strong conclusion
-6. Return ONLY the script text, no JSON or additional formatting
+要求：
+1. 使用清晰、专业的中文表达
+2. 用通俗易懂的方式解释技术概念
+3. 突出架构的优势和设计决策
+4. 段落之间过渡自然流畅
+5. 以有力的结论收尾
+6. 只返回演讲稿文本，不要返回JSON或其他格式
 
-Create the script now:'''
+现在开始创作演讲稿：'''
 
         if self.mock_mode:
             logger.warning("Mock mode enabled for speech script generation (placeholder API key)")
@@ -1458,21 +2408,15 @@ Create the script now:'''
                 return response.content[0].text.strip()
 
             # custom provider (OpenAI-compatible)
-            payload = {
-                "model": self.model_name,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.7
-            }
-
-            response = await asyncio.to_thread(self.client.post, "/chat/completions", json=payload)
-            response.raise_for_status()
-            data = response.json()
-
-            if "choices" in data and len(data["choices"]) > 0:
-                return data["choices"][0]["message"]["content"].strip()
-            if "output" in data:
-                return data["output"].strip()
-            raise ValueError("Unexpected custom provider response format")
+            response = await asyncio.to_thread(
+                self.client.chat.completions.create,
+                model=self.model_name,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+                max_tokens=4000,
+                timeout=self.request_timeout,
+            )
+            return response.choices[0].message.content.strip()
 
         try:
             script = await asyncio.wait_for(_generate_with_provider(), timeout=self.request_timeout)
@@ -1485,6 +2429,100 @@ Create the script now:'''
         except Exception as e:
             logger.error(f"Speech script generation failed: {e}", exc_info=True)
             return self._build_mock_script(arch_desc, duration)
+
+    async def generate_speech_script_stream(
+        self,
+        nodes: List,
+        edges: List,
+        duration: str = "2min"
+    ):
+        """Generate a presentation script with streaming support"""
+        # Build architecture description
+        arch_desc = f"Architecture with {len(nodes)} components and {len(edges)} connections:\n\n"
+
+        arch_desc += "Components:\n"
+        for node in nodes:
+            arch_desc += f"- {node.data.label} (type: {node.type or 'default'})\n"
+
+        arch_desc += "\nConnections:\n"
+        for edge in edges:
+            source_node = next((n for n in nodes if n.id == edge.source), None)
+            target_node = next((n for n in nodes if n.id == edge.target), None)
+            if source_node and target_node:
+                label_text = f" ({edge.label})" if edge.label else ""
+                arch_desc += f"- {source_node.data.label} → {target_node.data.label}{label_text}\n"
+
+        # Duration-specific prompts (中文输出)
+        duration_prompts = {
+            "30s": "生成一个30秒的电梯演讲稿（约150字）。聚焦核心价值主张。",
+            "2min": "生成一个2分钟的演讲稿（约600字）。涵盖架构概览、核心组件和优势。",
+            "5min": "生成一个5分钟的详细演讲稿（约1500字）。包含开场、架构概览、组件细节、数据流和结论。"
+        }
+
+        prompt = f'''你是一位专业的技术演讲者，正在创建一份演讲稿。
+
+{arch_desc}
+
+{duration_prompts.get(duration, duration_prompts["2min"])}
+
+要求：
+1. 使用清晰、专业的中文表达
+2. 用通俗易懂的方式解释技术概念
+3. 突出架构的优势和设计决策
+4. 段落之间过渡自然流畅
+5. 以有力的结论收尾
+6. 只返回演讲稿文本，不要返回JSON或其他格式
+
+现在开始创作演讲稿：'''
+
+        if self.mock_mode:
+            logger.warning("Mock mode enabled for speech script generation (placeholder API key)")
+            yield self._build_mock_script(arch_desc, duration)
+            return
+
+        try:
+            # OpenAI-compatible providers support streaming
+            if self.provider in ["openai", "siliconflow", "custom"]:
+                logger.info(f"Starting streaming speech script generation with {self.provider}")
+
+                # 直接创建stream并同步迭代（参考chat_generator的实现）
+                stream = self.client.chat.completions.create(
+                    model=self.model_name,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.7,
+                    max_tokens=4000,
+                    stream=True,
+                )
+
+                # 同步迭代stream chunks
+                for chunk in stream:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        yield chunk.choices[0].delta.content
+
+            elif self.provider == "claude":
+                logger.info("Starting streaming speech script generation with Claude")
+                # Claude uses async streaming API
+                async with self.client.messages.stream(
+                    model=self.model_name,
+                    max_tokens=4000,
+                    temperature=0.7,
+                    messages=[{"role": "user", "content": prompt}]
+                ) as stream:
+                    async for text in stream.text_stream:
+                        yield text
+
+            else:
+                # Fallback to non-streaming for other providers (like Gemini)
+                logger.info(f"Provider {self.provider} doesn't support streaming, using non-streaming")
+                full_script = await self.generate_speech_script(nodes, edges, duration)
+                # Yield in chunks for simulated streaming
+                chunk_size = 20
+                for i in range(0, len(full_script), chunk_size):
+                    yield full_script[i:i+chunk_size]
+
+        except Exception as e:
+            logger.error(f"Streaming speech script generation failed: {e}", exc_info=True)
+            yield self._build_mock_script(arch_desc, duration)
 
 
 # 工厂函数

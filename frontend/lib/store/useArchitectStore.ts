@@ -1,5 +1,9 @@
 import { create } from "zustand";
-import { Node, Edge, NodeChange, EdgeChange, applyNodeChanges, applyEdgeChanges } from "reactflow";
+import { Node, Edge, NodeChange, EdgeChange, applyNodeChanges, applyEdgeChanges, MarkerType } from "reactflow";
+import { PROVIDER_DEFAULTS } from "@/lib/config/providerDefaults";
+import { getLayoutedElements, estimateNodeSize } from "@/lib/utils/autoLayout";
+import { API_ENDPOINTS, API_BASE_URL } from "@/lib/api-config";
+import { useFlowchartStyleStore } from "@/lib/stores/flowchartStyleStore";
 
 export interface PromptScenario {
   id: string;
@@ -21,6 +25,7 @@ export interface FlowTemplate {
 
 export type DiagramType = "flow" | "architecture";
 export type CanvasMode = "reactflow" | "excalidraw";
+export type ArchitectureType = "layered" | "business" | "technical" | "deployment" | "domain";
 
 export interface ExcalidrawScene {
   elements: any[];
@@ -35,6 +40,8 @@ interface ArchitectState {
   generationLogs: string[];
   chatHistory: { role: "user" | "assistant"; content: string }[];
   diagramType: DiagramType;
+  architectureType: ArchitectureType;
+  setArchitectureType: (type: ArchitectureType) => void;
   uploadedImage: File | null;
   imagePreviewUrl: string | null;
   isAnalyzing: boolean;
@@ -47,6 +54,10 @@ interface ArchitectState {
   // Excalidraw scene
   excalidrawScene: ExcalidrawScene | null;
   setExcalidrawScene: (scene: ExcalidrawScene | null) => void;
+
+  // 🎬 流式渲染状态
+  _preparedNodes: Node[]; // 准备好的节点（已布局但未显示）
+  _preparedEdges: Edge[]; // 准备好的边（未显示）
 
   // 节点和边操作
   setNodes: (nodes: Node[]) => void;
@@ -66,10 +77,10 @@ interface ArchitectState {
 
   // AI 模型配置
   modelConfig: {
-    provider: "gemini" | "openai" | "claude" | "siliconflow" | "custom";
+    provider: "custom";
     apiKey: string;
     modelName: string;
-    baseUrl?: string;
+    baseUrl: string;
   };
   setModelConfig: (config: Partial<ArchitectState["modelConfig"]>) => void;
 
@@ -80,6 +91,14 @@ interface ArchitectState {
   generateFlowchart: (input: string, templateId?: string, diagramType?: DiagramType) => Promise<void>;
   generateExcalidrawScene: (prompt: string) => Promise<void>;
   generateExcalidrawSceneStream: (prompt: string) => Promise<void>;
+
+  // 🆕 增量生成状态
+  incrementalMode: boolean;
+  currentSessionId: string | null;
+  setIncrementalMode: (enabled: boolean) => void;
+  saveCanvasSession: () => Promise<string | null>;
+  loadCanvasSession: (sessionId: string) => Promise<void>;
+  deleteCanvasSession: () => Promise<void>;
 
   // Prompter mock actions
   promptScenarios: PromptScenario[];
@@ -290,38 +309,37 @@ function mermaidToCanvas(code: string): { nodes: Node[]; edges: Edge[] } {
   return { nodes, edges };
 }
 
+// 给边应用当前的样式配置
+function applyEdgeStyles(edges: Edge[]): Edge[] {
+  const { currentPresentationStyle, edgeType } = useFlowchartStyleStore.getState();
+
+  return edges.map((edge) => ({
+    ...edge,
+    type: edgeType,
+    animated: false, // 🔥 修复：改为实线，不使用动画效果
+    markerEnd: {
+      type: MarkerType.ArrowClosed,
+      width: currentPresentationStyle.edge.markerSize,
+      height: currentPresentationStyle.edge.markerSize,
+      color: currentPresentationStyle.edge.strokeColor,
+    },
+    style: {
+      stroke: currentPresentationStyle.edge.strokeColor,
+      strokeWidth: currentPresentationStyle.edge.strokeWidth,
+    },
+    data: {
+      ...edge.data,
+      showGlow: currentPresentationStyle.edge.showGlow,
+    },
+  }));
+}
+
 export const useArchitectStore = create<ArchitectState>((set, get) => ({
-  nodes: [
-    {
-      id: "1",
-      type: "api",
-      position: { x: 100, y: 100 },
-      data: { label: "API Gateway" },
-    },
-    {
-      id: "2",
-      type: "service",
-      position: { x: 400, y: 100 },
-      data: { label: "Auth Service" },
-    },
-    {
-      id: "3",
-      type: "database",
-      position: { x: 400, y: 250 },
-      data: { label: "PostgreSQL" },
-    },
-  ],
-  edges: [
-    { id: "e1-2", source: "1", target: "2", label: "auth" },
-    { id: "e2-3", source: "2", target: "3", label: "query" },
-  ],
+  nodes: [],
+  edges: [],
   diagramType: "flow",
-  mermaidCode: `graph TD
-    1["API Gateway"]
-    2[["Auth Service"]]
-    3[("PostgreSQL")]
-    1 -->|auth| 2
-    2 -->|query| 3`,
+  architectureType: "layered",
+  mermaidCode: "",
   uploadedImage: null,
   imagePreviewUrl: null,
   isAnalyzing: false,
@@ -334,19 +352,28 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
   generationLogs: [],
   chatHistory: [],
 
+  // 🎬 流式渲染状态初始化
+  _preparedNodes: [],
+  _preparedEdges: [],
+
+  // 🆕 增量生成状态初始化
+  incrementalMode: false,
+  currentSessionId: null,
+
   promptScenarios: DEFAULT_PROMPT_SCENARIOS,
   isExecutingPrompt: false,
   promptError: undefined,
 
   modelConfig: {
-    provider: "siliconflow",
-    apiKey: "",
-    modelName: "Qwen/Qwen3-VL-32B-Thinking",
-    baseUrl: "https://api.siliconflow.cn/v1",
+    provider: "custom",
+    apiKey: "", // 🔧 从配置管理中加载，不使用硬编码
+    modelName: "",
+    baseUrl: "",
   },
 
   setCanvasMode: (mode) => set({ canvasMode: mode }),
   setExcalidrawScene: (scene) => set({ excalidrawScene: scene }),
+  setArchitectureType: (type) => set({ architectureType: type }),
 
   setNodes: (nodes) => set({ nodes }),
   setEdges: (edges) => set({ edges }),
@@ -427,7 +454,7 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
 
   loadFlowTemplates: async () => {
     try {
-      const res = await fetch("/api/chat-generator/templates");
+      const res = await fetch(API_ENDPOINTS.chatTemplates);
       if (!res.ok) {
         throw new Error(`Failed to load templates: ${res.status}`);
       }
@@ -442,10 +469,92 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
     set({ flowTemplates: DEFAULT_FLOW_TEMPLATES });
   },
 
+  // ============================================================
+  // 🆕 增量生成会话管理方法
+  // ============================================================
+
+  setIncrementalMode: (enabled) => {
+    set({ incrementalMode: enabled });
+
+    // 启用增量模式时，自动保存当前画布到会话
+    if (enabled && get().nodes.length > 0) {
+      get().saveCanvasSession();
+    }
+  },
+
+  saveCanvasSession: async () => {
+    const { nodes, edges, currentSessionId } = get();
+
+    if (nodes.length === 0) {
+      return null;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/chat-generator/session/save`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: currentSessionId,
+          nodes,
+          edges,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        set({ currentSessionId: data.session_id });
+        console.log(`Canvas session saved: ${data.session_id}`);
+        return data.session_id;
+      }
+    } catch (error) {
+      console.error("Failed to save canvas session:", error);
+    }
+
+    return null;
+  },
+
+  loadCanvasSession: async (sessionId: string) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/chat-generator/session/${sessionId}`);
+      const data = await response.json();
+
+      if (data.success && data.session) {
+        set({
+          nodes: data.session.nodes,
+          edges: data.session.edges,
+          currentSessionId: sessionId,
+        });
+        console.log(`Canvas session loaded: ${sessionId}`);
+      }
+    } catch (error) {
+      console.error("Failed to load canvas session:", error);
+    }
+  },
+
+  deleteCanvasSession: async () => {
+    const { currentSessionId } = get();
+
+    if (!currentSessionId) {
+      return;
+    }
+
+    try {
+      await fetch(`${API_BASE_URL}/api/chat-generator/session/${currentSessionId}`, {
+        method: "DELETE",
+      });
+
+      set({ currentSessionId: null, incrementalMode: false });
+      console.log(`Canvas session deleted: ${currentSessionId}`);
+    } catch (error) {
+      console.error("Failed to delete canvas session:", error);
+    }
+  },
+
   generateFlowchart: async (input, templateId, diagramType) => {
     set({ isGeneratingFlowchart: true, diagramType: diagramType || "flow" });
     try {
-      const { modelConfig } = get();
+      const { modelConfig, architectureType, incrementalMode, currentSessionId, nodes, saveCanvasSession } = get();
       set((state) => ({
         generationLogs: [],
         chatHistory: [
@@ -453,18 +562,31 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
           { role: "user", content: input },
         ],
       }));
+
+      // 🆕 如果启用增量模式且画布非空，先保存会话
+      let sessionId = currentSessionId;
+      if (incrementalMode && nodes.length > 0) {
+        if (!sessionId) {
+          sessionId = await saveCanvasSession();
+        }
+      }
+
       const body = {
         user_input: input,
         template_id: templateId,
         diagram_type: diagramType,
+        architecture_type: diagramType === "architecture" ? architectureType : undefined,
         provider: modelConfig.provider,
         api_key: modelConfig.apiKey?.trim() || undefined,
         base_url: modelConfig.baseUrl?.trim() || undefined,
         model_name: modelConfig.modelName,
+        // 🆕 增量模式参数
+        incremental_mode: incrementalMode && nodes.length > 0,
+        session_id: sessionId,
       };
 
       // Stream events to show progress and avoid spinner-only UX
-      const response = await fetch("/api/chat-generator/generate-stream", {
+      const response = await fetch(API_ENDPOINTS.chatGeneratorStream, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
         body: JSON.stringify(body),
@@ -488,6 +610,8 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
 
       // Track generation status in chat history
       let statusMessage = "🔄 正在生成流程图...";
+      let aiResponseBuffer = "";  // Buffer for AI's actual response text
+
       const updateChatStatus = (message: string) => {
         statusMessage = message;
         set((state) => {
@@ -497,6 +621,28 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
             newHistory[newHistory.length - 1] = { role: "assistant", content: statusMessage };
           } else {
             newHistory.push({ role: "assistant", content: statusMessage });
+          }
+          return { chatHistory: newHistory };
+        });
+      };
+
+      // Update AI response in real-time (for chat display)
+      const updateAiResponse = (token: string) => {
+        aiResponseBuffer += token;
+        set((state) => {
+          const newHistory = [...state.chatHistory];
+          const last = newHistory[newHistory.length - 1];
+          if (last && last.role === "assistant") {
+            // Update the last assistant message with accumulated response
+            newHistory[newHistory.length - 1] = {
+              role: "assistant",
+              content: `🤖 AI 正在生成...\n\n${aiResponseBuffer}`
+            };
+          } else {
+            newHistory.push({
+              role: "assistant",
+              content: `🤖 AI 正在生成...\n\n${aiResponseBuffer}`
+            });
           }
           return { chatHistory: newHistory };
         });
@@ -544,8 +690,12 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
             updateChatStatus("📝 正在构建提示词...");
           } else if (content.startsWith("[CALL]")) {
             pushLog(content);
-            updateChatStatus("🤖 AI 正在思考...");
+            updateChatStatus("🤖 AI 正在生成流程图...");
             isGenerating = true;
+            // Add a "[生成中]" placeholder for token accumulation
+            if (!logs.some(log => log.startsWith("[生成中]"))) {
+              pushLog("[生成中] ");
+            }
           } else if (content.startsWith("[RESULT]")) {
             // Remove the "[生成中]" entry
             const generatingIndex = logs.findIndex(log => log.startsWith("[生成中]"));
@@ -569,17 +719,131 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
           if (content.startsWith("[TOKEN]")) {
             const token = content.replace("[TOKEN]", "").trimStart();
             updateJsonLog(token);
+            updateAiResponse(token);  // 实时更新聊天框中的 AI 回复
+
+            // Update status with progress for better feedback
+            const tokenLength = jsonBuffer.length;
+            if (tokenLength > 0 && tokenLength % 500 === 0) {
+              const charCount = Math.floor(tokenLength);
+              // Don't update chat status here, let updateAiResponse handle it
+            }
             continue;
           }
-          // Final payload is a JSON-like string; attempt to parse
+
+          // 🎬 流式渲染：布局数据
+          if (content.startsWith("[LAYOUT_DATA]")) {
+            try {
+              const layoutData = JSON.parse(content.replace("[LAYOUT_DATA]", "").trim());
+              let rawNodes = layoutData.nodes as Node[];
+              const rawEdges = layoutData.edges as Edge[];
+              const diagramType = layoutData.diagram_type;
+              const mermaidCode = layoutData.mermaid_code;
+
+              // 应用当前样式到边
+              const edges = applyEdgeStyles(rawEdges);
+
+              let preparedNodes: Node[];
+
+              // 只对 flow 类型应用自动布局
+              if (diagramType === "flow") {
+                const nodesWithSize = rawNodes.map((node) => {
+                  const size = estimateNodeSize(node);
+                  return { ...node, width: size.width, height: size.height };
+                });
+
+                const layoutedNodes = getLayoutedElements(nodesWithSize, edges, {
+                  direction: "LR",
+                  ranksep: 150,
+                  nodesep: 100,
+                });
+
+                preparedNodes = addLayerFrames(layoutedNodes, diagramType);
+              } else {
+                // architecture 模式：使用原始坐标
+                preparedNodes = addLayerFrames(rawNodes, diagramType);
+              }
+
+              // 存储准备好的数据，但先清空显示
+              set({
+                _preparedNodes: preparedNodes,
+                _preparedEdges: edges,
+                nodes: [],
+                edges: [],
+                mermaidCode,
+              });
+
+              console.log(`[LAYOUT_DATA] Prepared ${preparedNodes.length} nodes, ${edges.length} edges`);
+            } catch (err) {
+              console.error("[LAYOUT_DATA] Parse failed:", err);
+            }
+            continue;
+          }
+
+          // 🎬 流式渲染：显示节点
+          if (content.startsWith("[NODE_SHOW]")) {
+            const nodeId = content.replace("[NODE_SHOW]", "").trim();
+            const preparedNodes = get()._preparedNodes;
+            const node = preparedNodes.find((n) => n.id === nodeId);
+
+            if (node) {
+              const currentNodes = get().nodes;
+              set({ nodes: [...currentNodes, node] });
+              console.log(`[NODE_SHOW] Displayed node ${nodeId}`);
+            }
+            continue;
+          }
+
+          // 🎬 流式渲染：显示边
+          if (content.startsWith("[EDGE_SHOW]")) {
+            const edgeId = content.replace("[EDGE_SHOW]", "").trim();
+            const preparedEdges = get()._preparedEdges;
+            const edge = preparedEdges.find((e) => e.id === edgeId);
+
+            if (edge) {
+              const currentEdges = get().edges;
+              set({ edges: [...currentEdges, edge] });
+              console.log(`[EDGE_SHOW] Displayed edge ${edgeId}`);
+            }
+            continue;
+          }
+
+          // Fallback: 完整JSON payload（兼容旧版本）
           if (content.startsWith("{")) {
             try {
               const data = JSON.parse(content);
               if (data?.nodes && data?.edges) {
-                const nodes = addLayerFrames(data.nodes as Node[], get().diagramType);
-                const edges = data.edges as Edge[];
+                let rawNodes = data.nodes as Node[];
+                const rawEdges = data.edges as Edge[];
+
+                // 应用当前样式到边
+                const edges = applyEdgeStyles(rawEdges);
+
+                let nodes: Node[];
+
+                // 只对 flow 类型应用自动布局，architecture 保持原始位置
+                if (get().diagramType === "flow") {
+                  // 🔥 应用智能布局算法
+                  const nodesWithSize = rawNodes.map((node) => {
+                    const size = estimateNodeSize(node);
+                    return { ...node, width: size.width, height: size.height };
+                  });
+
+                  const layoutedNodes = getLayoutedElements(nodesWithSize, edges, {
+                    direction: "LR",  // 默认左到右，更符合阅读习惯
+                    ranksep: 150,
+                    nodesep: 100,
+                  });
+
+                  // 添加分层框架（如果是架构图）
+                  nodes = addLayerFrames(layoutedNodes, get().diagramType);
+                } else {
+                  // architecture 模式：使用后端返回的原始坐标
+                  nodes = addLayerFrames(rawNodes, get().diagramType);
+                }
+
                 const mermaidCode = data.mermaid_code || get().mermaidCode;
-                // 立即添加所有节点和边，不使用动画避免阻塞流读取
+
+                // 直接设置（fallback兼容）
                 set({ nodes, edges, mermaidCode });
               }
             } catch {
@@ -594,18 +858,50 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
 
       // Fallback: if streaming didn't deliver nodes, retry non-stream
       if (get().nodes.length === 0) {
-        const retry = await fetch("/api/chat-generator/generate", {
+        const retry = await fetch(API_ENDPOINTS.chatGenerator, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
         const data = await retry.json();
         if (data?.nodes && data?.edges) {
-          set({
-            nodes: addLayerFrames(data.nodes as Node[], get().diagramType),
-            edges: data.edges as Edge[],
-            mermaidCode: data.mermaid_code,
-          });
+          let rawNodes = data.nodes as Node[];
+          const rawEdges = data.edges as Edge[];
+
+          // 应用当前样式到边
+          const edges = applyEdgeStyles(rawEdges);
+
+          let nodes: Node[];
+
+          // 只对 flow 类型应用自动布局，architecture 保持原始位置
+          if (get().diagramType === "flow") {
+            // 🔥 应用智能布局算法
+            const nodesWithSize = rawNodes.map((node) => {
+              const size = estimateNodeSize(node);
+              return { ...node, width: size.width, height: size.height };
+            });
+
+            const layoutedNodes = getLayoutedElements(nodesWithSize, edges, {
+              direction: "LR",  // 默认左到右
+              ranksep: 150,
+              nodesep: 100,
+            });
+
+            nodes = addLayerFrames(layoutedNodes, get().diagramType);
+          } else {
+            // architecture 模式：使用后端返回的原始坐标
+            nodes = addLayerFrames(rawNodes, get().diagramType);
+          }
+
+          const mermaidCode = data.mermaid_code;
+
+          // 直接设置（非stream fallback）
+          set({ nodes, edges, mermaidCode });
+
+          // 🆕 更新 session_id
+          if (data.session_id) {
+            set({ currentSessionId: data.session_id });
+          }
         } else {
           throw new Error(data?.message || "Generation failed");
         }
@@ -631,7 +927,7 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
         model_name: modelConfig.modelName,
       };
 
-      const response = await fetch("/api/excalidraw/generate", {
+      const response = await fetch(API_ENDPOINTS.excalidrawGenerate, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -691,8 +987,7 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
       };
 
       // IMPORTANT: Connect directly to backend to avoid Next.js proxy buffering
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
-      const response = await fetch(`${backendUrl}/api/excalidraw/generate-stream`, {
+      const response = await fetch(`${API_BASE_URL}/api/excalidraw/generate-stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
         body: JSON.stringify(body),
@@ -718,7 +1013,9 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
 
       // Track generation status in chat history (打字机效果)
       let statusMessage = "🎨 正在生成 Excalidraw 场景...";
+      let aiResponseBuffer = "";  // Buffer for AI's actual response text
       let lastChatUpdate = Date.now();
+
       const updateChatStatus = (message: string, force = false) => {
         statusMessage = message;
         // Throttle chat updates to max once per 500ms unless forced
@@ -740,25 +1037,71 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
         }, 0);
       };
 
+      // Update AI response in real-time (for chat display)
+      const updateAiResponse = (token: string) => {
+        aiResponseBuffer += token;
+        const now = Date.now();
+        // Throttle to avoid too many updates
+        if (now - lastChatUpdate < 100) return;
+        lastChatUpdate = now;
+
+        setTimeout(() => {
+          set((state) => {
+            const newHistory = [...state.chatHistory];
+            const last = newHistory[newHistory.length - 1];
+            if (last && last.role === "assistant") {
+              newHistory[newHistory.length - 1] = {
+                role: "assistant",
+                content: `🎨 AI 正在绘制...\n\n${aiResponseBuffer}`
+              };
+            } else {
+              newHistory.push({
+                role: "assistant",
+                content: `🎨 AI 正在绘制...\n\n${aiResponseBuffer}`
+              });
+            }
+            return { chatHistory: newHistory };
+          });
+        }, 0);
+      };
+
       // Accumulate JSON tokens for display in logs
       let jsonBuffer = "";
       let parsedElements: any[] = []; // Track already parsed elements for incremental rendering
+      let hasReceivedFinalResult = false; // 🔥 Flag to prevent incremental updates after receiving final result
+      const MAX_INCREMENTAL_ELEMENTS = 50; // ✅ Match backend's max_elems limit
 
       // Throttle scene updates using requestAnimationFrame
       let pendingSceneUpdate: any = null;
       let animationFrameId: number | null = null;
 
       const scheduleSceneUpdate = (elements: any[]) => {
+        // 🔥 NEW: Don't schedule updates if we already have the final result
+        if (hasReceivedFinalResult) {
+          console.log(`⛔ [Excalidraw INCREMENTAL] Blocked incremental update (${elements.length} elements) - already have final result`);
+          return;
+        }
+
+        console.log(`📊 [Excalidraw INCREMENTAL] Scheduling update with ${elements.length} elements`);
         pendingSceneUpdate = elements;
 
         if (animationFrameId === null) {
           animationFrameId = requestAnimationFrame(() => {
+            // 🔥 NEW: Double-check flag before actually updating
+            if (hasReceivedFinalResult) {
+              console.log(`⛔ [Excalidraw INCREMENTAL] Cancelled scheduled update (had ${pendingSceneUpdate?.length} elements) - final result received`);
+              animationFrameId = null;
+              pendingSceneUpdate = null;
+              return;
+            }
+
             if (pendingSceneUpdate && pendingSceneUpdate.length > 0) {
               const partialScene = {
                 elements: pendingSceneUpdate,
                 appState: { viewBackgroundColor: "#ffffff" },
                 files: {}
               };
+              console.log(`✏️ [Excalidraw INCREMENTAL] Applying incremental update: ${pendingSceneUpdate.length} elements`);
               set({ excalidrawScene: partialScene });
             }
             animationFrameId = null;
@@ -847,8 +1190,10 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
                 const elementText = currentElement.trim();
                 const element = JSON.parse(elementText);
 
-                // Only add new elements (check if ID already exists)
-                if (element.id && !parsedElements.some(e => e.id === element.id)) {
+                // ✅ Only add new elements (check if ID already exists) and respect max limit
+                if (element.id &&
+                    !parsedElements.some(e => e.id === element.id) &&
+                    parsedElements.length < MAX_INCREMENTAL_ELEMENTS) {
                   parsedElements.push(element);
                   foundNewElement = true;
 
@@ -856,6 +1201,9 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
                   if (parsedElements.length % 5 === 0 || parsedElements.length === 1) {
                     console.log(`[Excalidraw INCREMENTAL] ✅ Parsed ${parsedElements.length} elements`);
                   }
+                } else if (parsedElements.length >= MAX_INCREMENTAL_ELEMENTS) {
+                  // ⚠️ Stop parsing when we hit the limit (matches backend behavior)
+                  console.warn(`[Excalidraw INCREMENTAL] ⚠️ Reached max limit of ${MAX_INCREMENTAL_ELEMENTS} elements`);
                 }
               } catch (e) {
                 // Element not yet complete or invalid JSON, continue silently
@@ -867,8 +1215,17 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
           }
 
           // Use throttled update if we found new elements
+          // ✅ Batch updates: only update every 5 elements to reduce DOM updates
           if (foundNewElement && parsedElements.length > 0) {
-            scheduleSceneUpdate([...parsedElements]);
+            const shouldUpdate = (
+              parsedElements.length === 1 ||        // First element
+              parsedElements.length % 5 === 0 ||    // Every 5 elements
+              parsedElements.length >= MAX_INCREMENTAL_ELEMENTS  // At limit
+            );
+
+            if (shouldUpdate) {
+              scheduleSceneUpdate([...parsedElements]);
+            }
           }
         } catch (e) {
           // Parsing failed, wait for more data (silent)
@@ -897,15 +1254,21 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
           } else if (content.startsWith("[CALL]")) {
             pushLog(content);
             updateChatStatus("🤖 AI 正在绘制场景...");
+            // Add a "[生成中]" placeholder for token accumulation
+            if (!logs.some(log => log.startsWith("[生成中]"))) {
+              pushLog("[生成中] ");
+            }
           } else if (content.startsWith("[TOKEN]")) {
             const token = content.replace("[TOKEN]", "").trimStart();
             tokenCount++;
 
             updateJsonLog(token);
+            updateAiResponse(token);  // 实时更新聊天框中的 AI 回复
 
-            // 每 100 个 token 更新聊天状态
-            if (tokenCount % 100 === 0) {
-              updateChatStatus(`🤖 AI 正在绘制场景...\n已生成 ${tokenCount} tokens`);
+            // Update status with character count for better feedback
+            const charCount = jsonBuffer.length;
+            if (charCount > 0 && charCount % 500 === 0) {
+              // Don't update chat status here, let updateAiResponse handle it
             }
           } else if (content.startsWith("[RESULT]")) {
             // Remove "[生成中]" log
@@ -919,34 +1282,73 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
 
             try {
               const result = JSON.parse(resultContent);
-              console.log("[Excalidraw] Parsed RESULT:", {
+              console.log("🔍 [Excalidraw] Received [RESULT]:", {
                 hasScene: !!result.scene,
-                elementsCount: result.scene?.elements?.length,
-                incrementalCount: parsedElements.length,
-                success: result.success
+                rawElementsCount: result.scene?.elements?.length || 0,
+                incrementalParsedCount: parsedElements.length,
+                success: result.success,
+                message: result.message
               });
 
               if (result.scene?.elements) {
+                // 🔥 CRITICAL FIX: Set flag FIRST to prevent race conditions
+                hasReceivedFinalResult = true;
+                console.log("🚫 [Excalidraw] hasReceivedFinalResult = true, blocking incremental updates");
+
                 // Cancel any pending animation frame
                 if (animationFrameId !== null) {
+                  console.log("❌ [Excalidraw] Cancelling pending animation frame");
                   cancelAnimationFrame(animationFrameId);
                   animationFrameId = null;
+                }
+
+                // 🔍 DEBUG: Compare element IDs
+                const incrementalIds = parsedElements.map((e: any) => e.id);
+                const finalIds = result.scene.elements.map((e: any) => e.id);
+                const missingIds = incrementalIds.filter((id: string) => !finalIds.includes(id));
+                const newIds = finalIds.filter((id: string) => !incrementalIds.includes(id));
+
+                if (missingIds.length > 0 || newIds.length > 0) {
+                  console.warn("⚠️ [Excalidraw] Element ID mismatch detected:");
+                  console.warn("  - Missing from final:", missingIds);
+                  console.warn("  - New in final:", newIds);
+                  console.warn("  - This causes the 'disappearing elements' bug!");
+                }
+
+                // ✅ SMART FIX: Only update if element IDs are different
+                // If IDs match perfectly, keep the incremental version (has better properties)
+                const shouldUpdate = (missingIds.length > 0 || newIds.length > 0);
+
+                let finalElements;
+                if (shouldUpdate) {
+                  console.log("🔄 [Excalidraw] Using backend elements (IDs differ)");
+                  finalElements = result.scene.elements;
+                } else {
+                  console.log("✅ [Excalidraw] Keeping incremental elements (IDs match perfectly)");
+                  finalElements = parsedElements;
                 }
 
                 // CRITICAL FIX: Always use complete RESULT elements as the final data
                 // Incremental parsing is only for intermediate display
                 const finalScene = {
-                  elements: result.scene.elements,  // Always use complete data
+                  elements: finalElements,
                   appState: result.scene.appState || { viewBackgroundColor: "#ffffff" },
                   files: result.scene.files || {}
                 };
 
-                console.log("[Excalidraw] Final scene:", {
-                  elementsCount: result.scene.elements.length,
+                console.log("✅ [Excalidraw] Prepared final scene:", {
+                  elementsCount: finalElements.length,
                   incrementalParsed: parsedElements.length,
-                  source: 'complete-result'
+                  source: shouldUpdate ? 'backend-validated' : 'incremental-kept',
+                  firstElementIds: finalElements.slice(0, 5).map((e: any) => ({ id: e.id, type: e.type }))
                 });
-                set({ excalidrawScene: finalScene });
+
+                // 🔥 NEW: Use setTimeout to ensure this update happens AFTER any pending animation frames
+                setTimeout(() => {
+                  console.log("📝 [Excalidraw] Setting final scene in store NOW");
+                  set({ excalidrawScene: finalScene });
+                  console.log("✅ [Excalidraw] Final scene set, incremental updates blocked");
+                }, 0);
 
                 const successMsg = result.success
                   ? `✅ Excalidraw 场景生成完成\n- 元素数量: ${result.scene.elements.length}\n- 增量解析: ${parsedElements.length} 个元素\n- 生成方式: ${parsedElements.length > 0 ? 'AI 实时流式生成' : 'AI 智能生成'}`
@@ -988,7 +1390,7 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
 
   loadPromptScenarios: async () => {
     try {
-      const res = await fetch("/api/prompter/scenarios");
+      const res = await fetch(`${API_BASE_URL}/api/prompter/scenarios`);
       if (!res.ok) {
         throw new Error(`Failed to load prompt scenarios: ${res.status}`);
       }
@@ -1021,7 +1423,7 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
       if (modelConfig.baseUrl) params.set("base_url", modelConfig.baseUrl);
       if (modelConfig.modelName) params.set("model_name", modelConfig.modelName);
 
-      const res = await fetch(`/api/prompter/execute?${params.toString()}`, {
+      const res = await fetch(`${API_BASE_URL}/api/prompter/execute?${params.toString()}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -1038,7 +1440,11 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
       }
 
       const updatedNodes = addLayerFrames(data.nodes as Node[], get().diagramType);
-      const updatedEdges = data.edges as Edge[];
+      const rawEdges = data.edges as Edge[];
+
+      // 应用当前样式到边
+      const updatedEdges = applyEdgeStyles(rawEdges);
+
       const updatedMermaid = data.mermaid_code || get().mermaidCode;
 
       set({ nodes: updatedNodes, edges: updatedEdges, mermaidCode: updatedMermaid });
