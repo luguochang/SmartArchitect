@@ -1,6 +1,6 @@
 <div align="center">
 
-# ArchBoard
+# SmartArchitect
 
 **Turn Your Ideas into Clear Flowcharts**
 
@@ -64,7 +64,7 @@ The project is deployed on free cloud platforms (Vercel + Render), allowing you 
 
 ---
 
-## 💡 What is ArchBoard?
+## 💡 What is SmartArchitect?
 
 Have you ever experienced these situations:
 
@@ -73,7 +73,7 @@ Have you ever experienced these situations:
 - 🤯 **During technical discussions, everyone has different understanding**
 - 📝 **Meeting notes are messy and hard to review later**
 
-**ArchBoard solves these problems.**
+**SmartArchitect solves these problems.**
 
 > Describe your idea in natural language → AI generates flowchart → Refine as you review → Clarity emerges
 
@@ -117,7 +117,7 @@ Not about "how pretty it looks", but **"how clear you think"**.
 - After hours of drawing, realize the flow is wrong, start over
 - Spent 2 hours on diagrams, core business logic still unclear
 
-**With ArchBoard**:
+**With SmartArchitect**:
 
 ```
 You: "Design an e-commerce flash sale flow, user clicks the buy button..."
@@ -149,7 +149,7 @@ AI: [Adds exception handling]
 - Review meetings turn into everyone talking past each other
 - After the review, still unclear how to implement
 
-**With ArchBoard**:
+**With SmartArchitect**:
 
 ```
 You: "Design a short video recommendation system with data collection,
@@ -184,7 +184,7 @@ AI: [Adds real-time pipeline]
 - Explain for ages, people still don't understand
 - Can't even articulate your own revenue model
 
-**With ArchBoard**:
+**With SmartArchitect**:
 
 ```
 You: "Build an online education platform where teachers join and students pay for courses"
@@ -292,33 +292,33 @@ AI: [Adds exception handling]
 
 #### Why Node-Based Canvas?
 
-Unlike traditional drawing tools, **ArchBoard's Flow Canvas is built on node architecture (React Flow)**, bringing revolutionary interaction:
+Unlike traditional drawing tools, **SmartArchitect's Flow Canvas is built on node architecture (React Flow)**, bringing revolutionary interaction:
 
 **🔗 True Node Connectivity**
 - Traditional tools: Drag a box + drag a line, they're just "drawn together", no relationship
-- **ArchBoard**: Drag nodes, connections auto-follow; delete nodes, related connections auto-clean
+- **SmartArchitect**: Drag nodes, connections auto-follow; delete nodes, related connections auto-clean
 - **Result**: Diagrams stay consistent, no "orphaned lines" or "broken connections"
 
 **⚡ Real-Time Reactive Updates**
 - Traditional tools: After moving nodes, manually adjust each line's start/end points
-- **ArchBoard**: Based on React Virtual DOM, connections auto-redraw when nodes move, silky smooth
+- **SmartArchitect**: Based on React Virtual DOM, connections auto-redraw when nodes move, silky smooth
 - **Result**: Freely adjust layout without worrying about "messy diagrams"
 
 **🎯 Programmatic Control**
 - Traditional tools: Each element is an independent "drawn shape"
-- **ArchBoard**: Nodes and edges are programmable data structures, support batch operations, import/export, version control
+- **SmartArchitect**: Nodes and edges are programmable data structures, support batch operations, import/export, version control
 - **Result**: Manage diagrams like code, supports Git version control, automated generation
 
 **🚀 Performance Optimization**
 - Traditional tools: Lag when canvas has many elements (full re-render)
-- **ArchBoard**: Built-in virtualization, only renders nodes in visible area
+- **SmartArchitect**: Built-in virtualization, only renders nodes in visible area
 - **Result**: Even 100+ node complex diagrams stay fluid
 
 **Simply put**:
 > Traditional tools are "drawing" → What you draw is what you get
-> **ArchBoard is "modeling"** → Nodes and relationships are alive, maintain consistency automatically
+> **SmartArchitect is "modeling"** → Nodes and relationships are alive, maintain consistency automatically
 
-This is why ArchBoard is better for "thinking organization" not just "drawing".
+This is why SmartArchitect is better for "thinking organization" not just "drawing".
 
 ### 3. Image Recognition - Whiteboard Photos to Flowcharts
 
@@ -342,9 +342,9 @@ Never worry about losing whiteboard content again.
 
 <div align="center">
 
-![ArchBoard Core Features](./docs/assets/gif/main.gif)
+![SmartArchitect Core Features](./docs/assets/gif/main.gif)
 
-*ArchBoard Complete Feature Showcase: From Conversational Generation to Visual Editing*
+*SmartArchitect Complete Feature Showcase: From Conversational Generation to Visual Editing*
 
 </div>
 
@@ -580,13 +580,13 @@ Real-time collaboration is planned for v0.6.
 
 | Tool | Positioning | Core Feature |
 |------|------------|-------------|
-| **ArchBoard** | Thinking companion | AI conversational generation, rapid idea visualization |
+| **SmartArchitect** | Thinking companion | AI conversational generation, rapid idea visualization |
 | ProcessOn | Online drawing tool | Manual drag-and-drop, rich templates |
 | Visio | Professional diagramming | Powerful features, steep learning curve |
 | Mermaid | Code-to-diagram | Developer-friendly, syntax barrier |
 | Excalidraw | Hand-drawn whiteboard | Freeform sketching, lacks AI |
 
-**ArchBoard's Uniqueness**:
+**SmartArchitect's Uniqueness**:
 - ✅ Lower barrier: Talk to draw, no tool learning
 - ✅ Fast iteration: Conversational refinement, ideas get clearer
 - ✅ Dual engine: Structured + freeform, flexible switching
@@ -620,7 +620,7 @@ Thanks to all contributors!
 
 ## ⭐ Give Us a Star!
 
-If ArchBoard helped you clarify your thinking, please give us a Star 🌟
+If SmartArchitect helped you clarify your thinking, please give us a Star 🌟
 
 [![Star History Chart](https://api.star-history.com/svg?repos=luguochang/SmartArchitect&type=Date)](https://star-history.com/#luguochang/SmartArchitect&Date)
 
@@ -630,8 +630,8 @@ If ArchBoard helped you clarify your thinking, please give us a Star 🌟
 
 **Make Ideas Clear, Make Communication Efficient**
 
-Made with ❤️ by [ArchBoard Team](https://github.com/luguochang/SmartArchitect/graphs/contributors)
+Made with ❤️ by [SmartArchitect Team](https://github.com/luguochang/SmartArchitect/graphs/contributors)
 
-[⬆️ Back to Top](#archboard)
+[⬆️ Back to Top](#smartarchitect)
 
 </div>
