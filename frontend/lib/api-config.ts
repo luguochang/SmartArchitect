@@ -3,10 +3,13 @@
  * 统一管理所有后端 API 的 URL
  */
 
-// 从环境变量获取后端 URL，如果没有则使用默认值
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8003';
+// 使用相对路径，通过 Next.js rewrites 代理到后端
+// 在 next.config.js 中配置了 rewrites，会将 /api/* 代理到后端
+// 本地开发: /api/* -> http://localhost:8003/api/*
+// 生产环境: /api/* -> BACKEND_ORIGIN/api/*
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
-// API 端点
+// API 端点 - 使用相对路径
 export const API_ENDPOINTS = {
   // Health
   health: `${API_BASE_URL}/api/health`,
