@@ -622,8 +622,6 @@ Thanks to all contributors!
 
 If SmartArchitect helped you clarify your thinking, please give us a Star 🌟
 
-[![Star History Chart](https://api.star-history.com/svg?repos=luguochang/SmartArchitect&type=Date)](https://star-history.com/#luguochang/SmartArchitect&Date)
-
 ---
 
 <div align="center">

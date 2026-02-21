@@ -621,8 +621,6 @@ MIT License - 自由使用、修改、商用
 
 如果 SmartArchitect 帮你理清了思路，请给个 Star 鼓励一下 🌟
 
-[![Star History Chart](https://api.star-history.com/svg?repos=luguochang/SmartArchitect&type=Date)](https://star-history.com/#luguochang/SmartArchitect&Date)
-
 ---
 
 <div align="center">
