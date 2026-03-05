@@ -1,4 +1,4 @@
-import json
+﻿import json
 import logging
 import random
 import time
@@ -143,19 +143,24 @@ CRITICAL RULES:
 4) Do NOT return images/icons; use basic shapes and arrows only. Ensure the JSON is closed (ends with "}}").
 
 REQUIRED ELEMENT MIX:
-- Total 12-18 elements.
-- At least 6 shape nodes (rectangle/ellipse/diamond) for the main content.
-- At least 4 connectors (arrow/line) linking the shapes into a flow.
-- At least 2 text labels to annotate nodes or flows.
+- Total 28-84 elements depending on complexity.
+- At least 12 shape nodes (rectangle/ellipse/diamond) for the main content.
+- At least 14 connectors (arrow/line) linking the shapes into a complete flow.
+- Ensure every major shape participates in at least one incoming or outgoing connector.
+- Use 6-14 text labels to annotate decisions, branches, critical paths, and failure handling.
+- For complex requests, include at least 1-2 branch merges and at least 1 loop-back connector.
+- Output elements in this order: (1) core shapes, (2) connectors, (3) text labels.
 
 LAYOUT:
 - Canvas: {width}x{height}px. Keep a 40px margin; avoid overlap; distribute nodes evenly left-to-right/top-to-bottom.
+- If request is "complex" or "production-level", use at least 75% of canvas area.
 - Make connectors clean and direct; avoid zero-length points.
 
 STYLE (hand-drawn):
 - strokeColor: choose from ["#1e1e1e","#2563eb","#dc2626","#059669"]
 - backgroundColor: choose from ["transparent","#a5d8ff","#fde68a","#bbf7d0"]
 - fillStyle: "hachure" or "solid"; roughness: 1 for sketch feel; strokeWidth: 2.
+- Use compact JSON (minimal whitespace) and short element ids to reduce streaming latency.
 
 USER REQUEST: "{prompt}"
 
@@ -244,14 +249,12 @@ Return ONLY the JSON structure above. Generate the full set of elements; do not 
 
     def _validate_scene(self, ai_data: dict, width: int, height: int) -> ExcalidrawScene:
         """
-        Validate and clean Excalidraw scene data with deep element validation.
-        Based on FlowPilot's sanitizeData implementation.
+        Validate and clean Excalidraw scene data.
 
-        Returns mock scene if ai_data is None or invalid.
+        Returns a professional fallback scene if input is invalid or unusable.
         """
-        # Handle None or invalid input - return mock scene immediately
         if ai_data is None or not isinstance(ai_data, dict):
-            logger.warning("Invalid ai_data provided to _validate_scene, returning mock scene")
+            logger.warning("Invalid ai_data provided to _validate_scene, returning fallback scene")
             return self._mock_scene()
 
         elements = ai_data.get("elements", [])
@@ -259,102 +262,84 @@ Return ONLY the JSON structure above. Generate the full set of elements; do not 
             elements = []
 
         cleaned = []
-        max_elems = 50  # ✅ Increased from 25 to 50 to support complex diagrams
-        seen_ids = set()  # Track unique IDs
+        max_elems = 120  # keep larger diagrams from being truncated
+        seen_ids = set()
+        allowed_types = {"rectangle", "ellipse", "diamond", "freedraw", "line", "arrow", "text"}
 
         for elem in elements[:max_elems]:
-            # Deep validation: filter out invalid elements
             if not isinstance(elem, dict):
-                logger.warning(f"❌ Skipping non-dict element: {type(elem)}")
+                logger.warning("Skipping non-dict element: %s", type(elem))
                 continue
 
-            # Type and ID must be strings (MANDATORY)
             etype = elem.get("type")
             elem_id = elem.get("id")
             if not isinstance(etype, str) or not isinstance(elem_id, str):
-                logger.warning(f"❌ Skipping element with invalid type/id: type={type(etype)}, id={type(elem_id)}")
+                logger.warning(
+                    "Skipping element with invalid type/id: type=%s, id=%s",
+                    type(etype),
+                    type(elem_id),
+                )
                 continue
 
-            # Ensure ID uniqueness
             if elem_id in seen_ids:
-                logger.warning(f"⚠️ Duplicate ID detected: {elem_id}, regenerating...")
+                logger.warning("Duplicate element id detected: %s, regenerating", elem_id)
                 elem_id = f"{elem_id}-{random.randint(1000,9999)}"
             seen_ids.add(elem_id)
 
-            # Validate element type
-            if etype not in ["rectangle", "ellipse", "diamond", "freedraw", "line", "arrow", "text"]:
-                logger.warning(f"❌ Skipping unsupported element type: {etype}")
+            if etype not in allowed_types:
+                logger.warning("Skipping unsupported element type: %s", etype)
                 continue
 
-            # CRITICAL: Linear elements MUST have valid points array
-            if etype in ["line", "arrow", "draw", "freedraw"]:
+            if etype in {"line", "arrow", "draw", "freedraw"}:
                 points = elem.get("points", [])
                 if not isinstance(points, list) or len(points) == 0:
-                    logger.warning(f"❌ Skipping {etype} element '{elem_id}' without points array")
+                    logger.warning("Skipping %s element '%s' without points array", etype, elem_id)
                     continue
-
-                # Validate each point is [number, number] format
-                are_points_valid = all(
-                    isinstance(p, list) and len(p) >= 2 and
-                    isinstance(p[0], (int, float)) and isinstance(p[1], (int, float))
+                valid_points = all(
+                    isinstance(p, list)
+                    and len(p) >= 2
+                    and isinstance(p[0], (int, float))
+                    and isinstance(p[1], (int, float))
                     for p in points
                 )
-                if not are_points_valid:
-                    logger.warning(f"❌ Skipping {etype} element '{elem_id}' with invalid points format")
+                if not valid_points:
+                    logger.warning("Skipping %s element '%s' with invalid points format", etype, elem_id)
                     continue
 
-            # Text elements MUST have text property
-            if etype == "text":
-                if not isinstance(elem.get("text"), str):
-                    logger.warning(f"❌ Skipping text element '{elem_id}' without text property")
-                    continue
+            if etype == "text" and not isinstance(elem.get("text"), str):
+                logger.warning("Skipping text element '%s' without text property", elem_id)
+                continue
 
-            # ✅ Element passed all validation, add to cleaned list
-            logger.debug(f"✅ Validated element '{elem_id}' (type: {etype})")
+            logger.debug("Validated element '%s' (type: %s)", elem_id, etype)
+            base = self._base_element(id=elem_id, type=etype)
 
-            # Create base element with defaults
-            base = self._base_element(
-                id=elem_id,
-                type=etype,
-            )
-
-            # For line/arrow elements, normalize points
-            if etype in ["line", "arrow", "freedraw"]:
+            if etype in {"line", "arrow", "freedraw"}:
                 points = elem.get("points", [])
-                if points:
-                    # Normalize line: calculate bounding box and adjust coordinates
-                    xs = [float(p[0]) for p in points]
-                    ys = [float(p[1]) for p in points]
-                    min_x, max_x = min(xs), max(xs)
-                    min_y, max_y = min(ys), max(ys)
+                xs = [float(p[0]) for p in points]
+                ys = [float(p[1]) for p in points]
+                min_x, max_x = min(xs), max(xs)
+                min_y, max_y = min(ys), max(ys)
 
-                    # Adjust x,y to top-left, shift points to be relative
-                    original_x = float(elem.get("x", 100))
-                    original_y = float(elem.get("y", 100))
-                    normalized_x = original_x + min_x
-                    normalized_y = original_y + min_y
-                    normalized_points = [[x - min_x, y - min_y] for x, y in points]
+                original_x = float(elem.get("x", 100))
+                original_y = float(elem.get("y", 100))
+                normalized_x = original_x + min_x
+                normalized_y = original_y + min_y
+                normalized_points = [[x - min_x, y - min_y] for x, y in points]
 
-                    # Width/height from bounding box
-                    w = max(max_x - min_x, 1)
-                    h = max(max_y - min_y, 1)
+                w = max(max_x - min_x, 1)
+                h = max(max_y - min_y, 1)
+                base["x"] = max(0, min(normalized_x, width - w))
+                base["y"] = max(0, min(normalized_y, height - h))
+                base["width"] = w
+                base["height"] = h
+                base["points"] = normalized_points
 
-                    base["x"] = max(0, min(normalized_x, width - w))
-                    base["y"] = max(0, min(normalized_y, height - h))
-                    base["width"] = w
-                    base["height"] = h
-                    base["points"] = normalized_points
-
-                    # Arrow-specific properties
-                    if etype == "arrow":
-                        if "startBinding" in elem and isinstance(elem["startBinding"], dict):
-                            base["startBinding"] = elem["startBinding"]
-                        if "endBinding" in elem and isinstance(elem["endBinding"], dict):
-                            base["endBinding"] = elem["endBinding"]
-                else:
-                    continue  # Skip invalid line without points
+                if etype == "arrow":
+                    if isinstance(elem.get("startBinding"), dict):
+                        base["startBinding"] = elem["startBinding"]
+                    if isinstance(elem.get("endBinding"), dict):
+                        base["endBinding"] = elem["endBinding"]
             else:
-                # Regular element handling
                 x = float(elem.get("x", base["x"]))
                 y = float(elem.get("y", base["y"]))
                 w = min(max(float(elem.get("width", base["width"])), 5), 400)
@@ -364,35 +349,32 @@ Return ONLY the JSON structure above. Generate the full set of elements; do not 
                 base["width"] = w
                 base["height"] = h
 
-            # Apply element-specific properties with validation
-            if "strokeColor" in elem and isinstance(elem["strokeColor"], str):
+            if isinstance(elem.get("strokeColor"), str):
                 base["strokeColor"] = elem["strokeColor"]
-            if "backgroundColor" in elem and isinstance(elem["backgroundColor"], str):
+            if isinstance(elem.get("backgroundColor"), str):
                 base["backgroundColor"] = elem["backgroundColor"]
-            if "fillStyle" in elem and isinstance(elem["fillStyle"], str):
+            if isinstance(elem.get("fillStyle"), str):
                 base["fillStyle"] = elem["fillStyle"]
-            if "strokeWidth" in elem and isinstance(elem["strokeWidth"], (int, float)):
+            if isinstance(elem.get("strokeWidth"), (int, float)):
                 base["strokeWidth"] = max(1, float(elem["strokeWidth"]))
-            if "strokeStyle" in elem and isinstance(elem["strokeStyle"], str):
+            if isinstance(elem.get("strokeStyle"), str):
                 base["strokeStyle"] = elem["strokeStyle"]
-            if "roughness" in elem and isinstance(elem["roughness"], (int, float)):
+            if isinstance(elem.get("roughness"), (int, float)):
                 base["roughness"] = float(elem["roughness"])
-            if "opacity" in elem and isinstance(elem["opacity"], (int, float)):
+            if isinstance(elem.get("opacity"), (int, float)):
                 base["opacity"] = max(0, min(100, float(elem["opacity"])))
-            if "angle" in elem and isinstance(elem["angle"], (int, float)):
+            if isinstance(elem.get("angle"), (int, float)):
                 base["angle"] = float(elem["angle"])
 
-            # Text-specific properties
             if etype == "text":
                 base["text"] = elem.get("text", "Label")
-                if "fontSize" in elem and isinstance(elem["fontSize"], (int, float)):
+                if isinstance(elem.get("fontSize"), (int, float)):
                     base["fontSize"] = int(elem["fontSize"])
                 else:
                     base["fontSize"] = 20
                 base["fontFamily"] = elem.get("fontFamily", 1)
                 base["textAlign"] = elem.get("textAlign", "center")
 
-            # Ensure groupIds and boundElements are arrays
             if not isinstance(base.get("groupIds"), list):
                 base["groupIds"] = []
             if not isinstance(base.get("boundElements"), list):
@@ -400,25 +382,26 @@ Return ONLY the JSON structure above. Generate the full set of elements; do not 
 
             cleaned.append(base)
 
-        # If no valid elements after cleaning, return mock scene
         if not cleaned:
-            logger.warning(f"⚠️ No valid elements after cleaning (started with {len(elements)} raw elements), returning mock scene")
+            logger.warning(
+                "No valid elements after cleaning (started with %s raw elements), returning fallback scene",
+                len(elements),
+            )
             mock = self._mock_scene()
             mock.appState["message"] = "AI generated invalid elements, showing fallback scene"
             return mock
 
-        logger.info(f"✅ Validation complete: {len(cleaned)}/{len(elements[:max_elems])} elements passed (filtered {len(elements[:max_elems]) - len(cleaned)})")
+        logger.info(
+            "Validation complete: %s/%s elements passed (filtered %s)",
+            len(cleaned),
+            len(elements[:max_elems]),
+            len(elements[:max_elems]) - len(cleaned),
+        )
 
-        # Validate and clean appState
         app_state = ai_data.get("appState") or {}
         if not isinstance(app_state, dict):
             app_state = {}
-
-        # Remove collaborators to avoid "forEach is not a function" error
-        if "collaborators" in app_state:
-            del app_state["collaborators"]
-
-        # Ensure zoom is properly formatted
+        app_state.pop("collaborators", None)
         app_state.setdefault("zoom", {"value": 1})
 
         files = ai_data.get("files") or {}
@@ -428,87 +411,109 @@ Return ONLY the JSON structure above. Generate the full set of elements; do not 
         return ExcalidrawScene(elements=cleaned, appState=app_state, files=files)
 
     def _mock_scene(self) -> ExcalidrawScene:
-        # simple fallback: neon cat face
-        face = self._base_element(
-            id="cat-face",
+        """Professional fallback scene used when AI output is invalid."""
+        start = self._base_element(
+            id="fallback-start",
             type="ellipse",
-            x=200,
-            y=200,
-            width=260,
-            height=220,
-            strokeColor="#a855f7",
-            backgroundColor="rgba(168,85,247,0.15)",
-            roughness=1,
-            strokeWidth=3,
-          )
-        ear_left = self._base_element(id="cat-ear-left", type="rectangle", x=210, y=140, width=70, height=70, strokeColor="#22d3ee", backgroundColor="rgba(34,211,238,0.2)")
-        ear_right = self._base_element(id="cat-ear-right", type="rectangle", x=330, y=140, width=70, height=70, strokeColor="#22d3ee", backgroundColor="rgba(34,211,238,0.2)")
-        eye_left = self._base_element(id="cat-eye-left", type="ellipse", x=250, y=250, width=40, height=50, strokeColor="#22c55e", backgroundColor="rgba(34,197,94,0.4)")
-        eye_right = self._base_element(id="cat-eye-right", type="ellipse", x=330, y=250, width=40, height=50, strokeColor="#22c55e", backgroundColor="rgba(34,197,94,0.4)")
-        nose = self._base_element(id="cat-nose", type="ellipse", x=300, y=310, width=22, height=16, strokeColor="#f59e0b", backgroundColor="rgba(245,158,11,0.7)")
+            x=120,
+            y=280,
+            width=90,
+            height=90,
+            strokeColor="#2563eb",
+            backgroundColor="#dbeafe",
+            strokeWidth=2,
+        )
+        process = self._base_element(
+            id="fallback-process",
+            type="rectangle",
+            x=300,
+            y=280,
+            width=220,
+            height=90,
+            strokeColor="#1f2937",
+            backgroundColor="#f3f4f6",
+            strokeWidth=2,
+        )
+        decision = self._base_element(
+            id="fallback-decision",
+            type="diamond",
+            x=610,
+            y=255,
+            width=140,
+            height=140,
+            strokeColor="#b45309",
+            backgroundColor="#fef3c7",
+            strokeWidth=2,
+        )
+        end = self._base_element(
+            id="fallback-end",
+            type="ellipse",
+            x=860,
+            y=280,
+            width=90,
+            height=90,
+            strokeColor="#059669",
+            backgroundColor="#d1fae5",
+            strokeWidth=2,
+        )
+        a1 = self._base_element(
+            id="fallback-arrow-1",
+            type="arrow",
+            x=210,
+            y=325,
+            width=90,
+            height=1,
+            points=[[0, 0], [90, 0]],
+            endArrowhead="arrow",
+            strokeColor="#1f2937",
+            backgroundColor="transparent",
+            strokeWidth=2,
+        )
+        a2 = self._base_element(
+            id="fallback-arrow-2",
+            type="arrow",
+            x=520,
+            y=325,
+            width=90,
+            height=1,
+            points=[[0, 0], [90, 0]],
+            endArrowhead="arrow",
+            strokeColor="#1f2937",
+            backgroundColor="transparent",
+            strokeWidth=2,
+        )
+        a3 = self._base_element(
+            id="fallback-arrow-3",
+            type="arrow",
+            x=750,
+            y=325,
+            width=110,
+            height=1,
+            points=[[0, 0], [110, 0]],
+            endArrowhead="arrow",
+            strokeColor="#1f2937",
+            backgroundColor="transparent",
+            strokeWidth=2,
+        )
 
-        # IMPORTANT: Excalidraw line elements must be "normalized"
-        # - points are relative to x,y
-        # - width/height must match the bounding box of points
-        # - x,y is the top-left corner
-        whisker_left = self._base_element(
-            id="whisker-left",
-            type="line",
-            x=240,
-            y=312,  # adjusted so points are non-negative
-            width=60,
-            height=8,  # max_y - min_y = 0 - (-8) = 8
-            points=[[0, 8], [60, 0]],  # relative coordinates, adjusted
-            strokeColor="#cbd5e1",
-            backgroundColor="transparent"
-        )
-        whisker_left2 = self._base_element(
-            id="whisker-left-2",
-            type="line",
-            x=240,
-            y=330,
-            width=60,
-            height=8,
-            points=[[0, 0], [60, 8]],  # relative coordinates
-            strokeColor="#cbd5e1",
-            backgroundColor="transparent"
-        )
-        whisker_right = self._base_element(
-            id="whisker-right",
-            type="line",
-            x=280,  # adjusted: original 340 - 60 = 280
-            y=312,  # adjusted
-            width=60,
-            height=8,
-            points=[[60, 8], [0, 0]],  # relative coordinates, reversed
-            strokeColor="#cbd5e1",
-            backgroundColor="transparent"
-        )
-        whisker_right2 = self._base_element(
-            id="whisker-right-2",
-            type="line",
-            x=280,  # adjusted
-            y=330,
-            width=60,
-            height=8,
-            points=[[60, 0], [0, 8]],  # relative coordinates, reversed
-            strokeColor="#cbd5e1",
-            backgroundColor="transparent"
-        )
+        labels = [
+            self._base_element(id="fallback-text-start", type="text", x=145, y=314, width=40, height=24, text="Start", fontSize=20),
+            self._base_element(id="fallback-text-process", type="text", x=342, y=314, width=140, height=24, text="Process", fontSize=20),
+            self._base_element(id="fallback-text-decision", type="text", x=642, y=314, width=80, height=24, text="Decision", fontSize=20),
+            self._base_element(id="fallback-text-end", type="text", x=892, y=314, width=30, height=24, text="End", fontSize=20),
+        ]
 
-        elements = [face, ear_left, ear_right, eye_left, eye_right, nose, whisker_left, whisker_left2, whisker_right, whisker_right2]
+        elements = [start, process, decision, end, a1, a2, a3, *labels]
         app_state = {
-            # Don't override user's background color preference
-            # "viewBackgroundColor": "#0f172a",
-            "currentItemStrokeColor": "#22d3ee",
+            "currentItemStrokeColor": "#1f2937",
             "currentItemBackgroundColor": "transparent",
             "currentItemFillStyle": "hachure",
-            "currentItemStrokeWidth": 3,
+            "currentItemStrokeWidth": 2,
             "currentItemRoughness": 1,
             "scrollX": 0,
             "scrollY": 0,
             "zoom": {"value": 1},
-            "message": "mock fallback",
+            "message": "fallback scene",
         }
         return ExcalidrawScene(elements=elements, appState=app_state, files={})
 
@@ -582,3 +587,6 @@ Return ONLY the JSON structure above. Generate the full set of elements; do not 
 
 def create_excalidraw_service() -> ExcalidrawGeneratorService:
     return ExcalidrawGeneratorService()
+
+
+

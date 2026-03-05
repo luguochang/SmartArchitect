@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 from typing import List, Optional, Literal
 
 
@@ -60,8 +60,8 @@ class GraphToMermaidResponse(BaseModel):
 class ModelConfig(BaseModel):
     provider: Literal["gemini", "openai", "claude", "siliconflow", "custom"]
     api_key: str
-    model_name: str
-    base_url: Optional[str] = None
+    model_name: str = Field(validation_alias=AliasChoices("model_name", "model"))
+    base_url: Optional[str] = Field(default=None, validation_alias=AliasChoices("base_url", "api_base"))
 
 
 class ModelConfigResponse(BaseModel):
@@ -75,8 +75,8 @@ class ModelPreset(BaseModel):
     name: str  # 显示名称（如 "个人 Gemini", "公司 OpenAI"）
     provider: Literal["gemini", "openai", "claude", "siliconflow", "custom"]
     api_key: str
-    model_name: str
-    base_url: Optional[str] = None
+    model_name: str = Field(validation_alias=AliasChoices("model_name", "model"))
+    base_url: Optional[str] = Field(default=None, validation_alias=AliasChoices("base_url", "api_base"))
     is_default: bool = False  # 是否为默认配置
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
@@ -86,16 +86,16 @@ class ModelPresetCreate(BaseModel):
     name: str
     provider: Literal["gemini", "openai", "claude", "siliconflow", "custom"]
     api_key: str
-    model_name: str
-    base_url: Optional[str] = None
+    model_name: str = Field(validation_alias=AliasChoices("model_name", "model"))
+    base_url: Optional[str] = Field(default=None, validation_alias=AliasChoices("base_url", "api_base"))
     is_default: bool = False
 
 
 class ModelPresetUpdate(BaseModel):
     name: Optional[str] = None
     api_key: Optional[str] = None
-    model_name: Optional[str] = None
-    base_url: Optional[str] = None
+    model_name: Optional[str] = Field(default=None, validation_alias=AliasChoices("model_name", "model"))
+    base_url: Optional[str] = Field(default=None, validation_alias=AliasChoices("base_url", "api_base"))
     is_default: Optional[bool] = None
 
 
@@ -302,8 +302,8 @@ class ChatGenerationRequest(BaseModel):
     diagram_type: Literal["flow", "architecture"] = "flow"
     architecture_type: Optional[Literal["layered", "business", "technical", "deployment", "domain"]] = "layered"
     api_key: Optional[str] = None
-    base_url: Optional[str] = None
-    model_name: Optional[str] = None
+    base_url: Optional[str] = Field(default=None, validation_alias=AliasChoices("base_url", "api_base"))
+    model_name: Optional[str] = Field(default=None, validation_alias=AliasChoices("model_name", "model"))
 
     # 🆕 增量生成参数
     incremental_mode: Optional[bool] = False  # 是否启用增量模式
@@ -375,13 +375,13 @@ class ExcalidrawGenerateRequest(BaseModel):
     height: Optional[int] = 800
     provider: Optional[Literal["gemini", "openai", "claude", "siliconflow", "custom"]] = "custom"
     api_key: Optional[str] = None
-    base_url: Optional[str] = None
-    model_name: Optional[str] = None
+    base_url: Optional[str] = Field(default=None, validation_alias=AliasChoices("base_url", "api_base"))
+    model_name: Optional[str] = Field(default=None, validation_alias=AliasChoices("model_name", "model"))
 
 
 class ExcalidrawScene(BaseModel):
     elements: List[dict]
-    appState: dict = Field(default_factory=dict)
+    appState: dict = Field(default_factory=lambda: {"viewBackgroundColor": "#ffffff"})
     files: dict = Field(default_factory=dict)
 
 
@@ -453,6 +453,13 @@ class RefinedSectionResponse(BaseModel):
     success: bool = True
 
 
+# Refine section request
+class RefineSectionRequest(BaseModel):
+    section: Literal["intro", "body", "conclusion"]
+    user_feedback: str
+    rag_context: Optional[dict] = None
+
+
 # Improvement suggestion
 class ImprovementSuggestion(BaseModel):
     section: Literal["intro", "body", "conclusion", "overall"]
@@ -486,8 +493,8 @@ class VisionToExcalidrawRequest(BaseModel):
     prompt: Optional[str] = Field(None, description="Additional context or instructions")
     provider: Literal["gemini", "openai", "claude", "siliconflow", "custom"] = "custom"
     api_key: Optional[str] = Field(None, description="API key for the provider")
-    base_url: Optional[str] = Field(None, description="Base URL for custom provider")
-    model_name: Optional[str] = Field(None, description="Model name (e.g., claude-sonnet-4-5-20250929)")
+    base_url: Optional[str] = Field(None, description="Base URL for custom provider", validation_alias=AliasChoices("base_url", "api_base"))
+    model_name: Optional[str] = Field(None, description="Model name (e.g., claude-sonnet-4-5-20250929)", validation_alias=AliasChoices("model_name", "model"))
     width: Optional[int] = Field(1200, description="Canvas width")
     height: Optional[int] = Field(800, description="Canvas height")
 
@@ -498,8 +505,8 @@ class VisionToReactFlowRequest(BaseModel):
     prompt: Optional[str] = Field(None, description="Additional context or instructions")
     provider: Literal["gemini", "openai", "claude", "siliconflow", "custom"] = "custom"
     api_key: Optional[str] = Field(None, description="API key for the provider")
-    base_url: Optional[str] = Field(None, description="Base URL for custom provider")
-    model_name: Optional[str] = Field(None, description="Model name")
+    base_url: Optional[str] = Field(None, description="Base URL for custom provider", validation_alias=AliasChoices("base_url", "api_base"))
+    model_name: Optional[str] = Field(None, description="Model name", validation_alias=AliasChoices("model_name", "model"))
     preserve_layout: bool = Field(True, description="Preserve original node positions")
     fast_mode: bool = Field(True, description="Use fast mode (simplified prompt)")
 
@@ -529,13 +536,6 @@ class ExcalidrawElement(BaseModel):
     verticalAlign: Optional[str] = "middle"
     startBinding: Optional[dict] = None
     endBinding: Optional[dict] = None
-
-
-# Excalidraw scene
-class ExcalidrawScene(BaseModel):
-    elements: List[dict]  # Use dict to allow flexible Excalidraw schema
-    appState: Optional[dict] = Field(default_factory=lambda: {"viewBackgroundColor": "#ffffff"})
-    files: Optional[dict] = Field(default_factory=dict)
 
 
 # Vision to Excalidraw response

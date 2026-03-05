@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { X, Sparkles, Clock, Users, Target, Loader2, Check, AlertCircle, FileText } from "lucide-react";
 import { useArchitectStore } from "@/lib/store/useArchitectStore";
+import { API_BASE_URL } from "@/lib/api-config";
 import { toast } from "sonner";
 import type {
   ScriptDuration,
@@ -116,7 +117,7 @@ export default function ScriptGenerator({
 
       // Call streaming API
       const response = await fetch(
-        `/api/export/script-stream?${params.toString()}`,
+        `${API_BASE_URL}/api/export/script-stream?${params.toString()}`,
         {
           method: "POST",
           headers: {
@@ -209,7 +210,7 @@ export default function ScriptGenerator({
                     setCurrentStep("正在保存草稿...");
                     setProgressLog((prev) => [...prev, `💾 保存草稿到服务器...`]);
 
-                    const saveResponse = await fetch(`/api/export/script/${scriptId}/draft`, {
+                    const saveResponse = await fetch(`${API_BASE_URL}/api/export/script/${scriptId}/draft`, {
                       method: "PUT",
                       headers: {
                         "Content-Type": "application/json",

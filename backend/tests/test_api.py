@@ -22,7 +22,7 @@ def test_root_endpoint():
     assert response.status_code == 200
     data = response.json()
     assert data["message"] == "SmartArchitect AI API"
-    assert data["version"] == "0.4.0"
+    assert data["version"] == "0.5.0"
     assert "phase" in data
 
 
@@ -129,6 +129,33 @@ def test_models_save_config():
     assert "message" in data
 
 
+def test_models_save_config_with_legacy_field_names():
+    """兼容旧字段：api_base/model 应可被 models/config 接口接受。"""
+    response = client.post(
+        "/api/models/config",
+        json={
+            "provider": "custom",
+            "api_key": "test_key",
+            "api_base": "https://www.right.codes/codex/v1",
+            "model": "gpt-5.2"
+        }
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+
+
+def test_default_model_preset_is_right_codes():
+    """默认预设应固定为 right.codes + gpt-5.2。"""
+    response = client.get("/api/models/presets/default/current")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert data["preset"]["provider"] == "custom"
+    assert data["preset"]["base_url"] == "https://www.right.codes/codex/v1"
+    assert data["preset"]["model_name"] == "gpt-5.2"
+
+
 def test_models_save_siliconflow_config():
     """Ensure SiliconFlow provider config is accepted"""
     response = client.post(
@@ -184,6 +211,222 @@ def test_chat_generator_calls_ai_and_normalizes(monkeypatch):
     assert len(data["nodes"]) >= 2
     assert data["nodes"][0]["position"]["x"] is not None
     assert len(data["edges"]) >= 1
+
+
+def test_chat_generator_stream_emits_partial_graph_events(monkeypatch):
+    """Stream endpoint should emit PARTIAL_NODE/PARTIAL_EDGE before final layout."""
+    from app.api import chat_generator as cg_api
+
+    class DummyPresetsService:
+        def get_active_config(self, **kwargs):
+            return {
+                "provider": "custom",
+                "api_key": "test-key",
+                "base_url": "https://example.invalid/v1",
+                "model_name": "mock-model",
+            }
+
+    class DummyVisionService:
+        provider = "custom"
+        model_name = "mock-model"
+
+        async def generate_with_stream(self, prompt: str):
+            chunks = [
+                '{"nodes":[{"id":"start","type":"default","position":{"x":0,"y":0},"data":{"label":"Start"}},',
+                '{"id":"step-1","type":"default","position":{"x":260,"y":0},"data":{"label":"Process"}}],',
+                '"edges":[{"id":"e1","source":"start","target":"step-1","label":"next"}],',
+                '"mermaid_code":"graph TD\\nstart-->step-1"}',
+            ]
+            for item in chunks:
+                yield item
+
+    monkeypatch.setattr(cg_api, "get_model_presets_service", lambda: DummyPresetsService(), raising=True)
+    monkeypatch.setattr(cg_api, "create_vision_service", lambda **kwargs: DummyVisionService(), raising=True)
+
+    response = client.post(
+        "/api/chat-generator/generate-stream",
+        json={"user_input": "stream graph please", "provider": "custom", "diagram_type": "flow"},
+    )
+
+    assert response.status_code == 200
+    payload = response.text
+    assert "[PARTIAL_NODE]" in payload
+    assert "[PARTIAL_EDGE]" in payload
+    assert "[LAYOUT_DATA]" in payload
+    assert "[END] done" in payload
+    assert payload.index("[PARTIAL_NODE]") < payload.index("[LAYOUT_DATA]")
+
+
+def test_chat_generator_auto_failover_on_usage_limit(monkeypatch):
+    """Non-stream chat generation should fail over to backup config when primary is rate-limited."""
+    from app.services import chat_generator as cg_service
+
+    sample_graph = {
+        "nodes": [
+            {"id": "start", "type": "default", "position": {"x": 0, "y": 0}, "data": {"label": "Start"}},
+            {"id": "step", "type": "default", "position": {"x": 240, "y": 0}, "data": {"label": "Step"}},
+        ],
+        "edges": [{"id": "e1", "source": "start", "target": "step", "label": "next"}],
+        "mermaid_code": "graph TD\nstart-->step",
+    }
+    attempted_keys = []
+
+    class DummyPresetsService:
+        def get_active_config(self, **kwargs):
+            return {
+                "provider": "custom",
+                "api_key": "primary-key",
+                "base_url": "https://primary.invalid/v1",
+                "model_name": "primary-model",
+            }
+
+        def get_failover_configs(self, primary_config=None, max_candidates=3):
+            return [{
+                "provider": "custom",
+                "api_key": "backup-key",
+                "base_url": "https://backup.invalid/v1",
+                "model_name": "backup-model",
+            }]
+
+    class DummyVisionService:
+        def __init__(self, api_key: str):
+            self.api_key = api_key
+
+    def fake_vision_service(provider, api_key=None, base_url=None, model_name=None):
+        return DummyVisionService(api_key=api_key or "")
+
+    async def fake_call(self, vision_service, prompt, provider):
+        attempted_keys.append(vision_service.api_key)
+        if vision_service.api_key == "primary-key":
+            raise RuntimeError("429 usage_limit_reached")
+        return sample_graph
+
+    monkeypatch.setattr(cg_service, "get_model_presets_service", lambda: DummyPresetsService(), raising=True)
+    monkeypatch.setattr(cg_service, "create_vision_service", fake_vision_service, raising=True)
+    monkeypatch.setattr(cg_service.ChatGeneratorService, "_call_ai_text_generation", fake_call, raising=True)
+
+    response = client.post(
+        "/api/chat-generator/generate",
+        json={"user_input": "generate with failover", "provider": "custom"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert len(data["nodes"]) == 2
+    assert attempted_keys == ["primary-key", "backup-key"]
+
+
+def test_chat_generator_stream_auto_failover_on_usage_limit(monkeypatch):
+    """Stream generation should fail over when primary stream path is rate-limited."""
+    from app.api import chat_generator as cg_api
+
+    attempted_keys = []
+
+    class DummyPresetsService:
+        def get_active_config(self, **kwargs):
+            return {
+                "provider": "custom",
+                "api_key": "primary-key",
+                "base_url": "https://primary.invalid/v1",
+                "model_name": "primary-model",
+            }
+
+        def get_failover_configs(self, primary_config=None, max_candidates=3):
+            return [{
+                "provider": "custom",
+                "api_key": "backup-key",
+                "base_url": "https://backup.invalid/v1",
+                "model_name": "backup-model",
+            }]
+
+    class DummyVisionService:
+        def __init__(self, api_key: str):
+            self.api_key = api_key
+            self.provider = "custom"
+            self.model_name = "mock-model"
+
+        async def generate_with_stream(self, prompt: str):
+            attempted_keys.append(self.api_key)
+            if self.api_key == "primary-key":
+                raise RuntimeError("429 usage_limit_reached")
+
+            chunks = [
+                '{"nodes":[{"id":"start","type":"default","position":{"x":0,"y":0},"data":{"label":"Start"}},',
+                '{"id":"step-1","type":"default","position":{"x":260,"y":0},"data":{"label":"Process"}}],',
+                '"edges":[{"id":"e1","source":"start","target":"step-1","label":"next"}],',
+                '"mermaid_code":"graph TD\\nstart-->step-1"}',
+            ]
+            for item in chunks:
+                yield item
+
+    monkeypatch.setattr(cg_api, "get_model_presets_service", lambda: DummyPresetsService(), raising=True)
+    monkeypatch.setattr(
+        cg_api,
+        "create_vision_service",
+        lambda provider, api_key=None, base_url=None, model_name=None: DummyVisionService(api_key=api_key or ""),
+        raising=True,
+    )
+
+    response = client.post(
+        "/api/chat-generator/generate-stream",
+        json={"user_input": "generate with stream failover", "provider": "custom", "diagram_type": "flow"},
+    )
+
+    assert response.status_code == 200
+    payload = response.text
+    assert "stream_failed" in payload
+    assert "[PARTIAL_NODE]" in payload
+    assert "[LAYOUT_DATA]" in payload
+    assert "[END] done" in payload
+    assert attempted_keys == ["primary-key", "backup-key"]
+
+
+# ============================================================
+# Excalidraw API Tests
+# ============================================================
+
+
+def test_excalidraw_stream_emits_partial_elements(monkeypatch):
+    """Excalidraw stream should emit PARTIAL_ELEMENT events before RESULT."""
+    from app.api import excalidraw as ex_api
+
+    class DummyPresetsService:
+        def get_active_config(self, **kwargs):
+            return {
+                "provider": "custom",
+                "api_key": "test-key",
+                "base_url": "https://example.invalid/v1",
+                "model_name": "mock-model",
+            }
+
+        def get_failover_configs(self, primary_config=None, max_candidates=3):
+            return []
+
+    class DummyVisionService:
+        async def generate_with_stream(self, prompt: str):
+            chunks = [
+                '{"elements":[{"id":"rect-1","type":"rectangle","x":120,"y":120,"width":200,"height":100},',
+                '{"id":"arrow-1","type":"arrow","x":340,"y":170,"width":160,"height":1,"points":[[0,0],[160,0]],"endArrowhead":"arrow"}],',
+                '"appState":{"viewBackgroundColor":"#ffffff"},"files":{}}',
+            ]
+            for chunk in chunks:
+                yield chunk
+
+    monkeypatch.setattr(ex_api, "get_model_presets_service", lambda: DummyPresetsService(), raising=True)
+    monkeypatch.setattr(ex_api, "create_vision_service", lambda **kwargs: DummyVisionService(), raising=True)
+
+    response = client.post(
+        "/api/excalidraw/generate-stream",
+        json={"prompt": "stream excalidraw scene", "provider": "custom"},
+    )
+
+    assert response.status_code == 200
+    payload = response.text
+    assert "[PARTIAL_ELEMENT]" in payload
+    assert "[RESULT]" in payload
+    assert "[END] done" in payload
+    assert payload.index("[PARTIAL_ELEMENT]") < payload.index("[RESULT]")
 
 
 # ============================================================
@@ -325,7 +568,8 @@ def test_rag_health():
     assert "pdf" in data["supported_formats"]
     assert "markdown" in data["supported_formats"]
     assert "docx" in data["supported_formats"]
-    assert data["embedding_model"] == "all-MiniLM-L6-v2"
+    assert "embedding_model" in data
+    assert data["embedding_model"]
 
 
 def test_rag_list_documents():

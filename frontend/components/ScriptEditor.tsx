@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { X, Save, Sparkles, RotateCcw, Clock, FileText, Lightbulb, Check, Loader2, Zap, History, Eye } from "lucide-react";
 import { toast } from "sonner";
 import RefineDialog from "./RefineDialog";
+import { API_BASE_URL } from "@/lib/api-config";
 import type {
   ScriptContent,
   ScriptMetadata,
@@ -85,7 +86,7 @@ export default function ScriptEditor({
         version: 0,
       };
 
-      const response = await fetch(`/api/export/script/${scriptId}/draft`, {
+      const response = await fetch(`${API_BASE_URL}/api/export/script/${scriptId}/draft`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -125,7 +126,7 @@ export default function ScriptEditor({
   const handleRefine = async (section: ScriptSection, feedback: string) => {
     setIsRefining(true);
     try {
-      const response = await fetch(`/api/export/script/${scriptId}/refine`, {
+      const response = await fetch(`${API_BASE_URL}/api/export/script/${scriptId}/refine`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -169,7 +170,7 @@ export default function ScriptEditor({
     setLoadingSuggestions(true);
     try {
       const response = await fetch(
-        `/api/export/script/${scriptId}/suggestions?focus_areas=clarity,engagement,flow`
+        `${API_BASE_URL}/api/export/script/${scriptId}/suggestions?focus_areas=clarity,engagement,flow`
       );
 
       if (!response.ok) {
@@ -221,7 +222,7 @@ export default function ScriptEditor({
         toast.info(`正在应用建议 ${i + 1}/${sortedSuggestions.length}: ${sug.issue}`);
 
         // 调用refine API
-        const response = await fetch(`/api/export/script/${scriptId}/refine`, {
+        const response = await fetch(`${API_BASE_URL}/api/export/script/${scriptId}/refine`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -304,7 +305,7 @@ export default function ScriptEditor({
 
     try {
       // 调用refine API预览
-      const response = await fetch(`/api/export/script/${scriptId}/refine`, {
+      const response = await fetch(`${API_BASE_URL}/api/export/script/${scriptId}/refine`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

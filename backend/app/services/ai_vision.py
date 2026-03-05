@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import base64
 import json
 import re
@@ -151,8 +151,10 @@ class AIVisionService:
                     self.client = OpenAI(
                         api_key=self.custom_api_key,
                         base_url=self.custom_base_url,
-                        timeout=120.0,
-                        max_retries=2
+                        # Vision requests can be large; allow a longer single attempt,
+                        # but avoid retry storms that amplify latency to >300s.
+                        timeout=180.0,
+                        max_retries=0
                     )
                     logger.info(f"Custom provider initialized with base_url: {self.custom_base_url}")
 
@@ -456,7 +458,7 @@ If original image is too dense:
    - If no label visible: use empty string ""
 
 5. **Edge ID Convention:**
-   - Format: "edge_{number}" or "edge_{source}_{target}"
+   - Format: "edge_{{number}}" or "edge_{{source}}_{{target}}"
    - Example: "edge_1", "edge_2" or "edge_node1_node2"
 
 **Example Edge Recognition:**
@@ -468,11 +470,11 @@ Image shows:
 
 Must output:
 edges: [
-  {"id": "edge_1", "source": "start", "target": "process_a", "label": ""},
-  {"id": "edge_2", "source": "process_a", "target": "decision_b", "label": ""},
-  {"id": "edge_3", "source": "decision_b", "target": "end", "label": "Yes"},
-  {"id": "edge_4", "source": "decision_b", "target": "process_c", "label": "No"},
-  {"id": "edge_5", "source": "process_c", "target": "end", "label": ""}
+  {{"id": "edge_1", "source": "start", "target": "process_a", "label": ""}},
+  {{"id": "edge_2", "source": "process_a", "target": "decision_b", "label": ""}},
+  {{"id": "edge_3", "source": "decision_b", "target": "end", "label": "Yes"}},
+  {{"id": "edge_4", "source": "decision_b", "target": "process_c", "label": "No"}},
+  {{"id": "edge_5", "source": "process_c", "target": "end", "label": ""}}
 ]
 ```
 
@@ -1390,8 +1392,23 @@ Step 9: If any validation fails: FIX before output, then re-validate
                     model_used=ai_data.get("model_used")
                 )
 
-            # 提取 warnings（流程图识别专用）
-            warnings = result_json.get("warnings", [])
+            # 规范化 warnings（流程图识别专用，兼容字符串/字典混合场景）
+            raw_warnings = result_json.get("warnings", [])
+            warnings: List[dict] = []
+            if isinstance(raw_warnings, list):
+                for item in raw_warnings:
+                    if isinstance(item, dict):
+                        warning_msg = item.get("message") or item.get("warning") or ""
+                        warnings.append(
+                            {
+                                "node_id": item.get("node_id"),
+                                "message": str(warning_msg),
+                            }
+                        )
+                    elif item is not None:
+                        warnings.append({"message": str(item)})
+            elif raw_warnings:
+                warnings = [{"message": str(raw_warnings)}]
 
             # 提取 analysis（流程图分析）
             flowchart_analysis = result_json.get("analysis", {})
@@ -1471,8 +1488,8 @@ Step 9: If any validation fails: FIX before output, then re-validate
                     }
                 ]
             }],
-            max_tokens=16384,
-            temperature=0.7
+            max_tokens=8192,
+            temperature=0.2
         )
 
         return response.choices[0].message.content
@@ -1522,8 +1539,8 @@ Step 9: If any validation fails: FIX before output, then re-validate
                     }
                 ]
             }],
-            max_tokens=16384,
-            temperature=0.7
+            max_tokens=8192,
+            temperature=0.2
         )
 
         return response.choices[0].message.content
@@ -1557,7 +1574,7 @@ Step 9: If any validation fails: FIX before output, then re-validate
 
             response = client.messages.create(
                 model=self.model_name,
-                max_tokens=16384,
+                max_tokens=8192,
                 messages=[{
                     "role": "user",
                     "content": [
@@ -1589,8 +1606,8 @@ Step 9: If any validation fails: FIX before output, then re-validate
                         }
                     ]
                 }],
-                max_tokens=16384,
-                temperature=0.7
+                max_tokens=8192,
+                temperature=0.2
             )
 
             return response.choices[0].message.content

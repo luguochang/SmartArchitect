@@ -7,7 +7,10 @@
 // 在 next.config.js 中配置了 rewrites，会将 /api/* 代理到后端
 // 本地开发: /api/* -> http://localhost:8003/api/*
 // 生产环境: /api/* -> BACKEND_ORIGIN/api/*
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
+const LOCAL_DEV_BACKEND_ORIGIN = "http://127.0.0.1:8003";
+export const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (process.env.NODE_ENV === "development" ? LOCAL_DEV_BACKEND_ORIGIN : "");
 
 // API 端点 - 使用相对路径
 export const API_ENDPOINTS = {

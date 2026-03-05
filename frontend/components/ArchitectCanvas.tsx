@@ -42,8 +42,42 @@ import { EmptyCanvasState } from "./EmptyCanvasState";
 
 type LayoutDirection = "TB" | "LR" | "BT" | "RL";
 
+const ARCHITECT_NODE_TYPES = {
+  default: DefaultNode,
+  database: DatabaseNode,
+  api: ApiNode,
+  service: ServiceNode,
+  gateway: GatewayNode,
+  cache: CacheNode,
+  queue: QueueNode,
+  storage: StorageNode,
+  client: ClientNode,
+  frame: FrameNode,
+  layerFrame: LayerFrameNode,
+};
+
+const ARCHITECT_EDGE_TYPES = {
+  glow: GlowEdge,
+  orthogonal: OrthogonalEdge,
+  straight: StraightEdge,
+  // Keep aliases for model output and legacy payloads.
+  smoothstep: OrthogonalEdge,
+  step: OrthogonalEdge,
+};
+
 function ArchitectCanvasInner() {
-  const { nodes, edges, onNodesChange, onEdgesChange, setEdges, setNodes, diagramType, deleteCanvasSession, setIncrementalMode } = useArchitectStore();
+  const {
+    nodes,
+    edges,
+    onNodesChange,
+    onEdgesChange,
+    setEdges,
+    setNodes,
+    diagramType,
+    deleteCanvasSession,
+    setIncrementalMode,
+    isGeneratingFlowchart,
+  } = useArchitectStore();
   const { presentationStyleId, setPresentationStyle, fontStyleId, setFontStyle } = useFlowchartStyleStore();
   const { fitView, project } = useReactFlow();
   const [layoutDirection, setLayoutDirection] = useState<LayoutDirection>("LR"); // 默认左到右
@@ -53,6 +87,7 @@ function ArchitectCanvasInner() {
 
   // Get current flowchart presentation style
   const { currentPresentationStyle, edgeType } = useFlowchartStyleStore();
+  const wasGeneratingRef = useRef(false);
 
   // 追踪上一次的样式，避免不必要的更新
   const prevStyleRef = useRef({ edgeType, edge: currentPresentationStyle.edge });
@@ -120,23 +155,6 @@ function ArchitectCanvasInner() {
   }, [nodes]);
 
   // 注册自定义节点类型
-  const nodeTypes = useMemo(
-    () => ({
-      default: DefaultNode,
-      database: DatabaseNode,
-      api: ApiNode,
-      service: ServiceNode,
-      gateway: GatewayNode,
-      cache: CacheNode,
-      queue: QueueNode,
-      storage: StorageNode,
-      client: ClientNode,
-      frame: FrameNode,
-      layerFrame: LayerFrameNode,
-    }),
-    []
-  );
-
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
@@ -193,18 +211,6 @@ function ArchitectCanvasInner() {
       });
     },
     [nodes, project, setNodes, snapToGrid]
-  );
-
-  const edgeTypes = useMemo(
-    () => ({
-      glow: GlowEdge,
-      orthogonal: OrthogonalEdge,
-      straight: StraightEdge,
-      // Also register smoothstep as an alias for orthogonal
-      smoothstep: OrthogonalEdge,
-      step: OrthogonalEdge,
-    }),
-    []
   );
 
   const onConnect = useCallback(
@@ -283,14 +289,22 @@ function ArchitectCanvasInner() {
 
   // 自动 fit view 当节点数量变化时
   useEffect(() => {
+    if (isGeneratingFlowchart) {
+      wasGeneratingRef.current = true;
+      return;
+    }
+
     if (nodes.length > 0) {
-      // 延迟 fit view 确保节点已渲染
+      const delay = wasGeneratingRef.current ? 180 : 100;
       const timer = setTimeout(() => {
         fitView({ padding: 0.1, duration: 300 });
-      }, 100);
+        wasGeneratingRef.current = false;
+      }, delay);
       return () => clearTimeout(timer);
     }
-  }, [nodes.length, fitView]);
+
+    wasGeneratingRef.current = false;
+  }, [nodes.length, fitView, isGeneratingFlowchart]);
 
   // 处理键盘删除事件（Delete 和 Backspace）
   const handleNodesDelete = useCallback((nodesToDelete: Node[]) => {
@@ -362,8 +376,8 @@ function ArchitectCanvasInner() {
         onNodesDelete={handleNodesDelete}
         onEdgesDelete={handleEdgesDelete}
         onEdgeClick={handleEdgeClick}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
+        nodeTypes={ARCHITECT_NODE_TYPES}
+        edgeTypes={ARCHITECT_EDGE_TYPES}
         connectOnClick
         connectionRadius={32}
         connectionMode={ConnectionMode.Loose}

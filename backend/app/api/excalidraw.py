@@ -1,270 +1,520 @@
+import asyncio
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
+from typing import Any, Dict, List, Optional, Set
+import logging
+import json
+import time
+
 from app.models.schemas import ExcalidrawGenerateRequest, ExcalidrawGenerateResponse
 from app.services.excalidraw_generator import create_excalidraw_service
 from app.services.ai_vision import create_vision_service
 from app.services.model_presets import get_model_presets_service
-import logging
-import json
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+_ALLOWED_EXCALIDRAW_TYPES = {
+    "rectangle",
+    "ellipse",
+    "diamond",
+    "line",
+    "arrow",
+    "freedraw",
+    "text",
+}
+
+
+def _is_finite_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _extract_array_objects(payload: str, array_key: str) -> List[Dict[str, Any]]:
+    key_token = f"\"{array_key}\""
+    key_pos = payload.find(key_token)
+    if key_pos < 0:
+        return []
+
+    colon_pos = payload.find(":", key_pos + len(key_token))
+    if colon_pos < 0:
+        return []
+
+    array_start = payload.find("[", colon_pos)
+    if array_start < 0:
+        return []
+
+    results: List[Dict[str, Any]] = []
+    in_string = False
+    escaped = False
+    array_depth = 0
+    object_depth = 0
+    object_start = -1
+
+    for idx in range(array_start, len(payload)):
+        char = payload[idx]
+
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == "\"":
+                in_string = False
+            continue
+
+        if char == "\"":
+            in_string = True
+            continue
+
+        if char == "[":
+            array_depth += 1
+            continue
+
+        if char == "]":
+            array_depth -= 1
+            if array_depth <= 0 and object_depth == 0:
+                break
+            continue
+
+        if char == "{":
+            if array_depth >= 1:
+                if object_depth == 0:
+                    object_start = idx
+                object_depth += 1
+            continue
+
+        if char == "}" and object_depth > 0:
+            object_depth -= 1
+            if object_depth == 0 and object_start != -1:
+                snippet = payload[object_start:idx + 1]
+                try:
+                    parsed = json.loads(snippet)
+                    if isinstance(parsed, dict):
+                        results.append(parsed)
+                except json.JSONDecodeError:
+                    pass
+                object_start = -1
+
+    return results
+
+
+def _element_stream_identity(element_payload: Dict[str, Any]) -> str:
+    element_id = str(element_payload.get("id") or "").strip()
+    if element_id:
+        return f"id:{element_id}"
+    etype = str(element_payload.get("type") or "").strip()
+    x = element_payload.get("x")
+    y = element_payload.get("y")
+    text = str(element_payload.get("text") or "").strip()
+    return f"type:{etype}|x:{x}|y:{y}|text:{text[:32]}"
+
+
+def _normalize_partial_element(element_payload: Dict[str, Any], fallback_index: int) -> Optional[Dict[str, Any]]:
+    if not isinstance(element_payload, dict):
+        return None
+
+    etype = str(element_payload.get("type") or "").strip().lower()
+    if etype not in _ALLOWED_EXCALIDRAW_TYPES:
+        return None
+
+    element_id = str(element_payload.get("id") or "").strip() or f"partial-element-{fallback_index + 1}"
+    now = int(time.time() * 1000)
+    fallback_x = 80 + (fallback_index % 6) * 180
+    fallback_y = 80 + (fallback_index // 6) * 140
+
+    x = float(element_payload.get("x")) if _is_finite_number(element_payload.get("x")) else float(fallback_x)
+    y = float(element_payload.get("y")) if _is_finite_number(element_payload.get("y")) else float(fallback_y)
+    width = float(element_payload.get("width")) if _is_finite_number(element_payload.get("width")) else 120.0
+    height = float(element_payload.get("height")) if _is_finite_number(element_payload.get("height")) else 80.0
+
+    base: Dict[str, Any] = {
+        "id": element_id,
+        "type": etype,
+        "x": x,
+        "y": y,
+        "width": max(1.0, width),
+        "height": max(1.0, height),
+        "angle": float(element_payload.get("angle")) if _is_finite_number(element_payload.get("angle")) else 0.0,
+        "strokeColor": str(element_payload.get("strokeColor") or "#1f2937"),
+        "backgroundColor": str(element_payload.get("backgroundColor") or "transparent"),
+        "fillStyle": str(element_payload.get("fillStyle") or "solid"),
+        "strokeWidth": int(element_payload.get("strokeWidth")) if _is_finite_number(element_payload.get("strokeWidth")) else 2,
+        "strokeStyle": str(element_payload.get("strokeStyle") or "solid"),
+        "roughness": int(element_payload.get("roughness")) if _is_finite_number(element_payload.get("roughness")) else 1,
+        "opacity": int(element_payload.get("opacity")) if _is_finite_number(element_payload.get("opacity")) else 100,
+        "groupIds": element_payload.get("groupIds") if isinstance(element_payload.get("groupIds"), list) else [],
+        "frameId": element_payload.get("frameId"),
+        "boundElements": element_payload.get("boundElements") if isinstance(element_payload.get("boundElements"), list) else [],
+        "seed": int(element_payload.get("seed")) if _is_finite_number(element_payload.get("seed")) else (fallback_index + 1) * 7919,
+        "version": int(element_payload.get("version")) if _is_finite_number(element_payload.get("version")) else 1,
+        "versionNonce": int(element_payload.get("versionNonce")) if _is_finite_number(element_payload.get("versionNonce")) else (fallback_index + 1) * 104729,
+        "isDeleted": False,
+        "updated": int(element_payload.get("updated")) if _is_finite_number(element_payload.get("updated")) else now,
+        "link": element_payload.get("link"),
+        "locked": bool(element_payload.get("locked")) if isinstance(element_payload.get("locked"), bool) else False,
+    }
+
+    if etype in {"line", "arrow", "freedraw"}:
+        raw_points = element_payload.get("points")
+        if not isinstance(raw_points, list) or not raw_points:
+            return None
+
+        normalized_points = []
+        for point in raw_points:
+            if (
+                not isinstance(point, list)
+                or len(point) < 2
+                or not _is_finite_number(point[0])
+                or not _is_finite_number(point[1])
+            ):
+                return None
+            normalized_points.append([float(point[0]), float(point[1])])
+
+        xs = [p[0] for p in normalized_points]
+        ys = [p[1] for p in normalized_points]
+        base["points"] = normalized_points
+        base["width"] = max(max(xs) - min(xs), 1.0)
+        base["height"] = max(max(ys) - min(ys), 1.0)
+        if etype == "arrow":
+            start_head = element_payload.get("startArrowhead")
+            end_head = element_payload.get("endArrowhead")
+            if isinstance(start_head, str):
+                base["startArrowhead"] = start_head
+            if isinstance(end_head, str):
+                base["endArrowhead"] = end_head
+
+    if etype == "text":
+        text_value = element_payload.get("text")
+        if not isinstance(text_value, str) or not text_value.strip():
+            return None
+        base["text"] = text_value
+        base["fontSize"] = int(element_payload.get("fontSize")) if _is_finite_number(element_payload.get("fontSize")) else 20
+        base["fontFamily"] = int(element_payload.get("fontFamily")) if _is_finite_number(element_payload.get("fontFamily")) else 1
+        base["textAlign"] = str(element_payload.get("textAlign") or "left")
+
+    return base
+
+
+def _classify_upstream_error(error: Exception) -> tuple[int, str]:
+    text = str(error).lower()
+    if "usage_limit" in text or "rate limit" in text or "quota" in text or "429" in text:
+        return 429, "usage_limit_reached"
+    if "unauthorized" in text or "invalid api key" in text or "authentication" in text or "401" in text:
+        return 401, "authentication_failed"
+    if "timeout" in text or "timed out" in text:
+        return 504, "upstream_timeout"
+    if "bad gateway" in text or "502" in text or "503" in text or "service unavailable" in text:
+        return 503, "upstream_unavailable"
+    return 500, "upstream_error"
+
+
+def _build_config_candidates(request: ExcalidrawGenerateRequest) -> List[Dict[str, Any]]:
+    presets_service = get_model_presets_service()
+    primary = presets_service.get_active_config(
+        provider=request.provider,
+        api_key=request.api_key,
+        base_url=request.base_url,
+        model_name=request.model_name,
+    )
+    if not primary:
+        return []
+
+    candidates = [primary]
+    candidates.extend(presets_service.get_failover_configs(primary_config=primary, max_candidates=3))
+    return candidates
+
+
+def _is_fallback_scene_message(message: str) -> bool:
+    lowered = (message or "").lower()
+    return "fallback" in lowered or "mock" in lowered
+
+
 @router.post("/excalidraw/generate", response_model=ExcalidrawGenerateResponse)
 async def generate_excalidraw_scene(request: ExcalidrawGenerateRequest):
-    """
-    Generate Excalidraw scene via AI.
+    """Generate Excalidraw scene via AI with automatic provider failover."""
+    service = create_excalidraw_service()
+    config_candidates = _build_config_candidates(request)
+    if not config_candidates:
+        raise HTTPException(status_code=400, detail="No AI configuration found. Please configure model settings first.")
 
-    Falls back to mock scene if AI provider fails or returns invalid JSON.
-    Uses Qwen/Qwen2.5-14B-Instruct as backup model for SiliconFlow.
-    """
-    try:
-        logger.info(f"Excalidraw generation request: provider={request.provider}, prompt={request.prompt[:50]}...")
+    attempt_errors: List[Dict[str, Any]] = []
+    fallback_response: Optional[ExcalidrawGenerateResponse] = None
 
-        # 获取有效配置
-        presets_service = get_model_presets_service()
-        config = presets_service.get_active_config(
-            provider=request.provider,
-            api_key=request.api_key,
-            base_url=request.base_url,
-            model_name=request.model_name
-        )
+    for index, config in enumerate(config_candidates, start=1):
+        provider = config.get("provider")
+        model_name = config.get("model_name")
+        try:
+            logger.info(
+                "[EXCALIDRAW] Attempt %s/%s provider=%s model=%s",
+                index,
+                len(config_candidates),
+                provider,
+                model_name,
+            )
+            scene = await service.generate_scene(
+                prompt=request.prompt,
+                style=request.style,
+                width=request.width or 1200,
+                height=request.height or 800,
+                provider=provider,
+                api_key=config.get("api_key"),
+                base_url=config.get("base_url"),
+                model_name=model_name,
+            )
+            message = scene.appState.get("message", "") if isinstance(scene.appState, dict) else ""
+            is_fallback_scene = _is_fallback_scene_message(message)
 
-        if not config:
-            logger.warning("No AI configuration found, will use mock fallback")
-            service = create_excalidraw_service()
-            mock_scene = service._mock_scene()
-            mock_scene.appState["message"] = "No AI configuration found. Please configure AI model in settings."
+            if is_fallback_scene:
+                fallback_response = ExcalidrawGenerateResponse(
+                    scene=scene,
+                    success=False,
+                    message=f"Attempt {index} returned fallback scene: {message or 'unknown reason'}",
+                )
+                logger.warning("[EXCALIDRAW] Attempt %s returned fallback scene, trying next config", index)
+                continue
+
             return ExcalidrawGenerateResponse(
-                scene=mock_scene,
-                success=False,
-                message="No AI configuration found. Using mock scene."
+                scene=scene,
+                success=True,
+                message=f"Scene generated successfully via {provider}/{model_name}",
+            )
+        except Exception as error:
+            status_code, error_code = _classify_upstream_error(error)
+            attempt_errors.append({
+                "provider": provider,
+                "model_name": model_name,
+                "status_code": status_code,
+                "error_code": error_code,
+                "detail": str(error),
+            })
+            logger.warning(
+                "[EXCALIDRAW] Attempt %s failed (%s/%s): %s",
+                index,
+                status_code,
+                error_code,
+                error,
             )
 
-        service = create_excalidraw_service()
-        scene = await service.generate_scene(
-            prompt=request.prompt,
-            style=request.style,
-            width=request.width or 1200,
-            height=request.height or 800,
-            provider=config["provider"],
-            api_key=config["api_key"],
-            base_url=config.get("base_url"),
-            model_name=config.get("model_name"),
+    if fallback_response is not None:
+        return fallback_response
+
+    if attempt_errors:
+        status_priority = [429, 401, 503, 504, 500]
+        chosen_status = 500
+        for status in status_priority:
+            if any(err.get("status_code") == status for err in attempt_errors):
+                chosen_status = status
+                break
+        summary = "; ".join(
+            f"{err['provider']}/{err['model_name']} -> {err['status_code']}:{err['error_code']}"
+            for err in attempt_errors
+        )[:600]
+        raise HTTPException(
+            status_code=chosen_status,
+            detail=f"Excalidraw generation failed after {len(attempt_errors)} attempts. Summary: {summary}",
         )
 
-        success = not scene.appState.get("message", "").startswith("Fallback mock:")
-        message = scene.appState.get("message") or "Scene generated successfully"
-        logger.info(f"Excalidraw generation completed: {len(scene.elements)} elements, success={success}")
-
-        return ExcalidrawGenerateResponse(scene=scene, success=success, message=message)
-    except Exception as e:
-        logger.error(f"Excalidraw scene generation failed critically: {e}", exc_info=True)
-        # Return mock scene instead of raising error
-        service = create_excalidraw_service()
-        mock_scene = service._mock_scene()
-        mock_scene.appState["message"] = f"Critical error: {str(e)[:100]}"
-        return ExcalidrawGenerateResponse(
-            scene=mock_scene,
-            success=False,
-            message=f"Error occurred, returned mock scene: {str(e)[:100]}"
-        )
+    raise HTTPException(status_code=500, detail="Excalidraw generation failed with unknown error.")
 
 
 @router.post("/excalidraw/generate-stream")
 async def generate_excalidraw_scene_stream(request: ExcalidrawGenerateRequest):
     """
-    Generate Excalidraw scene via AI with streaming output (SSE).
-
-    Streams the AI generation process token-by-token, allowing frontend
-    to display real-time progress instead of showing a loading spinner.
+    Stream Excalidraw generation with true object-level incremental updates.
 
     Event format:
-    - data: [START] message\n\n
-    - data: [CALL] message\n\n
-    - data: [TOKEN] text_chunk\n\n
-    - data: [RESULT] {"scene": {...}, "success": true, "message": "..."}\n\n
-    - data: [END] done\n\n
-    - data: [ERROR] error_message\n\n
+    - data: [START] ...
+    - data: [CALL] ...
+    - data: [TOKEN] ...
+    - data: [PARTIAL_ELEMENT] {...}
+    - data: [PROGRESS] chars=... partial_elements=...
+    - data: [RESULT] {"scene": {...}, "success": true/false, "message": "..."}
+    - data: [END] done
+    - data: [ERROR] ...
     """
+
     async def event_stream():
-        try:
-            logger.info(f"[EXCALIDRAW-STREAM] Starting generation")
-            logger.info(f"[EXCALIDRAW-STREAM] Provider: {request.provider}, Model: {request.model_name}")
-            logger.info(f"[EXCALIDRAW-STREAM] Prompt: {request.prompt[:100]}...")
+        service = create_excalidraw_service()
+        config_candidates = _build_config_candidates(request)
+        if not config_candidates:
+            yield "data: [ERROR] No AI configuration found. Please configure model settings first.\n\n"
+            return
 
-            # 获取有效配置
-            presets_service = get_model_presets_service()
-            config = presets_service.get_active_config(
-                provider=request.provider,
-                api_key=request.api_key,
-                base_url=request.base_url,
-                model_name=request.model_name
-            )
+        attempt_errors: List[Dict[str, Any]] = []
+        fallback_response: Optional[Dict[str, Any]] = None
 
-            if not config:
-                # 没有配置，返回 mock 场景
-                logger.warning(f"[EXCALIDRAW-STREAM] No AI configuration found")
-                yield "data: [START] No AI configuration, using mock scene...\n\n"
-                service = create_excalidraw_service()
-                mock_scene = service._mock_scene()
-                mock_scene.appState["message"] = "No AI configuration found. Please configure AI model in settings."
-                response_data = {
-                    "scene": mock_scene.model_dump(),
-                    "success": False,
-                    "message": "No AI configuration found"
-                }
-                yield f"data: [RESULT] {json.dumps(response_data)}\n\n"
-                yield "data: [END] done\n\n"
-                return
-
-            # CRITICAL: Create services BEFORE yielding any data
-            # If this fails, we want to return HTTP error instead of hanging stream
-            service = create_excalidraw_service()
+        for attempt_index, config in enumerate(config_candidates, start=1):
+            provider = config.get("provider")
+            model_name = config.get("model_name")
             try:
+                yield f"data: [START] attempt={attempt_index}/{len(config_candidates)} provider={provider} model={model_name}\n\n"
+                yield "data: [CALL] Generating Excalidraw scene...\n\n"
+
                 vision_service = create_vision_service(
-                    provider=config["provider"],
-                    api_key=config["api_key"],
+                    provider=provider,
+                    api_key=config.get("api_key"),
                     base_url=config.get("base_url"),
-                    model_name=config.get("model_name"),
+                    model_name=model_name,
                 )
-            except ValueError as ve:
-                # API key missing or invalid - send mock scene immediately
-                logger.warning(f"[EXCALIDRAW-STREAM] Vision service creation failed: {ve}")
-                yield "data: [START] API key missing, using mock scene...\n\n"
-                mock_scene = service._mock_scene()
-                mock_scene.appState["message"] = f"API key required: {str(ve)}"
-                response_data = {
-                    "scene": mock_scene.model_dump(),
-                    "success": False,
-                    "message": f"API key missing or invalid: {str(ve)}"
-                }
-                yield f"data: [RESULT] {json.dumps(response_data)}\n\n"
-                yield "data: [END] done\n\n"
-                return
+                prompt = service._build_prompt(
+                    request.prompt,
+                    request.style,
+                    request.width or 1200,
+                    request.height or 800,
+                )
 
-            yield "data: [START] Building Excalidraw prompt...\n\n"
+                accumulated = ""
+                chars_since_parse = 0
+                parse_interval_chars = 120
+                heartbeat_seconds = 8.0
+                last_heartbeat = time.monotonic()
+                seen_partial_keys: Set[str] = set()
+                partial_elements_sent = 0
+                first_token_timeout_seconds = 18.0
+                token_batch = ""
+                token_batch_chars = 180
+                token_batch_interval_seconds = 0.2
+                last_token_emit = time.monotonic()
 
-            logger.info(f"[EXCALIDRAW-STREAM] Vision service created: provider={vision_service.provider}, model={vision_service.model_name}")
+                async def flush_token_batch(force: bool = False):
+                    nonlocal token_batch
+                    nonlocal last_token_emit
+                    if not token_batch:
+                        return
+                    now = time.monotonic()
+                    if force or len(token_batch) >= token_batch_chars or (now - last_token_emit) >= token_batch_interval_seconds:
+                        yield f"data: [TOKEN] {token_batch}\n\n"
+                        token_batch = ""
+                        last_token_emit = now
 
-            # Build prompt
-            prompt = service._build_prompt(
-                request.prompt,
-                request.style,
-                request.width or 1200,
-                request.height or 800
-            )
-
-            logger.info(f"[EXCALIDRAW-STREAM] Prompt built, length: {len(prompt)}")
-
-            yield "data: [CALL] Generating scene with AI...\n\n"
-            logger.info(f"[EXCALIDRAW-STREAM] Starting AI streaming...")
-
-            # Stream tokens from AI
-            accumulated = ""
-            try:
-                token_count = 0
-                async for token in vision_service.generate_with_stream(prompt):
-                    yield f"data: [TOKEN] {token}\n\n"
-                    accumulated += token
-                    token_count += 1
-                    if token_count % 100 == 0:
-                        logger.debug(f"[EXCALIDRAW-STREAM] Received {token_count} tokens, accumulated {len(accumulated)} chars")
-
-                logger.info(f"[EXCALIDRAW-STREAM] Streaming completed: {len(accumulated)} characters, {token_count} tokens")
-
-                # Parse and validate the accumulated JSON
-                logger.info(f"[EXCALIDRAW-STREAM] 🔍 Starting JSON parsing...")
-                ai_data = service._safe_json(accumulated)
-
-                if ai_data is None:
-                    logger.error(f"[EXCALIDRAW-STREAM] ❌ JSON parsing returned None!")
-                    raise ValueError("JSON parsing failed, got None")
-
-                logger.info(f"[EXCALIDRAW-STREAM] ✅ JSON parsed, raw elements count: {len(ai_data.get('elements', []))}")
-
-                # Validate scene (this may filter elements)
-                scene = service._validate_scene(ai_data, request.width or 1200, request.height or 800)
-
-                logger.info(f"[EXCALIDRAW-STREAM] ✅ Scene validated, final elements count: {len(scene.elements)}")
-                # ✅ FIX: scene.elements is a list of dicts, not objects with .id attribute
+                stream_iterator = vision_service.generate_with_stream(prompt).__aiter__()
                 try:
-                    element_summary = [{'id': e.get('id', 'unknown'), 'type': e.get('type', 'unknown')} for e in scene.elements[:10]]
-                    logger.info(f"[EXCALIDRAW-STREAM] Element details: {element_summary}")
-                except Exception as log_error:
-                    logger.warning(f"[EXCALIDRAW-STREAM] Could not log element details: {log_error}")
+                    first_token = await asyncio.wait_for(
+                        stream_iterator.__anext__(),
+                        timeout=first_token_timeout_seconds,
+                    )
+                except StopAsyncIteration as empty_stream:
+                    raise ValueError("Empty stream output") from empty_stream
 
-                # Determine success based on message (mock scenes have specific messages)
-                message = scene.appState.get("message", "")
-                is_fallback = any(keyword in message for keyword in ["Fallback mock", "fallback scene", "mock fallback"])
-                success = not is_fallback
+                async def process_token(token: str):
+                    nonlocal accumulated
+                    nonlocal chars_since_parse
+                    nonlocal last_heartbeat
+                    nonlocal partial_elements_sent
+                    nonlocal token_batch
+                    if not token:
+                        return
+                    accumulated += token
+                    chars_since_parse += len(token)
+                    token_batch += token
+                    if "\n" in token:
+                        async for event in flush_token_batch(force=True):
+                            yield event
+                    else:
+                        async for event in flush_token_batch(force=False):
+                            yield event
 
-                if not message or message == f"Generated via {request.provider}":
-                    message = f"Scene generated successfully with {len(scene.elements)} elements"
+                    should_parse_partials = ("}" in token) or (chars_since_parse >= parse_interval_chars)
+                    if should_parse_partials:
+                        chars_since_parse = 0
+                        for raw_element in _extract_array_objects(accumulated, "elements"):
+                            identity = _element_stream_identity(raw_element)
+                            if identity in seen_partial_keys:
+                                continue
+                            partial_element = _normalize_partial_element(raw_element, partial_elements_sent)
+                            if not partial_element:
+                                continue
+                            seen_partial_keys.add(identity)
+                            partial_elements_sent += 1
+                            yield (
+                                f"data: [PARTIAL_ELEMENT] {json.dumps(partial_element, ensure_ascii=False)}\n\n"
+                            )
 
-                scene.appState["message"] = message
+                    now = time.monotonic()
+                    if now - last_heartbeat >= heartbeat_seconds:
+                        yield (
+                            "data: [PROGRESS] "
+                            f"chars={len(accumulated)} partial_elements={partial_elements_sent}\n\n"
+                        )
+                        last_heartbeat = now
 
-                # Send final result (scene is guaranteed to have elements now)
+                async for event in process_token(first_token):
+                    yield event
+                async for token in stream_iterator:
+                    async for event in process_token(token):
+                        yield event
+                async for event in flush_token_batch(force=True):
+                    yield event
+
+                ai_data = service._safe_json(accumulated)
+                scene = service._validate_scene(ai_data, request.width or 1200, request.height or 800)
+                message = scene.appState.get("message", "") if isinstance(scene.appState, dict) else ""
+                is_fallback_scene = _is_fallback_scene_message(message)
+
+                if is_fallback_scene and attempt_index < len(config_candidates):
+                    yield (
+                        "data: [WARN] "
+                        f"attempt={attempt_index} returned fallback scene, trying next configuration\n\n"
+                    )
+                    fallback_response = {
+                        "scene": scene.model_dump(),
+                        "success": False,
+                        "message": f"Fallback scene via {provider}/{model_name}: {message}",
+                    }
+                    continue
+
                 response_data = {
                     "scene": scene.model_dump(),
-                    "success": success,
-                    "message": message
+                    "success": not is_fallback_scene,
+                    "message": message or f"Scene generated via {provider}/{model_name}",
                 }
-                yield f"data: [RESULT] {json.dumps(response_data)}\n\n"
+                yield f"data: [RESULT] {json.dumps(response_data, ensure_ascii=False)}\n\n"
                 yield "data: [END] done\n\n"
+                return
+            except Exception as error:
+                status_code, error_code = _classify_upstream_error(error)
+                attempt_errors.append({
+                    "provider": provider,
+                    "model_name": model_name,
+                    "status_code": status_code,
+                    "error_code": error_code,
+                    "detail": str(error),
+                })
+                if attempt_index < len(config_candidates):
+                    yield (
+                        "data: [WARN] "
+                        f"attempt={attempt_index} failed ({status_code}:{error_code}), failover to next configuration\n\n"
+                    )
+                    continue
 
-                logger.info(f"Excalidraw streaming completed: {len(scene.elements)} elements, success={success}")
+        if fallback_response is not None:
+            fallback_response["message"] = (
+                f"{fallback_response.get('message', 'Fallback scene returned')}. "
+                "All configured providers returned fallback output."
+            )
+            yield f"data: [RESULT] {json.dumps(fallback_response, ensure_ascii=False)}\n\n"
+            yield "data: [END] done\n\n"
+            return
 
-            except Exception as stream_error:
-                logger.error(f"Streaming generation failed: {stream_error}", exc_info=True)
+        if attempt_errors:
+            summary = "; ".join(
+                f"{err['provider']}/{err['model_name']} -> {err['status_code']}:{err['error_code']}"
+                for err in attempt_errors
+            )[:600]
+            yield f"data: [ERROR] Excalidraw generation failed after {len(attempt_errors)} attempts. {summary}\n\n"
+            return
 
-                # Check if it's a 500 API error
-                error_str = str(stream_error)
-                is_api_500 = "500" in error_str or "InternalServerError" in error_str
-
-                if is_api_500:
-                    logger.warning("[EXCALIDRAW-STREAM] Detected API 500 error, returning mock scene instead of propagating error")
-
-                # Fallback to mock scene (don't propagate error to client)
-                mock_scene = service._mock_scene()
-                mock_scene.appState["message"] = f"AI API unavailable (500), showing fallback scene"
-
-                response_data = {
-                    "scene": mock_scene.model_dump(),
-                    "success": False,
-                    "message": f"AI generation failed, showing mock scene. Error: {str(stream_error)[:100]}"
-                }
-                yield f"data: [RESULT] {json.dumps(response_data)}\n\n"
-                yield "data: [END] done\n\n"
-                logger.info("[EXCALIDRAW-STREAM] Sent mock scene as fallback")
-
-        except Exception as e:
-            logger.error(f"Excalidraw stream failed critically: {e}", exc_info=True)
-            yield f"data: [ERROR] {str(e)}\n\n"
-
-            # Send mock scene as final fallback
-            try:
-                service = create_excalidraw_service()
-                mock_scene = service._mock_scene()
-                mock_scene.appState["message"] = f"Critical error: {str(e)[:100]}"
-
-                response_data = {
-                    "scene": mock_scene.model_dump(),
-                    "success": False,
-                    "message": f"Critical error, mock scene: {str(e)[:100]}"
-                }
-                yield f"data: [RESULT] {json.dumps(response_data)}\n\n"
-                yield "data: [END] done\n\n"
-            except Exception:
-                yield "data: [END] error\n\n"
+        yield "data: [ERROR] Excalidraw generation failed with unknown error.\n\n"
 
     return StreamingResponse(
         event_stream(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
+            "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
             "Connection": "keep-alive",
-        }
+            "X-Accel-Buffering": "no",
+            "Content-Encoding": "none",
+            "Transfer-Encoding": "chunked",
+        },
     )

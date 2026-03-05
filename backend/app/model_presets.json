@@ -1,6 +1,17 @@
 {
   "presets": [
     {
+      "id": "default-right-codes",
+      "name": "Default Right Codes",
+      "provider": "custom",
+      "api_key": "sk-a2c00860412445a39c7758a5fbffb890",
+      "model_name": "gpt-5.2",
+      "base_url": "https://www.right.codes/codex/v1",
+      "is_default": true,
+      "created_at": "2026-03-04T00:00:00",
+      "updated_at": "2026-03-04T21:32:17.657683"
+    },
+    {
       "id": "-1768910729",
       "name": "图片",
       "provider": "siliconflow",
@@ -29,10 +40,10 @@
       "api_key": "sk-W2kDwFOuLFphSoUBrfnf7U413DsO6ktxYCGKCoL2Gm55rLGC",
       "model_name": "claude-sonnet-4-5-20250929",
       "base_url": "https://api.ikuncode.cc",
-      "is_default": true,
+      "is_default": false,
       "created_at": "2026-01-29T15:55:59.491532",
       "updated_at": "2026-01-31T13:12:12.742987"
     }
   ],
-  "last_updated": "2026-02-09T16:01:40.481770"
+  "last_updated": "2026-03-05T20:00:57.949803"
 }

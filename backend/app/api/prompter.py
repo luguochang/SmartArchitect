@@ -37,7 +37,9 @@ async def execute_prompt(
     provider: Optional[str] = Query("gemini"),
     api_key: Optional[str] = Query(None),
     base_url: Optional[str] = Query(None),
-    model_name: Optional[str] = Query(None)
+    model_name: Optional[str] = Query(None),
+    api_base: Optional[str] = Query(None),
+    model: Optional[str] = Query(None)
 ):
     """执行 Prompter 场景，对当前架构应用 AI 转换
 
@@ -60,8 +62,8 @@ async def execute_prompt(
             request=request,
             provider=provider,
             api_key=api_key,
-            base_url=base_url,
-            model_name=model_name
+            base_url=base_url or api_base,
+            model_name=model_name or model
         )
 
         if not result.success:

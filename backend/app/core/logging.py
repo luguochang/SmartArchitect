@@ -10,6 +10,17 @@ from logging.handlers import TimedRotatingFileHandler
 from datetime import datetime
 
 
+def _ensure_utf8_console():
+    """Best-effort UTF-8 console setup for Windows terminals."""
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name, None)
+        if stream and hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
+
 def setup_logging():
     """
     配置应用程序的日志系统
@@ -21,6 +32,8 @@ def setup_logging():
     - 日志保留 30 天
     """
     # 获取日志目录路径（相对于当前文件）
+    _ensure_utf8_console()
+
     current_dir = os.path.dirname(os.path.abspath(__file__))
     log_dir = os.path.join(current_dir, "..", "..", "logs")
     log_dir = os.path.abspath(log_dir)
@@ -35,6 +48,8 @@ def setup_logging():
         return
 
     # 配置根 logger
+    _ensure_utf8_console()
+
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
 

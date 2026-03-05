@@ -197,7 +197,8 @@ async def rag_health():
         return {
             "status": "healthy",
             "supported_formats": ["pdf", "markdown", "docx"],
-            "embedding_model": "all-MiniLM-L6-v2",
+            "embedding_model": getattr(service, "embedding_model_name", "unknown"),
+            "mode": getattr(service, "backend_mode", "unknown"),
             "statistics": stats
         }
     except Exception as e:

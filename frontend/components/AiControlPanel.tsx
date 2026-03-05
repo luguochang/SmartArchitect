@@ -206,6 +206,17 @@ export function AiControlPanel() {
     }
   }, [flowTemplates.length, promptScenarios.length, loadFlowTemplates, loadPromptScenarios]);
 
+  // Keep uploader panels aligned with the active canvas mode.
+  useEffect(() => {
+    if (canvasMode === "reactflow") {
+      setShowExcalidrawUploader(false);
+      return;
+    }
+    if (canvasMode === "excalidraw") {
+      setShowUploader(false);
+    }
+  }, [canvasMode]);
+
   // Auto-scroll to bottom when messages update (throttled)
   useEffect(() => {
     if (generationLogs.length === 0 && chatHistory.length === 0) {

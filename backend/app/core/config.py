@@ -33,9 +33,9 @@ class Settings(BaseSettings):
     SILICONFLOW_BASE_URL: str = os.getenv("SILICONFLOW_BASE_URL", "https://api.siliconflow.cn/v1")
 
     # Custom AI Provider (Default for production deployment)
-    CUSTOM_API_KEY: str = os.getenv("CUSTOM_API_KEY", "sk-7Vm4JJgG9J7ghGWdtxH4vOqyVgpMcPs9zgeBLj9RqHhCswlh")
-    CUSTOM_BASE_URL: str = os.getenv("CUSTOM_BASE_URL", "https://www.linkflow.run")
-    CUSTOM_MODEL_NAME: str = os.getenv("CUSTOM_MODEL_NAME", "claude-sonnet-4-5-20250929")
+    CUSTOM_API_KEY: str = os.getenv("CUSTOM_API_KEY", "sk-a2c00860412445a39c7758a5fbffb890")
+    CUSTOM_BASE_URL: str = os.getenv("CUSTOM_BASE_URL", "https://www.right.codes/codex/v1")
+    CUSTOM_MODEL_NAME: str = os.getenv("CUSTOM_MODEL_NAME", "gpt-5.2")
 
     class Config:
         env_file = ".env"

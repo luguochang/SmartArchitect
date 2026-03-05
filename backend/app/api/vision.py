@@ -1,5 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Query
-from typing import Optional, List
+from typing import Optional, List, Dict, Any, Tuple
 import logging
 import asyncio
 
@@ -29,6 +29,141 @@ ALLOWED_CONTENT_TYPES = [
 
 # 最大文件大小（10MB）
 MAX_FILE_SIZE = 10 * 1024 * 1024
+
+
+EXCALIDRAW_SHAPE_TYPES = {"rectangle", "ellipse", "diamond"}
+EXCALIDRAW_LINEAR_TYPES = {"arrow", "line"}
+
+
+def _shape_bounds(element: Dict[str, Any]) -> Tuple[float, float, float, float]:
+    """Return (x, y, width, height) with safe numeric defaults."""
+    x = float(element.get("x", 0.0))
+    y = float(element.get("y", 0.0))
+    w = max(1.0, float(element.get("width", 120.0) or 120.0))
+    h = max(1.0, float(element.get("height", 80.0) or 80.0))
+    return x, y, w, h
+
+
+def _build_auto_arrow(
+    source: Dict[str, Any],
+    target: Dict[str, Any],
+    index: int,
+    used_ids: set,
+    timestamp: int,
+) -> Dict[str, Any]:
+    """Create a normalized Excalidraw arrow connecting two shape elements."""
+    sx, sy, sw, sh = _shape_bounds(source)
+    tx, ty, tw, th = _shape_bounds(target)
+
+    s_cx, s_cy = sx + sw / 2.0, sy + sh / 2.0
+    t_cx, t_cy = tx + tw / 2.0, ty + th / 2.0
+    dx, dy = t_cx - s_cx, t_cy - s_cy
+
+    # Attach to nearest side to keep arrows visually clean.
+    if abs(dx) >= abs(dy):
+        start_x = sx + sw if dx >= 0 else sx
+        start_y = s_cy
+        end_x = tx if dx >= 0 else tx + tw
+        end_y = t_cy
+    else:
+        start_x = s_cx
+        start_y = sy + sh if dy >= 0 else sy
+        end_x = t_cx
+        end_y = ty if dy >= 0 else ty + th
+
+    min_x, max_x = min(start_x, end_x), max(start_x, end_x)
+    min_y, max_y = min(start_y, end_y), max(start_y, end_y)
+    width = max(max_x - min_x, 1.0)
+    height = max(max_y - min_y, 1.0)
+
+    rel_start = [start_x - min_x, start_y - min_y]
+    rel_end = [end_x - min_x, end_y - min_y]
+
+    arrow_id = f"auto-arrow-{index}"
+    while arrow_id in used_ids:
+        arrow_id = f"auto-arrow-{index}-{len(used_ids)}"
+    used_ids.add(arrow_id)
+
+    return {
+        "id": arrow_id,
+        "type": "arrow",
+        "x": min_x,
+        "y": min_y,
+        "width": width,
+        "height": height,
+        "points": [rel_start, rel_end],
+        "strokeColor": "#1f2937",
+        "backgroundColor": "transparent",
+        "fillStyle": "solid",
+        "strokeWidth": 2,
+        "strokeStyle": "solid",
+        "roughness": 1,
+        "opacity": 100,
+        "angle": 0,
+        "groupIds": [],
+        "boundElements": None,
+        "updated": timestamp,
+        "link": None,
+        "locked": False,
+        "version": 1,
+        "versionNonce": (timestamp + index) % 2147483647,
+        "isDeleted": False,
+        "startBinding": None,
+        "endBinding": None,
+        "lastCommittedPoint": None,
+        "startArrowhead": None,
+        "endArrowhead": "arrow",
+    }
+
+
+def _inject_auto_arrows_if_missing(scene_data: Dict[str, Any], timestamp: int) -> int:
+    """
+    If AI omitted all connectors, infer a minimum readable flow by connecting shapes in reading order.
+    Returns the number of auto-generated arrows added.
+    """
+    elements = scene_data.get("elements")
+    if not isinstance(elements, list):
+        return 0
+
+    valid_linear_count = 0
+    shape_elements: List[Dict[str, Any]] = []
+    used_ids = set()
+
+    for element in elements:
+        if not isinstance(element, dict):
+            continue
+        elem_id = element.get("id")
+        if isinstance(elem_id, str):
+            used_ids.add(elem_id)
+
+        elem_type = element.get("type")
+        if elem_type in EXCALIDRAW_LINEAR_TYPES:
+            points = element.get("points")
+            if isinstance(points, list) and len(points) >= 2:
+                valid_linear_count += 1
+        elif elem_type in EXCALIDRAW_SHAPE_TYPES:
+            shape_elements.append(element)
+
+    if valid_linear_count > 0 or len(shape_elements) <= 1:
+        return 0
+
+    # Reading-order sort for a deterministic baseline flow.
+    shape_elements.sort(key=lambda e: (_shape_bounds(e)[1], _shape_bounds(e)[0]))
+
+    generated: List[Dict[str, Any]] = []
+    for idx in range(len(shape_elements) - 1):
+        generated.append(
+            _build_auto_arrow(
+                source=shape_elements[idx],
+                target=shape_elements[idx + 1],
+                index=idx + 1,
+                used_ids=used_ids,
+                timestamp=timestamp,
+            )
+        )
+
+    elements.extend(generated)
+    return len(generated)
 
 
 def _fix_node_overlaps(nodes: List[Node], gentle_mode: bool = True) -> List[Node]:
@@ -169,7 +304,9 @@ async def analyze_architecture_image(
     analyze_bottlenecks: bool = Form(True, description="Analyze architecture bottlenecks"),
     api_key: Optional[str] = Form(None, description="API key for custom provider"),
     base_url: Optional[str] = Form(None, description="Base URL for custom provider"),
-    model_name: Optional[str] = Form(None, description="Model name for custom provider")
+    model_name: Optional[str] = Form(None, description="Model name for custom provider"),
+    api_base: Optional[str] = Form(None, description="Alias of base_url for compatibility"),
+    model: Optional[str] = Form(None, description="Alias of model_name for compatibility")
 ):
     """
     Analyze architecture diagram image using AI vision models.
@@ -243,8 +380,8 @@ async def analyze_architecture_image(
     config = presets_service.get_active_config(
         provider=provider,
         api_key=api_key,
-        base_url=base_url,
-        model_name=model_name
+        base_url=base_url or api_base,
+        model_name=model_name or model
     )
 
     if not config:
@@ -324,6 +461,8 @@ async def analyze_flowchart_screenshot(
     api_key: Optional[str] = Form(None, description="Optional API key"),
     base_url: Optional[str] = Form(None, description="Custom provider base URL"),
     model_name: Optional[str] = Form(None, description="Custom model name"),
+    api_base: Optional[str] = Form(None, description="Alias of base_url for compatibility"),
+    model: Optional[str] = Form(None, description="Alias of model_name for compatibility"),
 ):
     """
     识别流程图截图，转换为可编辑的 ReactFlow 格式
@@ -403,8 +542,8 @@ async def analyze_flowchart_screenshot(
     config = presets_service.get_active_config(
         provider=provider,
         api_key=api_key,
-        base_url=base_url,
-        model_name=model_name
+        base_url=base_url or api_base,
+        model_name=model_name or model
     )
 
     if not config:
@@ -577,13 +716,26 @@ async def analyze_flowchart_screenshot_stream_v2(request: VisionToReactFlowReque
 
             yield f"data: {json.dumps({'type': 'progress', 'message': '⚡ 正在生成 Mermaid 代码...'})}\n\n"
 
-            # Perform actual analysis
+            # Perform actual analysis with keep-alive progress events to avoid idle timeouts.
             try:
-                result = await vision_service.analyze_flowchart(
-                    image_data=image_data,
-                    preserve_layout=request.preserve_layout,
-                    fast_mode=request.fast_mode
+                analysis_task = asyncio.create_task(
+                    vision_service.analyze_flowchart(
+                        image_data=image_data,
+                        preserve_layout=request.preserve_layout,
+                        fast_mode=request.fast_mode
+                    )
                 )
+
+                heartbeat_interval = 8
+                elapsed_wait = 0
+                while not analysis_task.done():
+                    await asyncio.sleep(heartbeat_interval)
+                    elapsed_wait += heartbeat_interval
+                    if analysis_task.done():
+                        break
+                    yield f"data: {json.dumps({'type': 'progress', 'message': f'⏳ AI 正在深度识别流程图（已用时 {elapsed_wait}s）...'})}\n\n"
+
+                result = await analysis_task
 
                 logger.info(f"[FLOWCHART STREAM] Analysis complete: {len(result.nodes)} nodes, {len(result.edges)} edges")
 
@@ -851,10 +1003,40 @@ Additional instructions: {request.prompt or 'None'}
         image_bytes = base64.b64decode(image_data)
 
         # Call AI vision service
-        raw_response = await vision_service.generate_with_vision(
-            image_data=image_bytes,
-            prompt=excalidraw_prompt
-        )
+        # Prefer streaming collection for OpenAI-compatible providers to avoid
+        # long one-shot stalls (common with large multimodal JSON outputs).
+        raw_response = ""
+        provider_name = str(config.get("provider", "")).lower()
+
+        if provider_name in {"custom", "openai", "claude"}:
+            try:
+                logger.info("[Excalidraw] Using streaming collection path for provider=%s", provider_name)
+                chunks: List[str] = []
+
+                async def _collect_stream_tokens():
+                    async for token in vision_service.generate_with_vision_stream(
+                        image_data=image_bytes,
+                        prompt=excalidraw_prompt
+                    ):
+                        chunks.append(token)
+
+                await asyncio.wait_for(_collect_stream_tokens(), timeout=300)
+                raw_response = "".join(chunks)
+                logger.info("[Excalidraw] Streaming collection completed, chars=%s", len(raw_response))
+            except Exception as stream_err:
+                logger.warning(
+                    "[Excalidraw] Streaming collection failed, fallback to one-shot: %s",
+                    stream_err,
+                )
+
+        if not raw_response:
+            raw_response = await asyncio.wait_for(
+                vision_service.generate_with_vision(
+                    image_data=image_bytes,
+                    prompt=excalidraw_prompt
+                ),
+                timeout=220
+            )
 
         logger.info(f"Raw AI response received (length: {len(raw_response)})")
 
@@ -965,6 +1147,14 @@ Additional instructions: {request.prompt or 'None'}
             # Ensure strokeStyle exists
             if "strokeStyle" not in element:
                 element["strokeStyle"] = "solid"
+
+        # Quality guard: if AI missed all connectors, infer a minimum readable flow.
+        auto_added = _inject_auto_arrows_if_missing(scene_data, timestamp)
+        if auto_added > 0:
+            logger.warning(
+                "[Excalidraw] No valid connectors detected from AI; auto-inferred %s arrows",
+                auto_added,
+            )
 
         # Validate connection detection (arrow/line elements)
         arrow_count = sum(1 for e in scene_data["elements"] if e.get("type") in ["arrow", "line"])
@@ -1292,10 +1482,21 @@ Additional instructions: {request.prompt or 'None'}
             element_count = 0
             arrow_count = 0  # Track connection count
             shape_count = 0  # Track shape count
+            emitted_elements: List[Dict[str, Any]] = []
+            chars_since_parse = 0
+            last_element_ts = time.monotonic()
 
             # Stream tokens in real-time
             async for token in vision_service.generate_with_vision_stream(image_bytes, excalidraw_prompt):
                 json_buffer += token
+                chars_since_parse += len(token)
+
+                # Performance guard:
+                # avoid O(n^2) full-buffer scans on every tiny token.
+                should_parse_now = ("}" in token) or (chars_since_parse >= 256)
+                if not should_parse_now:
+                    continue
+                chars_since_parse = 0
 
                 # Try to parse new complete elements from the buffer
                 new_elements = try_parse_incremental_elements(json_buffer, parsed_ids)
@@ -1304,6 +1505,8 @@ Additional instructions: {request.prompt or 'None'}
                 for element in new_elements:
                     normalized = normalize_element(element, timestamp)
                     element_count += 1
+                    emitted_elements.append(normalized)
+                    last_element_ts = time.monotonic()
 
                     # Track element types for validation
                     element_type = element.get("type")
@@ -1317,6 +1520,53 @@ Additional instructions: {request.prompt or 'None'}
 
                     yield f"data: {json.dumps({'type': 'element', 'element': normalized})}\n\n"
                     logger.info(f"[REAL STREAM] Yielded element {element_count}: {element.get('id')} (type: {element_type})")
+
+                # Stall guard: if model keeps streaming tokens but no new complete
+                # elements appear for a long time, finalize with current elements.
+                if element_count >= 20 and (time.monotonic() - last_element_ts) > 20:
+                    logger.warning(
+                        "[REAL STREAM] Stall detected (no new elements for %.1fs), finalizing early with %s elements",
+                        time.monotonic() - last_element_ts,
+                        element_count,
+                    )
+                    break
+
+            # Final parse pass after stream ends to catch trailing complete elements.
+            final_elements = try_parse_incremental_elements(json_buffer, parsed_ids)
+            for element in final_elements:
+                normalized = normalize_element(element, timestamp)
+                element_count += 1
+                emitted_elements.append(normalized)
+
+                element_type = element.get("type")
+                if element_type in ["arrow", "line"]:
+                    arrow_count += 1
+                elif element_type in ["rectangle", "ellipse", "diamond"]:
+                    shape_count += 1
+
+                yield f"data: {json.dumps({'type': 'element', 'element': normalized})}\n\n"
+                logger.info(
+                    f"[REAL STREAM] Yielded final-pass element {element_count}: "
+                    f"{element.get('id')} (type: {element_type})"
+                )
+
+            # Quality guard for streaming mode: ensure at least baseline connectors exist.
+            if arrow_count == 0 and shape_count > 1:
+                auto_scene = {
+                    "elements": emitted_elements,
+                    "appState": {"viewBackgroundColor": "#ffffff"},
+                    "files": {},
+                }
+                auto_added = _inject_auto_arrows_if_missing(auto_scene, timestamp)
+                if auto_added > 0:
+                    for auto_element in auto_scene["elements"][-auto_added:]:
+                        element_count += 1
+                        arrow_count += 1
+                        yield f"data: {json.dumps({'type': 'element', 'element': auto_element})}\n\n"
+                    logger.warning(
+                        "[REAL STREAM] No connectors from AI output; auto-inferred %s arrows",
+                        auto_added,
+                    )
 
             # Send completion with validation info
             completion_message = f'Generated {element_count} elements in real-time ({shape_count} shapes, {arrow_count} connections)'
@@ -1624,6 +1874,52 @@ For a 2-row layout:
                 message="Response missing 'nodes' or 'edges' field",
                 raw_response=json_str[:500]
             )
+
+        # Normalize model-provided node shapes to schema-supported values.
+        # Some models still return aliases like "hexagon"/"parallelogram".
+        allowed_shapes = {
+            "rectangle",
+            "circle",
+            "diamond",
+            "start-event",
+            "end-event",
+            "intermediate-event",
+            "task",
+        }
+        shape_aliases = {
+            "start": "start-event",
+            "end": "end-event",
+            "start_event": "start-event",
+            "end_event": "end-event",
+            "start-event": "start-event",
+            "end-event": "end-event",
+            "process": "task",
+            "rounded-rectangle": "task",
+            "rounded_rectangle": "task",
+            "parallelogram": "task",
+            "trapezoid": "task",
+            "trapezium": "task",
+            "hexagon": "diamond",
+            "rhombus": "diamond",
+            "ellipse": "circle",
+            "oval": "circle",
+        }
+        for node_data in diagram_data.get("nodes", []):
+            if not isinstance(node_data, dict):
+                continue
+            node_payload = node_data.get("data")
+            if not isinstance(node_payload, dict):
+                continue
+
+            raw_shape = node_payload.get("shape")
+            if not raw_shape:
+                continue
+
+            shape_key = str(raw_shape).strip().lower()
+            normalized_shape = shape_aliases.get(shape_key, shape_key)
+            if normalized_shape not in allowed_shapes:
+                normalized_shape = "task"
+            node_payload["shape"] = normalized_shape
 
         # Validate nodes using Pydantic models
         try:

@@ -1,6 +1,6 @@
 """诊断端点 - 测试 AI API 连接"""
 from fastapi import APIRouter
-from pydantic import BaseModel
+from pydantic import AliasChoices, BaseModel, Field
 from app.services.ai_vision import create_vision_service
 import logging
 
@@ -11,8 +11,8 @@ logger = logging.getLogger(__name__)
 class DiagnosisRequest(BaseModel):
     provider: str = "custom"
     api_key: str
-    base_url: str
-    model_name: str
+    base_url: str = Field(validation_alias=AliasChoices("base_url", "api_base"))
+    model_name: str = Field(validation_alias=AliasChoices("model_name", "model"))
 
 
 class DiagnosisResponse(BaseModel):

@@ -1,4 +1,4 @@
-import { create } from "zustand";
+﻿import { create } from "zustand";
 import { Node, Edge, NodeChange, EdgeChange, applyNodeChanges, applyEdgeChanges, MarkerType } from "reactflow";
 import { PROVIDER_DEFAULTS } from "@/lib/config/providerDefaults";
 import { getLayoutedElements, estimateNodeSize } from "@/lib/utils/autoLayout";
@@ -55,11 +55,11 @@ interface ArchitectState {
   excalidrawScene: ExcalidrawScene | null;
   setExcalidrawScene: (scene: ExcalidrawScene | null) => void;
 
-  // 🎬 流式渲染状态
-  _preparedNodes: Node[]; // 准备好的节点（已布局但未显示）
-  _preparedEdges: Edge[]; // 准备好的边（未显示）
+  // 棣冨箑 濞翠礁绱″〒鍙夌厠閻樿埖鈧?
+  _preparedNodes: Node[]; // 閸戝棗顦總鐣屾畱閼哄倻鍋ｉ敍鍫濆嚒鐢啫鐪担鍡樻弓閺勫墽銇氶敍?
+  _preparedEdges: Edge[]; // 閸戝棗顦總鐣屾畱鏉堢櫢绱欓張顏呮▔缁€鐚寸礆
 
-  // 节点和边操作
+  // 閼哄倻鍋ｉ崪宀冪珶閹垮秳缍?
   setNodes: (nodes: Node[]) => void;
   setEdges: (edges: Edge[]) => void;
   onNodesChange: (changes: NodeChange[]) => void;
@@ -70,12 +70,12 @@ interface ArchitectState {
   clearImage: () => void;
   analyzeImage: () => Promise<void>;
 
-  // Mermaid 代码操作
+  // Mermaid 娴狅絿鐖滈幙宥勭稊
   setMermaidCode: (code: string) => void;
   updateFromMermaid: (code: string) => void;
   updateFromCanvas: () => void;
 
-  // AI 模型配置
+  // AI 濡€崇€烽柊宥囩枂
   modelConfig: {
     provider: "custom";
     apiKey: string;
@@ -84,7 +84,7 @@ interface ArchitectState {
   };
   setModelConfig: (config: Partial<ArchitectState["modelConfig"]>) => void;
 
-  // 流程生成（Phase 5 mock）
+  // 濞翠胶鈻奸悽鐔稿灇閿涘湧hase 5 mock閿?
   flowTemplates: FlowTemplate[];
   isGeneratingFlowchart: boolean;
   loadFlowTemplates: () => Promise<void>;
@@ -92,7 +92,7 @@ interface ArchitectState {
   generateExcalidrawScene: (prompt: string) => Promise<void>;
   generateExcalidrawSceneStream: (prompt: string) => Promise<void>;
 
-  // 🆕 增量生成状态
+  // 棣冨晭 婢х偤鍣洪悽鐔稿灇閻樿埖鈧?
   incrementalMode: boolean;
   currentSessionId: string | null;
   setIncrementalMode: (enabled: boolean) => void;
@@ -112,23 +112,23 @@ interface ArchitectState {
 const DEFAULT_FLOW_TEMPLATES: FlowTemplate[] = [
   {
     id: "microservice-architecture",
-    name: "微服务架构流程",
-    description: "API 网关 → 认证服务 → 缓存 → 订单服务 → 消息队列 → 库存服务",
-    example_input: "生成电商请求处理路径，含认证、缓存、订单、队列、库存、存储。",
+    name: "Microservice Fulfillment Flow",
+    description: "API Gateway -> Auth -> Cache -> Order Service -> Queue -> Inventory Service",
+    example_input: "Generate an e-commerce request flow with auth, cache, order, queue, inventory, and storage.",
     category: "architecture",
   },
   {
     id: "high-concurrency-system",
-    name: "高并发秒杀系统",
-    description: "限流 + 预扣库存 + 消息削峰 + 冗余存储链路",
-    example_input: "秒杀系统架构，限流、缓存命中、Kafka 削峰、订单/存储节点。",
+    name: "High Concurrency Path",
+    description: "Rate limit + stock pre-deduction + queue decoupling + durable write path",
+    example_input: "Design a flash-sale system flow with throttling, cache hit path, queue buffering, and order persistence.",
     category: "architecture",
   },
   {
     id: "incident-response",
-    name: "故障响应流程",
-    description: "检测 → 分流 → 回滚 → RCA → 复盘",
-    example_input: "生成一次故障响应流程，包含检测、告警、人工确认、回滚与复盘。",
+    name: "Incident Response Workflow",
+    description: "Detect -> triage -> rollback -> RCA -> postmortem",
+    example_input: "Generate an incident response flow including detection, alerting, manual verification, rollback, and review.",
     category: "troubleshooting",
   },
 ];
@@ -221,17 +221,17 @@ function addLayerFrames(nodes: Node[], diagramType?: DiagramType): Node[] {
   return [...frames, ...nodes];
 }
 
-// 将 React Flow 节点和边转换为 Mermaid 代码
+// 鐏?React Flow 閼哄倻鍋ｉ崪宀冪珶鏉烆剚宕叉稉?Mermaid 娴狅絿鐖?
 function canvasToMermaid(nodes: Node[], edges: Edge[]): string {
   let mermaidCode = "graph TD\n";
 
-  // 添加节点
+  // 濞ｈ濮為懞鍌滃仯
   nodes.forEach((node) => {
     const nodeId = node.id;
     const label = (node.data as any)?.label || nodeId;
     const nodeType = node.type || "default";
 
-    // 根据节点类型选择不同的 Mermaid 符号
+    // 閺嶈宓侀懞鍌滃仯缁鐎烽柅澶嬪娑撳秴鎮撻惃?Mermaid 缁楋箑褰?
     let nodeDefinition = "";
     switch (nodeType) {
       case "database":
@@ -249,7 +249,7 @@ function canvasToMermaid(nodes: Node[], edges: Edge[]): string {
     mermaidCode += nodeDefinition + "\n";
   });
 
-  // 添加连接
+  // 濞ｈ濮炴潻鐐村复
   edges.forEach((edge) => {
     const label = edge.label ? `|${edge.label}|` : "";
     mermaidCode += `    ${edge.source} -->${label} ${edge.target}\n`;
@@ -258,7 +258,7 @@ function canvasToMermaid(nodes: Node[], edges: Edge[]): string {
   return mermaidCode;
 }
 
-// 将 Mermaid 代码解析为 React Flow 节点和边（简化版）
+// 鐏?Mermaid 娴狅絿鐖滅憴锝嗙€芥稉?React Flow 閼哄倻鍋ｉ崪宀冪珶閿涘牏鐣濋崠鏍閿?
 function mermaidToCanvas(code: string): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
@@ -269,16 +269,16 @@ function mermaidToCanvas(code: string): { nodes: Node[]; edges: Edge[] } {
   lines.forEach((line, index) => {
     line = line.trim();
 
-    // 跳过空行和 graph 声明
+    // 鐠哄疇绻冪粚楦款攽閸?graph 婢圭増妲?
     if (!line || line.startsWith("graph")) return;
 
-    // 简单的节点定义解析: nodeId["label"] 或 nodeId[("label")]
+    // 缁犫偓閸楁洜娈戦懞鍌滃仯鐎规矮绠熺憴锝嗙€? nodeId["label"] 閹?nodeId[("label")]
     const nodeMatch = line.match(/(\w+)\[([^\]]+)\]/);
     if (nodeMatch) {
       const [, nodeId, labelPart] = nodeMatch;
       const label = labelPart.replace(/["\(\)]/g, "").trim();
 
-      // 确定节点类型
+      // 绾喖鐣鹃懞鍌滃仯缁鐎?
       let nodeType = "default";
       if (labelPart.includes("(")) nodeType = "database";
       if (labelPart.includes("[[")) nodeType = "service";
@@ -293,7 +293,7 @@ function mermaidToCanvas(code: string): { nodes: Node[]; edges: Edge[] } {
       yOffset += 100;
     }
 
-    // 简单的边定义解析: source --> target 或 source -->|label| target
+    // 缁犫偓閸楁洜娈戞潏鐟扮暰娑斿袙閺? source --> target 閹?source -->|label| target
     const edgeMatch = line.match(/(\w+)\s*-->\s*(?:\|([^|]+)\|)?\s*(\w+)/);
     if (edgeMatch) {
       const [, source, label, target] = edgeMatch;
@@ -309,14 +309,14 @@ function mermaidToCanvas(code: string): { nodes: Node[]; edges: Edge[] } {
   return { nodes, edges };
 }
 
-// 给边应用当前的样式配置
+// 缂佹瑨绔熸惔鏃傛暏瑜版挸澧犻惃鍕壉瀵繘鍘ょ純?
 function applyEdgeStyles(edges: Edge[]): Edge[] {
   const { currentPresentationStyle, edgeType } = useFlowchartStyleStore.getState();
 
   return edges.map((edge) => ({
     ...edge,
     type: edgeType,
-    animated: false, // 🔥 修复：改为实线，不使用动画效果
+    animated: false, // 棣冩暉 娣囶喖顦查敍姘暭娑撳搫鐤勭痪鍖＄礉娑撳秳濞囬悽銊ュЗ閻㈢粯鏅ラ弸?
     markerEnd: {
       type: MarkerType.ArrowClosed,
       width: currentPresentationStyle.edge.markerSize,
@@ -352,11 +352,11 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
   generationLogs: [],
   chatHistory: [],
 
-  // 🎬 流式渲染状态初始化
+  // 棣冨箑 濞翠礁绱″〒鍙夌厠閻樿埖鈧礁鍨垫慨瀣
   _preparedNodes: [],
   _preparedEdges: [],
 
-  // 🆕 增量生成状态初始化
+  // 棣冨晭 婢х偤鍣洪悽鐔稿灇閻樿埖鈧礁鍨垫慨瀣
   incrementalMode: false,
   currentSessionId: null,
 
@@ -366,7 +366,7 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
 
   modelConfig: {
     provider: "custom",
-    apiKey: "", // 🔧 从配置管理中加载，不使用硬编码
+    apiKey: "", // 棣冩暋 娴犲酣鍘ょ純顔绢吀閻炲棔鑵戦崝鐘烘祰閿涘奔绗夋担璺ㄦ暏绾剛绱惍?
     modelName: "",
     baseUrl: "",
   },
@@ -422,7 +422,7 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
     set({
       nodes: applyNodeChanges(changes, get().nodes),
     });
-    // 节点变化后自动更新 Mermaid 代码
+    // 閼哄倻鍋ｉ崣妯哄閸氬氦鍤滈崝銊︽纯閺?Mermaid 娴狅絿鐖?
     get().updateFromCanvas();
   },
 
@@ -430,7 +430,7 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
     set({
       edges: applyEdgeChanges(changes, get().edges),
     });
-    // 边变化后自动更新 Mermaid 代码
+    // 鏉堢懓褰夐崠鏍ф倵閼奉亜濮╅弴瀛樻煀 Mermaid 娴狅絿鐖?
     get().updateFromCanvas();
   },
 
@@ -470,13 +470,13 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
   },
 
   // ============================================================
-  // 🆕 增量生成会话管理方法
+  // 棣冨晭 婢х偤鍣洪悽鐔稿灇娴兼俺鐦界粻锛勬倞閺傝纭?
   // ============================================================
 
   setIncrementalMode: (enabled) => {
     set({ incrementalMode: enabled });
 
-    // 启用增量模式时，自动保存当前画布到会话
+    // 閸氼垳鏁ゆ晶鐐哄櫤濡€崇础閺冭绱濋懛顏勫З娣囨繂鐡ㄨぐ鎾冲閻㈣绔烽崚棰佺窗鐠?
     if (enabled && get().nodes.length > 0) {
       get().saveCanvasSession();
     }
@@ -557,18 +557,23 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
       const { modelConfig, architectureType, incrementalMode, currentSessionId, nodes, saveCanvasSession } = get();
       set((state) => ({
         generationLogs: [],
-        chatHistory: [
-          ...state.chatHistory,
-          { role: "user", content: input },
-        ],
+        chatHistory: [...state.chatHistory, { role: "user", content: input }],
       }));
 
-      // 🆕 如果启用增量模式且画布非空，先保存会话
+      const shouldResetCanvas = !(incrementalMode && nodes.length > 0);
+      if (shouldResetCanvas) {
+        set({
+          nodes: [],
+          edges: [],
+          _preparedNodes: [],
+          _preparedEdges: [],
+          mermaidCode: "",
+        });
+      }
+
       let sessionId = currentSessionId;
-      if (incrementalMode && nodes.length > 0) {
-        if (!sessionId) {
-          sessionId = await saveCanvasSession();
-        }
+      if (incrementalMode && nodes.length > 0 && !sessionId) {
+        sessionId = await saveCanvasSession();
       }
 
       const body = {
@@ -580,12 +585,10 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
         api_key: modelConfig.apiKey?.trim() || undefined,
         base_url: modelConfig.baseUrl?.trim() || undefined,
         model_name: modelConfig.modelName,
-        // 🆕 增量模式参数
         incremental_mode: incrementalMode && nodes.length > 0,
         session_id: sessionId,
       };
 
-      // Stream events to show progress and avoid spinner-only UX
       const response = await fetch(API_ENDPOINTS.chatGeneratorStream, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
@@ -604,15 +607,31 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
       const logs: string[] = [];
       const pushLog = (line: string) => {
         logs.push(line);
-        console.log(`[STREAM LOG] ${line.substring(0, 50)}`);
-        set({ generationLogs: [...logs] });
+        if (
+          logs.length % 8 === 0 ||
+          line.startsWith("[ERROR]") ||
+          line.startsWith("[RESULT]") ||
+          line.startsWith("[WARN]") ||
+          line.startsWith("[END]")
+        ) {
+          setTimeout(() => set({ generationLogs: [...logs] }), 0);
+        }
       };
 
-      // Track generation status in chat history
-      let statusMessage = "🔄 正在生成流程图...";
-      let aiResponseBuffer = "";  // Buffer for AI's actual response text
+      let statusMessage = "馃 姝ｅ湪鐢熸垚娴佺▼鍥?..";
+      let aiResponseBuffer = "";
+      let jsonBuffer = "";
+      let lastStatusUpdateAt = 0;
+      let lastJsonLogAt = 0;
+      let lastAiUpdateAt = 0;
 
-      const updateChatStatus = (message: string) => {
+      const updateChatStatus = (message: string, force = false) => {
+        const now = Date.now();
+        if (!force && now - lastStatusUpdateAt < 180 && message !== statusMessage) {
+          statusMessage = message;
+          return;
+        }
+        lastStatusUpdateAt = now;
         statusMessage = message;
         set((state) => {
           const newHistory = [...state.chatHistory];
@@ -626,56 +645,135 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
         });
       };
 
-      // Update AI response in real-time (for chat display)
       const updateAiResponse = (token: string) => {
         aiResponseBuffer += token;
+        const now = Date.now();
+        if (now - lastAiUpdateAt < 150) return;
+        lastAiUpdateAt = now;
+
+        const preview = aiResponseBuffer.length > 2400
+          ? `...${aiResponseBuffer.slice(-2400)}`
+          : aiResponseBuffer;
         set((state) => {
           const newHistory = [...state.chatHistory];
           const last = newHistory[newHistory.length - 1];
+          const content = `馃 AI 姝ｅ湪鐢熸垚...\n\n${preview}`;
           if (last && last.role === "assistant") {
-            // Update the last assistant message with accumulated response
-            newHistory[newHistory.length - 1] = {
-              role: "assistant",
-              content: `🤖 AI 正在生成...\n\n${aiResponseBuffer}`
-            };
+            newHistory[newHistory.length - 1] = { role: "assistant", content };
           } else {
-            newHistory.push({
-              role: "assistant",
-              content: `🤖 AI 正在生成...\n\n${aiResponseBuffer}`
-            });
+            newHistory.push({ role: "assistant", content });
           }
           return { chatHistory: newHistory };
         });
       };
 
-      // Accumulate JSON tokens for display in logs
-      let jsonBuffer = "";
-      let isGenerating = false;
       const updateJsonLog = (token: string) => {
         jsonBuffer += token;
-        // Find the index of the "[生成中]" log entry
-        const generatingIndex = logs.findIndex(log => log.startsWith("[生成中]"));
+        const now = Date.now();
+        if (now - lastJsonLogAt < 250) return;
+        lastJsonLogAt = now;
+
+        const preview = jsonBuffer.length > 3200
+          ? `...${jsonBuffer.slice(-3200)}`
+          : jsonBuffer;
+        const generatingIndex = logs.findIndex((log) => log.startsWith("[鐢熸垚涓璢"));
         if (generatingIndex !== -1) {
-          logs[generatingIndex] = `[生成中] ${jsonBuffer}`;
+          logs[generatingIndex] = `[鐢熸垚涓璢 ${preview}`;
         } else {
-          logs.push(`[生成中] ${jsonBuffer}`);
+          logs.push(`[鐢熸垚涓璢 ${preview}`);
         }
-        set({ generationLogs: [...logs] });
+        setTimeout(() => set({ generationLogs: [...logs] }), 0);
       };
 
-      // Initialize status message
+      let hasLayoutData = false;
+      let sawPartialGraphEvents = false;
+      const partialNodeMap = new Map<string, Node>();
+      const partialEdgeMap = new Map<string, Edge>();
+      let partialFlushScheduled = false;
+
+      const schedulePartialFlush = () => {
+        if (partialFlushScheduled) return;
+        partialFlushScheduled = true;
+
+        const flush = () => {
+          partialFlushScheduled = false;
+          const visibleNodes = Array.from(partialNodeMap.values());
+          const visibleNodeIds = new Set(visibleNodes.map((n) => n.id));
+          const visibleEdges = Array.from(partialEdgeMap.values()).filter(
+            (edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target)
+          );
+          set({ nodes: visibleNodes, edges: visibleEdges });
+        };
+
+        if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+          window.requestAnimationFrame(flush);
+        } else {
+          setTimeout(flush, 0);
+        }
+      };
+
+      const normalizePartialNode = (payload: any): Node | null => {
+        if (!payload || typeof payload !== "object") return null;
+
+        const fallbackIndex = partialNodeMap.size;
+        const id = (typeof payload.id === "string" && payload.id.trim())
+          ? payload.id.trim()
+          : `partial-node-${fallbackIndex + 1}`;
+
+        const nodeType = (typeof payload.type === "string" && payload.type.trim())
+          ? payload.type.trim()
+          : "default";
+
+        const rawPosition = payload.position && typeof payload.position === "object" ? payload.position : {};
+        const x = Number.isFinite(rawPosition.x)
+          ? Number(rawPosition.x)
+          : 120 + (fallbackIndex % 4) * 260;
+        const y = Number.isFinite(rawPosition.y)
+          ? Number(rawPosition.y)
+          : 120 + Math.floor(fallbackIndex / 4) * 180;
+
+        const rawData = payload.data && typeof payload.data === "object" ? payload.data : {};
+        const label = (typeof rawData.label === "string" && rawData.label.trim())
+          ? rawData.label.trim()
+          : id;
+
+        return {
+          id,
+          type: nodeType,
+          position: { x, y },
+          data: { ...rawData, label },
+        };
+      };
+
+      const normalizePartialEdge = (payload: any): Edge | null => {
+        if (!payload || typeof payload !== "object") return null;
+
+        const source = typeof payload.source === "string" ? payload.source.trim() : "";
+        const target = typeof payload.target === "string" ? payload.target.trim() : "";
+        if (!source || !target) return null;
+
+        const fallbackIndex = partialEdgeMap.size;
+        const id = (typeof payload.id === "string" && payload.id.trim())
+          ? payload.id.trim()
+          : `partial-edge-${fallbackIndex + 1}`;
+
+        const edgePayload: Edge = {
+          id,
+          source,
+          target,
+          ...(typeof payload.label === "string" && payload.label.trim() ? { label: payload.label.trim() } : {}),
+        };
+
+        return applyEdgeStyles([edgePayload])[0];
+      };
+
       updateChatStatus(statusMessage);
 
-      console.log("[STREAM] 开始读取流...");
-      let chunkCount = 0;
       while (true) {
-        console.log(`[STREAM] 等待读取chunk ${chunkCount + 1}...`);
         const { value, done } = await reader.read();
-        chunkCount++;
-        console.log(`[STREAM] 收到chunk ${chunkCount}, size: ${value?.length || 0}, done: ${done}`);
         if (done) break;
-        buffered += decoder.decode(value, { stream: true });
 
+        buffered += decoder.decode(value, { stream: true });
         const parts = buffered.split("\n\n");
         buffered = parts.pop() || "";
 
@@ -684,68 +782,116 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
           if (!cleaned.startsWith("data:")) continue;
           const content = cleaned.replace(/^data:\s?/, "");
 
-          // Only log key events, not every token
           if (content.startsWith("[START]")) {
             pushLog(content);
-            updateChatStatus("📝 正在构建提示词...");
-          } else if (content.startsWith("[CALL]")) {
+            updateChatStatus("馃數 姝ｅ湪鏋勫缓鎻愮ず璇?..");
+            continue;
+          }
+
+          if (content.startsWith("[CALL]")) {
             pushLog(content);
-            updateChatStatus("🤖 AI 正在生成流程图...");
-            isGenerating = true;
-            // Add a "[生成中]" placeholder for token accumulation
-            if (!logs.some(log => log.startsWith("[生成中]"))) {
-              pushLog("[生成中] ");
+            updateChatStatus("馃 AI 姝ｅ湪鐢熸垚娴佺▼鍥?..");
+            if (!logs.some((log) => log.startsWith("[鐢熸垚涓璢"))) {
+              pushLog("[鐢熸垚涓璢 ");
             }
-          } else if (content.startsWith("[RESULT]")) {
-            // Remove the "[生成中]" entry
-            const generatingIndex = logs.findIndex(log => log.startsWith("[生成中]"));
+            continue;
+          }
+
+          if (content.startsWith("[PROGRESS]")) {
+            pushLog(content);
+            const progress = content.replace("[PROGRESS]", "").trim();
+            updateChatStatus(`馃 AI 姝ｅ湪鐢熸垚娴佺▼鍥?..\n${progress}`);
+            continue;
+          }
+
+          if (content.startsWith("[SESSION]")) {
+            const streamedSessionId = content.replace("[SESSION]", "").trim();
+            if (streamedSessionId) {
+              set({ currentSessionId: streamedSessionId });
+            }
+            continue;
+          }
+
+          if (content.startsWith("[RESULT]")) {
+            const generatingIndex = logs.findIndex((log) => log.startsWith("[鐢熸垚涓璢"));
             if (generatingIndex !== -1) {
               logs.splice(generatingIndex, 1);
             }
             pushLog(content);
             const match = content.match(/nodes=(\d+), edges=(\d+)/);
             if (match) {
-              const [_, nodeCount, edgeCount] = match;
-              updateChatStatus(`✅ 流程图生成完成\n- 节点数: ${nodeCount}\n- 连线数: ${edgeCount}`);
-            }
-          } else if (content.startsWith("[END]")) {
-            pushLog(content);
-          } else if (content.startsWith("[ERROR]")) {
-            pushLog(content);
-            updateChatStatus(`❌ 生成失败: ${content.replace("[ERROR]", "").trim()}`);
-          }
-
-          // Accumulate tokens and display in logs area with typewriter effect
-          if (content.startsWith("[TOKEN]")) {
-            const token = content.replace("[TOKEN]", "").trimStart();
-            updateJsonLog(token);
-            updateAiResponse(token);  // 实时更新聊天框中的 AI 回复
-
-            // Update status with progress for better feedback
-            const tokenLength = jsonBuffer.length;
-            if (tokenLength > 0 && tokenLength % 500 === 0) {
-              const charCount = Math.floor(tokenLength);
-              // Don't update chat status here, let updateAiResponse handle it
+              const [, nodeCount, edgeCount] = match;
+              updateChatStatus(`鉁?娴佺▼鍥剧敓鎴愬畬鎴怽n- 鑺傜偣鏁? ${nodeCount}\n- 杩炵嚎鏁? ${edgeCount}`, true);
             }
             continue;
           }
 
-          // 🎬 流式渲染：布局数据
+          if (content.startsWith("[END]")) {
+            pushLog(content);
+            continue;
+          }
+
+          if (content.startsWith("[WARN]")) {
+            pushLog(content);
+            continue;
+          }
+
+          if (content.startsWith("[ERROR]")) {
+            pushLog(content);
+            updateChatStatus(`鉂?鐢熸垚澶辫触: ${content.replace("[ERROR]", "").trim()}`, true);
+            continue;
+          }
+
+          if (content.startsWith("[TOKEN]")) {
+            const token = content.replace("[TOKEN]", "").trimStart();
+            updateJsonLog(token);
+            updateAiResponse(token);
+            continue;
+          }
+
+          if (content.startsWith("[PARTIAL_NODE]")) {
+            try {
+              const payload = JSON.parse(content.replace("[PARTIAL_NODE]", "").trim());
+              const node = normalizePartialNode(payload);
+              if (node) {
+                sawPartialGraphEvents = true;
+                partialNodeMap.set(node.id, node);
+                schedulePartialFlush();
+              }
+            } catch (err) {
+              console.warn("[PARTIAL_NODE] parse failed:", err);
+            }
+            continue;
+          }
+
+          if (content.startsWith("[PARTIAL_EDGE]")) {
+            try {
+              const payload = JSON.parse(content.replace("[PARTIAL_EDGE]", "").trim());
+              const edge = normalizePartialEdge(payload);
+              if (edge) {
+                sawPartialGraphEvents = true;
+                partialEdgeMap.set(edge.id, edge);
+                schedulePartialFlush();
+              }
+            } catch (err) {
+              console.warn("[PARTIAL_EDGE] parse failed:", err);
+            }
+            continue;
+          }
+
           if (content.startsWith("[LAYOUT_DATA]")) {
             try {
+              hasLayoutData = true;
               const layoutData = JSON.parse(content.replace("[LAYOUT_DATA]", "").trim());
-              let rawNodes = layoutData.nodes as Node[];
+              const rawNodes = layoutData.nodes as Node[];
               const rawEdges = layoutData.edges as Edge[];
-              const diagramType = layoutData.diagram_type;
+              const finalDiagramType = layoutData.diagram_type;
               const mermaidCode = layoutData.mermaid_code;
 
-              // 应用当前样式到边
               const edges = applyEdgeStyles(rawEdges);
-
               let preparedNodes: Node[];
 
-              // 只对 flow 类型应用自动布局
-              if (diagramType === "flow") {
+              if (finalDiagramType === "flow") {
                 const nodesWithSize = rawNodes.map((node) => {
                   const size = estimateNodeSize(node);
                   return { ...node, width: size.width, height: size.height };
@@ -756,95 +902,80 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
                   ranksep: 150,
                   nodesep: 100,
                 });
-
-                preparedNodes = addLayerFrames(layoutedNodes, diagramType);
+                preparedNodes = addLayerFrames(layoutedNodes, finalDiagramType);
               } else {
-                // architecture 模式：使用原始坐标
-                preparedNodes = addLayerFrames(rawNodes, diagramType);
+                preparedNodes = addLayerFrames(rawNodes, finalDiagramType);
               }
 
-              // 存储准备好的数据，但先清空显示
+              const shouldDirectFinalize = sawPartialGraphEvents || partialNodeMap.size > 0 || partialEdgeMap.size > 0;
               set({
                 _preparedNodes: preparedNodes,
                 _preparedEdges: edges,
-                nodes: [],
-                edges: [],
+                nodes: shouldDirectFinalize ? preparedNodes : [],
+                edges: shouldDirectFinalize ? edges : [],
                 mermaidCode,
               });
-
-              console.log(`[LAYOUT_DATA] Prepared ${preparedNodes.length} nodes, ${edges.length} edges`);
             } catch (err) {
               console.error("[LAYOUT_DATA] Parse failed:", err);
             }
             continue;
           }
 
-          // 🎬 流式渲染：显示节点
           if (content.startsWith("[NODE_SHOW]")) {
+            if (sawPartialGraphEvents) {
+              continue;
+            }
             const nodeId = content.replace("[NODE_SHOW]", "").trim();
             const preparedNodes = get()._preparedNodes;
             const node = preparedNodes.find((n) => n.id === nodeId);
-
             if (node) {
               const currentNodes = get().nodes;
               set({ nodes: [...currentNodes, node] });
-              console.log(`[NODE_SHOW] Displayed node ${nodeId}`);
             }
             continue;
           }
 
-          // 🎬 流式渲染：显示边
           if (content.startsWith("[EDGE_SHOW]")) {
+            if (sawPartialGraphEvents) {
+              continue;
+            }
             const edgeId = content.replace("[EDGE_SHOW]", "").trim();
             const preparedEdges = get()._preparedEdges;
             const edge = preparedEdges.find((e) => e.id === edgeId);
-
             if (edge) {
               const currentEdges = get().edges;
               set({ edges: [...currentEdges, edge] });
-              console.log(`[EDGE_SHOW] Displayed edge ${edgeId}`);
             }
             continue;
           }
 
-          // Fallback: 完整JSON payload（兼容旧版本）
           if (content.startsWith("{")) {
             try {
               const data = JSON.parse(content);
               if (data?.nodes && data?.edges) {
-                let rawNodes = data.nodes as Node[];
+                hasLayoutData = true;
+                const rawNodes = data.nodes as Node[];
                 const rawEdges = data.edges as Edge[];
-
-                // 应用当前样式到边
                 const edges = applyEdgeStyles(rawEdges);
 
-                let nodes: Node[];
-
-                // 只对 flow 类型应用自动布局，architecture 保持原始位置
+                let finalNodes: Node[];
                 if (get().diagramType === "flow") {
-                  // 🔥 应用智能布局算法
                   const nodesWithSize = rawNodes.map((node) => {
                     const size = estimateNodeSize(node);
                     return { ...node, width: size.width, height: size.height };
                   });
-
                   const layoutedNodes = getLayoutedElements(nodesWithSize, edges, {
-                    direction: "LR",  // 默认左到右，更符合阅读习惯
+                    direction: "LR",
                     ranksep: 150,
                     nodesep: 100,
                   });
-
-                  // 添加分层框架（如果是架构图）
-                  nodes = addLayerFrames(layoutedNodes, get().diagramType);
+                  finalNodes = addLayerFrames(layoutedNodes, get().diagramType);
                 } else {
-                  // architecture 模式：使用后端返回的原始坐标
-                  nodes = addLayerFrames(rawNodes, get().diagramType);
+                  finalNodes = addLayerFrames(rawNodes, get().diagramType);
                 }
 
                 const mermaidCode = data.mermaid_code || get().mermaidCode;
-
-                // 直接设置（fallback兼容）
-                set({ nodes, edges, mermaidCode });
+                set({ nodes: finalNodes, edges, mermaidCode });
               }
             } catch {
               // ignore parse errors for non-JSON events
@@ -853,52 +984,38 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
         }
       }
 
-      // Stream ended, logs are already updated
       set({ generationLogs: [...logs] });
 
-      // Fallback: if streaming didn't deliver nodes, retry non-stream
-      if (get().nodes.length === 0) {
+      if (!hasLayoutData) {
         const retry = await fetch(API_ENDPOINTS.chatGenerator, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
         const data = await retry.json();
-        if (data?.nodes && data?.edges) {
-          let rawNodes = data.nodes as Node[];
-          const rawEdges = data.edges as Edge[];
 
-          // 应用当前样式到边
+        if (data?.nodes && data?.edges) {
+          const rawNodes = data.nodes as Node[];
+          const rawEdges = data.edges as Edge[];
           const edges = applyEdgeStyles(rawEdges);
 
-          let nodes: Node[];
-
-          // 只对 flow 类型应用自动布局，architecture 保持原始位置
+          let finalNodes: Node[];
           if (get().diagramType === "flow") {
-            // 🔥 应用智能布局算法
             const nodesWithSize = rawNodes.map((node) => {
               const size = estimateNodeSize(node);
               return { ...node, width: size.width, height: size.height };
             });
-
             const layoutedNodes = getLayoutedElements(nodesWithSize, edges, {
-              direction: "LR",  // 默认左到右
+              direction: "LR",
               ranksep: 150,
               nodesep: 100,
             });
-
-            nodes = addLayerFrames(layoutedNodes, get().diagramType);
+            finalNodes = addLayerFrames(layoutedNodes, get().diagramType);
           } else {
-            // architecture 模式：使用后端返回的原始坐标
-            nodes = addLayerFrames(rawNodes, get().diagramType);
+            finalNodes = addLayerFrames(rawNodes, get().diagramType);
           }
 
-          const mermaidCode = data.mermaid_code;
-
-          // 直接设置（非stream fallback）
-          set({ nodes, edges, mermaidCode });
-
-          // 🆕 更新 session_id
+          set({ nodes: finalNodes, edges, mermaidCode: data.mermaid_code });
           if (data.session_id) {
             set({ currentSessionId: data.session_id });
           }
@@ -910,7 +1027,6 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
       set({ isGeneratingFlowchart: false });
     }
   },
-
   generateExcalidrawScene: async (prompt) => {
     set({ isGeneratingFlowchart: true });
     try {
@@ -919,8 +1035,8 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
       const body = {
         prompt,
         style: "balanced",  // Use FlowPilot-compatible style system
-        width: 1200,
-        height: 800,
+        width: 1800,
+        height: 1200,
         provider: modelConfig.provider,
         api_key: modelConfig.apiKey?.trim() || undefined,
         base_url: modelConfig.baseUrl?.trim() || undefined,
@@ -961,66 +1077,60 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
   },
 
   generateExcalidrawSceneStream: async (prompt) => {
-    console.log("[Excalidraw] Starting generation for:", prompt.substring(0, 50));
     set({ isGeneratingFlowchart: true, generationLogs: [], excalidrawScene: null });
 
     try {
       const { modelConfig } = get();
-
-      // 添加用户消息到聊天历史
       set((state) => ({
-        chatHistory: [
-          ...state.chatHistory,
-          { role: "user", content: prompt },
-        ],
+        chatHistory: [...state.chatHistory, { role: "user", content: prompt }],
       }));
 
       const body = {
         prompt,
         style: "balanced",
-        width: 1200,
-        height: 800,
+        width: 1800,
+        height: 1200,
         provider: modelConfig.provider,
         api_key: modelConfig.apiKey?.trim() || undefined,
         base_url: modelConfig.baseUrl?.trim() || undefined,
         model_name: modelConfig.modelName,
       };
 
-      // IMPORTANT: Connect directly to backend to avoid Next.js proxy buffering
       const response = await fetch(`${API_BASE_URL}/api/excalidraw/generate-stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
         body: JSON.stringify(body),
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+      if (!response.ok || !response.body) {
+        const detail = await response.text();
+        throw new Error(detail || `HTTP ${response.status}`);
       }
 
-      const reader = response.body!.getReader();
+      const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffered = "";
-      let tokenCount = 0;
 
       const logs: string[] = [];
       const pushLog = (line: string) => {
         logs.push(line);
-        // Throttle log updates to every 10 logs to reduce re-renders
-        if (logs.length % 10 === 0) {
+        if (logs.length % 6 === 0 || line.startsWith("[ERROR]") || line.startsWith("[RESULT]")) {
           setTimeout(() => set({ generationLogs: [...logs] }), 0);
         }
       };
 
-      // Track generation status in chat history (打字机效果)
-      let statusMessage = "🎨 正在生成 Excalidraw 场景...";
-      let aiResponseBuffer = "";  // Buffer for AI's actual response text
-      let lastChatUpdate = Date.now();
+      let aiResponseBuffer = "";
+      let lastChatUpdate = 0;
+      let currentStatus = "Starting Excalidraw generation...";
+      let partialElementsCount = 0;
+      let hasFinalResult = false;
+      const partialElements = new Map<string, any>();
+      let partialFlushScheduled = false;
 
       const updateChatStatus = (message: string, force = false) => {
-        statusMessage = message;
-        // Throttle chat updates to max once per 500ms unless forced
+        currentStatus = message;
         const now = Date.now();
-        if (!force && now - lastChatUpdate < 500) return;
+        if (!force && now - lastChatUpdate < 250) return;
         lastChatUpdate = now;
 
         setTimeout(() => {
@@ -1028,366 +1138,188 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
             const newHistory = [...state.chatHistory];
             const last = newHistory[newHistory.length - 1];
             if (last && last.role === "assistant") {
-              newHistory[newHistory.length - 1] = { role: "assistant", content: statusMessage };
+              newHistory[newHistory.length - 1] = { role: "assistant", content: currentStatus };
             } else {
-              newHistory.push({ role: "assistant", content: statusMessage });
+              newHistory.push({ role: "assistant", content: currentStatus });
             }
             return { chatHistory: newHistory };
           });
         }, 0);
       };
 
-      // Update AI response in real-time (for chat display)
       const updateAiResponse = (token: string) => {
         aiResponseBuffer += token;
         const now = Date.now();
-        // Throttle to avoid too many updates
-        if (now - lastChatUpdate < 100) return;
+        if (now - lastChatUpdate < 120) return;
         lastChatUpdate = now;
 
         setTimeout(() => {
           set((state) => {
             const newHistory = [...state.chatHistory];
             const last = newHistory[newHistory.length - 1];
+            const content = `AI is generating Excalidraw JSON...\n\n${aiResponseBuffer}`;
             if (last && last.role === "assistant") {
-              newHistory[newHistory.length - 1] = {
-                role: "assistant",
-                content: `🎨 AI 正在绘制...\n\n${aiResponseBuffer}`
-              };
+              newHistory[newHistory.length - 1] = { role: "assistant", content };
             } else {
-              newHistory.push({
-                role: "assistant",
-                content: `🎨 AI 正在绘制...\n\n${aiResponseBuffer}`
-              });
+              newHistory.push({ role: "assistant", content });
             }
             return { chatHistory: newHistory };
           });
         }, 0);
       };
 
-      // Accumulate JSON tokens for display in logs
-      let jsonBuffer = "";
-      let parsedElements: any[] = []; // Track already parsed elements for incremental rendering
-      let hasReceivedFinalResult = false; // 🔥 Flag to prevent incremental updates after receiving final result
-      const MAX_INCREMENTAL_ELEMENTS = 50; // ✅ Match backend's max_elems limit
+      const schedulePartialSceneFlush = () => {
+        if (partialFlushScheduled || hasFinalResult) return;
+        partialFlushScheduled = true;
 
-      // Throttle scene updates using requestAnimationFrame
-      let pendingSceneUpdate: any = null;
-      let animationFrameId: number | null = null;
+        const flush = () => {
+          partialFlushScheduled = false;
+          if (hasFinalResult) return;
 
-      const scheduleSceneUpdate = (elements: any[]) => {
-        // 🔥 NEW: Don't schedule updates if we already have the final result
-        if (hasReceivedFinalResult) {
-          console.log(`⛔ [Excalidraw INCREMENTAL] Blocked incremental update (${elements.length} elements) - already have final result`);
-          return;
-        }
+          const elements = Array.from(partialElements.values());
+          if (!elements.length) return;
 
-        console.log(`📊 [Excalidraw INCREMENTAL] Scheduling update with ${elements.length} elements`);
-        pendingSceneUpdate = elements;
-
-        if (animationFrameId === null) {
-          animationFrameId = requestAnimationFrame(() => {
-            // 🔥 NEW: Double-check flag before actually updating
-            if (hasReceivedFinalResult) {
-              console.log(`⛔ [Excalidraw INCREMENTAL] Cancelled scheduled update (had ${pendingSceneUpdate?.length} elements) - final result received`);
-              animationFrameId = null;
-              pendingSceneUpdate = null;
-              return;
-            }
-
-            if (pendingSceneUpdate && pendingSceneUpdate.length > 0) {
-              const partialScene = {
-                elements: pendingSceneUpdate,
-                appState: { viewBackgroundColor: "#ffffff" },
-                files: {}
-              };
-              console.log(`✏️ [Excalidraw INCREMENTAL] Applying incremental update: ${pendingSceneUpdate.length} elements`);
-              set({ excalidrawScene: partialScene });
-            }
-            animationFrameId = null;
-            pendingSceneUpdate = null;
+          set({
+            excalidrawScene: {
+              elements,
+              appState: { viewBackgroundColor: "#ffffff", __streaming: true },
+              files: {},
+            },
           });
+        };
+
+        if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+          window.requestAnimationFrame(flush);
+        } else {
+          setTimeout(flush, 0);
         }
       };
 
-      const updateJsonLog = (token: string) => {
-        jsonBuffer += token;
-        const generatingIndex = logs.findIndex(log => log.startsWith("[生成中]"));
-
-        // Only update logs display every 50 tokens to reduce re-renders
-        if (tokenCount % 50 === 0) {
-          if (generatingIndex !== -1) {
-            logs[generatingIndex] = `[生成中] ${jsonBuffer.substring(0, 200)}...`;
-          } else {
-            logs.push(`[生成中] ${jsonBuffer.substring(0, 200)}...`);
-          }
-          setTimeout(() => set({ generationLogs: [...logs] }), 0);
-        }
-
-        // Try to parse and render partial elements in real-time
-        tryParseAndRenderPartialElements();
-      };
-
-      const tryParseAndRenderPartialElements = () => {
-        try {
-          // Strip markdown fences if present (AI sometimes returns ```json ... ```)
-          let cleanBuffer = jsonBuffer.trim();
-          if (cleanBuffer.startsWith('```json')) {
-            cleanBuffer = cleanBuffer.substring('```json'.length).trim();
-          } else if (cleanBuffer.startsWith('```')) {
-            cleanBuffer = cleanBuffer.substring('```'.length).trim();
-          }
-          if (cleanBuffer.endsWith('```')) {
-            cleanBuffer = cleanBuffer.substring(0, cleanBuffer.length - 3).trim();
-          }
-
-          // Try to extract completed elements from the JSON buffer
-          // Look for pattern: "elements": [{ ... }, { ... },
-          const elementsMatch = cleanBuffer.match(/"elements"\s*:\s*\[([\s\S]*)/);
-          if (!elementsMatch) {
-            return;
-          }
-
-          const elementsJson = elementsMatch[1];
-          let depth = 0;
-          let currentElement = "";
-          let inString = false;
-          let escape = false;
-          let foundNewElement = false;
-          let startedElement = false;
-
-          for (let i = 0; i < elementsJson.length; i++) {
-            const char = elementsJson[i];
-
-            // Track string context to avoid false positives in strings
-            if (char === '"' && !escape) {
-              inString = !inString;
-            }
-            escape = char === '\\' && !escape;
-
-            if (!inString) {
-              if (char === '{') {
-                depth++;
-                if (depth === 1) {
-                  // Start of a new element
-                  startedElement = true;
-                  currentElement = "";
-                }
-              }
-              if (char === '}') {
-                depth--;
-              }
-            }
-
-            // Only accumulate if we're inside an element
-            if (startedElement) {
-              currentElement += char;
-            }
-
-            // Found a complete element (depth back to 0 after closing })
-            if (startedElement && depth === 0 && char === '}') {
-              try {
-                const elementText = currentElement.trim();
-                const element = JSON.parse(elementText);
-
-                // ✅ Only add new elements (check if ID already exists) and respect max limit
-                if (element.id &&
-                    !parsedElements.some(e => e.id === element.id) &&
-                    parsedElements.length < MAX_INCREMENTAL_ELEMENTS) {
-                  parsedElements.push(element);
-                  foundNewElement = true;
-
-                  // Only log every 5th element to reduce console spam
-                  if (parsedElements.length % 5 === 0 || parsedElements.length === 1) {
-                    console.log(`[Excalidraw INCREMENTAL] ✅ Parsed ${parsedElements.length} elements`);
-                  }
-                } else if (parsedElements.length >= MAX_INCREMENTAL_ELEMENTS) {
-                  // ⚠️ Stop parsing when we hit the limit (matches backend behavior)
-                  console.warn(`[Excalidraw INCREMENTAL] ⚠️ Reached max limit of ${MAX_INCREMENTAL_ELEMENTS} elements`);
-                }
-              } catch (e) {
-                // Element not yet complete or invalid JSON, continue silently
-              }
-
-              currentElement = "";
-              startedElement = false;
-            }
-          }
-
-          // Use throttled update if we found new elements
-          // ✅ Batch updates: only update every 5 elements to reduce DOM updates
-          if (foundNewElement && parsedElements.length > 0) {
-            const shouldUpdate = (
-              parsedElements.length === 1 ||        // First element
-              parsedElements.length % 5 === 0 ||    // Every 5 elements
-              parsedElements.length >= MAX_INCREMENTAL_ELEMENTS  // At limit
-            );
-
-            if (shouldUpdate) {
-              scheduleSceneUpdate([...parsedElements]);
-            }
-          }
-        } catch (e) {
-          // Parsing failed, wait for more data (silent)
-        }
-      };
-
-      // Initialize status message
-      updateChatStatus(statusMessage, true);
+      updateChatStatus(currentStatus, true);
 
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value, { stream: true });
-        buffered += chunk;
+        buffered += decoder.decode(value, { stream: true });
         const parts = buffered.split("\n\n");
         buffered = parts.pop() || "";
 
         for (const part of parts) {
-          const content = part.trim().replace(/^data:\s?/, "");
+          const cleaned = part.trim();
+          if (!cleaned.startsWith("data:")) continue;
+          const content = cleaned.replace(/^data:\s?/, "");
           if (!content) continue;
 
           if (content.startsWith("[START]")) {
             pushLog(content);
-            updateChatStatus("📝 正在构建提示词...");
-          } else if (content.startsWith("[CALL]")) {
+            updateChatStatus("Preparing Excalidraw prompt...");
+            continue;
+          }
+
+          if (content.startsWith("[CALL]")) {
             pushLog(content);
-            updateChatStatus("🤖 AI 正在绘制场景...");
-            // Add a "[生成中]" placeholder for token accumulation
-            if (!logs.some(log => log.startsWith("[生成中]"))) {
-              pushLog("[生成中] ");
-            }
-          } else if (content.startsWith("[TOKEN]")) {
+            updateChatStatus("Calling model and streaming elements...");
+            continue;
+          }
+
+          if (content.startsWith("[TOKEN]")) {
             const token = content.replace("[TOKEN]", "").trimStart();
-            tokenCount++;
+            updateAiResponse(token);
+            continue;
+          }
 
-            updateJsonLog(token);
-            updateAiResponse(token);  // 实时更新聊天框中的 AI 回复
-
-            // Update status with character count for better feedback
-            const charCount = jsonBuffer.length;
-            if (charCount > 0 && charCount % 500 === 0) {
-              // Don't update chat status here, let updateAiResponse handle it
-            }
-          } else if (content.startsWith("[RESULT]")) {
-            // Remove "[生成中]" log
-            const generatingIndex = logs.findIndex(log => log.startsWith("[生成中]"));
-            if (generatingIndex !== -1) {
-              logs.splice(generatingIndex, 1);
-            }
-
-            pushLog(content);
-            const resultContent = content.replace("[RESULT]", "").trim();
-
+          if (content.startsWith("[PARTIAL_ELEMENT]")) {
             try {
-              const result = JSON.parse(resultContent);
-              console.log("🔍 [Excalidraw] Received [RESULT]:", {
-                hasScene: !!result.scene,
-                rawElementsCount: result.scene?.elements?.length || 0,
-                incrementalParsedCount: parsedElements.length,
-                success: result.success,
-                message: result.message
-              });
-
-              if (result.scene?.elements) {
-                // 🔥 CRITICAL FIX: Set flag FIRST to prevent race conditions
-                hasReceivedFinalResult = true;
-                console.log("🚫 [Excalidraw] hasReceivedFinalResult = true, blocking incremental updates");
-
-                // Cancel any pending animation frame
-                if (animationFrameId !== null) {
-                  console.log("❌ [Excalidraw] Cancelling pending animation frame");
-                  cancelAnimationFrame(animationFrameId);
-                  animationFrameId = null;
+              const element = JSON.parse(content.replace("[PARTIAL_ELEMENT]", "").trim());
+              if (element && typeof element.id === "string") {
+                partialElements.set(element.id, element);
+                partialElementsCount = partialElements.size;
+                schedulePartialSceneFlush();
+                if (partialElementsCount % 4 === 0 || partialElementsCount === 1) {
+                  updateChatStatus(`Streaming diagram... ${partialElementsCount} elements drawn`);
                 }
-
-                // 🔍 DEBUG: Compare element IDs
-                const incrementalIds = parsedElements.map((e: any) => e.id);
-                const finalIds = result.scene.elements.map((e: any) => e.id);
-                const missingIds = incrementalIds.filter((id: string) => !finalIds.includes(id));
-                const newIds = finalIds.filter((id: string) => !incrementalIds.includes(id));
-
-                if (missingIds.length > 0 || newIds.length > 0) {
-                  console.warn("⚠️ [Excalidraw] Element ID mismatch detected:");
-                  console.warn("  - Missing from final:", missingIds);
-                  console.warn("  - New in final:", newIds);
-                  console.warn("  - This causes the 'disappearing elements' bug!");
-                }
-
-                // ✅ SMART FIX: Only update if element IDs are different
-                // If IDs match perfectly, keep the incremental version (has better properties)
-                const shouldUpdate = (missingIds.length > 0 || newIds.length > 0);
-
-                let finalElements;
-                if (shouldUpdate) {
-                  console.log("🔄 [Excalidraw] Using backend elements (IDs differ)");
-                  finalElements = result.scene.elements;
-                } else {
-                  console.log("✅ [Excalidraw] Keeping incremental elements (IDs match perfectly)");
-                  finalElements = parsedElements;
-                }
-
-                // CRITICAL FIX: Always use complete RESULT elements as the final data
-                // Incremental parsing is only for intermediate display
-                const finalScene = {
-                  elements: finalElements,
-                  appState: result.scene.appState || { viewBackgroundColor: "#ffffff" },
-                  files: result.scene.files || {}
-                };
-
-                console.log("✅ [Excalidraw] Prepared final scene:", {
-                  elementsCount: finalElements.length,
-                  incrementalParsed: parsedElements.length,
-                  source: shouldUpdate ? 'backend-validated' : 'incremental-kept',
-                  firstElementIds: finalElements.slice(0, 5).map((e: any) => ({ id: e.id, type: e.type }))
-                });
-
-                // 🔥 NEW: Use setTimeout to ensure this update happens AFTER any pending animation frames
-                setTimeout(() => {
-                  console.log("📝 [Excalidraw] Setting final scene in store NOW");
-                  set({ excalidrawScene: finalScene });
-                  console.log("✅ [Excalidraw] Final scene set, incremental updates blocked");
-                }, 0);
-
-                const successMsg = result.success
-                  ? `✅ Excalidraw 场景生成完成\n- 元素数量: ${result.scene.elements.length}\n- 增量解析: ${parsedElements.length} 个元素\n- 生成方式: ${parsedElements.length > 0 ? 'AI 实时流式生成' : 'AI 智能生成'}`
-                  : `⚠️ 使用备用场景\n- 元素数量: ${result.scene.elements.length}\n- 原因: ${result.message || 'AI 生成失败'}`;
-
-                updateChatStatus(successMsg, true);
               }
-            } catch (e) {
-              console.error("[Excalidraw] Failed to parse RESULT:", e);
+            } catch (err) {
+              console.warn("[Excalidraw] PARTIAL_ELEMENT parse failed:", err);
             }
-          } else if (content.startsWith("[END]")) {
+            continue;
+          }
+
+          if (content.startsWith("[PROGRESS]")) {
             pushLog(content);
-            // Final log update
-            set({ generationLogs: [...logs] });
-          } else if (content.startsWith("[ERROR]")) {
+            const progress = content.replace("[PROGRESS]", "").trim();
+            updateChatStatus(`Generating diagram... ${progress}`);
+            continue;
+          }
+
+          if (content.startsWith("[WARN]")) {
             pushLog(content);
-            updateChatStatus(`❌ 生成失败: ${content.replace("[ERROR]", "").trim()}`, true);
-            throw new Error(content.replace("[ERROR]", ""));
+            updateChatStatus(content.replace("[WARN]", "").trim());
+            continue;
+          }
+
+          if (content.startsWith("[RESULT]")) {
+            pushLog(content);
+            const payload = content.replace("[RESULT]", "").trim();
+            try {
+              const result = JSON.parse(payload);
+              hasFinalResult = true;
+
+              const scene = result?.scene;
+              if (scene?.elements && Array.isArray(scene.elements)) {
+                set({
+                  excalidrawScene: {
+                    elements: scene.elements,
+                    appState: {
+                      ...(scene.appState || {}),
+                      viewBackgroundColor: "#ffffff",
+                      __streaming: false,
+                    },
+                    files: scene.files || {},
+                  },
+                });
+              }
+
+              const finalElements = scene?.elements?.length || 0;
+              const success = Boolean(result?.success);
+              const statusText = success
+                ? `Excalidraw generated successfully\n- Final elements: ${finalElements}\n- Streamed partial elements: ${partialElementsCount}`
+                : `Excalidraw generation returned fallback\n- Elements: ${finalElements}\n- Message: ${result?.message || "Unknown"}`;
+              updateChatStatus(statusText, true);
+            } catch (err) {
+              console.error("[Excalidraw] RESULT parse failed:", err);
+              throw new Error("Invalid [RESULT] payload from stream");
+            }
+            continue;
+          }
+
+          if (content.startsWith("[ERROR]")) {
+            pushLog(content);
+            throw new Error(content.replace("[ERROR]", "").trim() || "Excalidraw generation failed");
+          }
+
+          if (content.startsWith("[END]")) {
+            pushLog(content);
+            continue;
           }
         }
       }
 
-      console.log("[Excalidraw] Stream completed");
+      set({ generationLogs: [...logs] });
     } catch (error: any) {
-      console.error("[Excalidraw] Error:", error);
-      set(state => ({
-        generationLogs: [...state.generationLogs, `❌ Error: ${error.message}`],
+      set((state) => ({
+        generationLogs: [...state.generationLogs, `Error: ${error?.message || "unknown error"}`],
         chatHistory: [
           ...state.chatHistory,
-          { role: "assistant", content: `❌ 生成失败: ${error.message}` }
-        ]
+          { role: "assistant", content: `Generation failed: ${error?.message || "unknown error"}` },
+        ],
       }));
+      throw error;
     } finally {
-      console.log("[Excalidraw] Finally block: setting isGeneratingFlowchart = false");
       set({ isGeneratingFlowchart: false });
-      console.log("[Excalidraw] Finally block: completed");
     }
   },
-
   loadPromptScenarios: async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/prompter/scenarios`);
@@ -1442,7 +1374,7 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
       const updatedNodes = addLayerFrames(data.nodes as Node[], get().diagramType);
       const rawEdges = data.edges as Edge[];
 
-      // 应用当前样式到边
+      // 鎼存梻鏁よぐ鎾冲閺嶅嘲绱￠崚鎷岀珶
       const updatedEdges = applyEdgeStyles(rawEdges);
 
       const updatedMermaid = data.mermaid_code || get().mermaidCode;
@@ -1470,3 +1402,6 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
     get().updateFromCanvas();
   },
 }));
+
+
+

@@ -7,13 +7,21 @@
 
 import json
 import os
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 import logging
 
 from app.models.schemas import ModelPreset, ModelPresetCreate, ModelPresetUpdate
 
 logger = logging.getLogger(__name__)
+
+
+DEFAULT_PROVIDER = "custom"
+DEFAULT_API_KEY = "sk-a2c00860412445a39c7758a5fbffb890"
+DEFAULT_BASE_URL = "https://www.right.codes/codex/v1"
+DEFAULT_MODEL_NAME = "gpt-5.2"
+DEFAULT_PRESET_ID = "default-right-codes"
+DEFAULT_PRESET_NAME = "Default Right Codes"
 
 
 class ModelPresetsService:
@@ -38,7 +46,8 @@ class ModelPresetsService:
                 with open(self.config_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     for preset_data in data.get("presets", []):
-                        preset = ModelPreset(**preset_data)
+                        normalized = self._normalize_preset_data(preset_data)
+                        preset = ModelPreset(**normalized)
                         self.presets[preset.id] = preset
                 logger.info(f"Loaded {len(self.presets)} model presets from {self.config_file}")
             except Exception as e:
@@ -47,6 +56,22 @@ class ModelPresetsService:
         else:
             logger.info(f"No existing presets file found at {self.config_file}, starting fresh")
             self.presets = {}
+
+    @staticmethod
+    def _normalize_preset_data(preset_data: Dict[str, Any]) -> Dict[str, Any]:
+        """兼容历史字段：api_base/model -> base_url/model_name。"""
+        normalized = dict(preset_data)
+
+        if not normalized.get("base_url") and normalized.get("api_base"):
+            normalized["base_url"] = normalized.get("api_base")
+
+        if not normalized.get("model_name") and normalized.get("model"):
+            normalized["model_name"] = normalized.get("model")
+
+        if not normalized.get("provider"):
+            normalized["provider"] = DEFAULT_PROVIDER
+
+        return normalized
 
     def _save_presets(self):
         """保存预设配置到 JSON 文件"""
@@ -214,49 +239,66 @@ class ModelPresetsService:
         return None
 
     def _ensure_default_preset(self):
-        """确保系统有默认配置，如果没有则创建"""
-        from app.core.config import settings
+        """确保系统默认配置固定为 right.codes/gpt-5.2。"""
+        now = datetime.now().isoformat()
+        has_changes = False
 
-        # 检查是否已有默认配置
-        if self.get_default_preset():
-            logger.info("Default preset already exists")
-            return
+        default_preset = self.presets.get(DEFAULT_PRESET_ID)
+        if default_preset is None:
+            default_preset = ModelPreset(
+                id=DEFAULT_PRESET_ID,
+                name=DEFAULT_PRESET_NAME,
+                provider=DEFAULT_PROVIDER,
+                api_key=DEFAULT_API_KEY,
+                model_name=DEFAULT_MODEL_NAME,
+                base_url=DEFAULT_BASE_URL,
+                is_default=True,
+                created_at=now,
+                updated_at=now
+            )
+            self.presets[DEFAULT_PRESET_ID] = default_preset
+            has_changes = True
+        else:
+            if default_preset.name != DEFAULT_PRESET_NAME:
+                default_preset.name = DEFAULT_PRESET_NAME
+                has_changes = True
+            if default_preset.provider != DEFAULT_PROVIDER:
+                default_preset.provider = DEFAULT_PROVIDER
+                has_changes = True
+            if default_preset.api_key != DEFAULT_API_KEY:
+                default_preset.api_key = DEFAULT_API_KEY
+                has_changes = True
+            if default_preset.base_url != DEFAULT_BASE_URL:
+                default_preset.base_url = DEFAULT_BASE_URL
+                has_changes = True
+            if default_preset.model_name != DEFAULT_MODEL_NAME:
+                default_preset.model_name = DEFAULT_MODEL_NAME
+                has_changes = True
+            if not default_preset.created_at:
+                default_preset.created_at = now
+                has_changes = True
+            if has_changes:
+                default_preset.updated_at = now
 
-        # 如果没有任何配置，创建默认配置
-        if not self.presets:
-            logger.info("No presets found, creating default custom preset")
+        for preset_id, preset in self.presets.items():
+            should_be_default = preset_id == DEFAULT_PRESET_ID
+            if preset.is_default != should_be_default:
+                preset.is_default = should_be_default
+                has_changes = True
 
-            # 从环境变量或配置读取默认值
-            default_api_key = settings.SILICONFLOW_API_KEY or ""
-            default_base_url = settings.SILICONFLOW_BASE_URL or "https://api.siliconflow.cn/v1"
-            default_model_name = "Qwen/Qwen2.5-14B-Instruct"
-
-            # 创建默认配置
-            try:
-                now = datetime.now().isoformat()
-                default_preset = ModelPreset(
-                    id="default-custom",
-                    name="Default Custom",
-                    provider="custom",
-                    api_key=default_api_key,
-                    model_name=default_model_name,
-                    base_url=default_base_url,
-                    is_default=True,
-                    created_at=now,
-                    updated_at=now
-                )
-
-                self.presets["default-custom"] = default_preset
-                self._save_presets()
-                logger.info(f"Created default preset: {default_preset.name}")
-            except Exception as e:
-                logger.error(f"Failed to create default preset: {e}")
+        if has_changes:
+            self._save_presets()
+            logger.info("Default preset enforced: %s (%s)", DEFAULT_MODEL_NAME, DEFAULT_BASE_URL)
+        else:
+            logger.info("Default preset already up-to-date")
 
     def get_active_config(self,
                          provider: Optional[str] = None,
                          api_key: Optional[str] = None,
                          base_url: Optional[str] = None,
-                         model_name: Optional[str] = None) -> Optional[dict]:
+                         model_name: Optional[str] = None,
+                         api_base: Optional[str] = None,
+                         model: Optional[str] = None) -> Optional[dict]:
         """获取有效的 AI 配置
 
         优先级：
@@ -268,17 +310,27 @@ class ModelPresetsService:
             api_key: API 密钥
             base_url: API 基础 URL
             model_name: 模型名称
+            api_base: base_url 的兼容字段
+            model: model_name 的兼容字段
 
         Returns:
             包含配置信息的字典，如果没有有效配置则返回 None
         """
+        resolved_provider = provider or DEFAULT_PROVIDER
+        resolved_base_url = base_url or api_base
+        resolved_model_name = model_name or model
+
+        if resolved_provider == "custom":
+            resolved_base_url = resolved_base_url or DEFAULT_BASE_URL
+            resolved_model_name = resolved_model_name or DEFAULT_MODEL_NAME
+
         # 如果提供了 api_key，优先使用传入的参数
         if api_key:
             return {
-                "provider": provider or "custom",
+                "provider": resolved_provider,
                 "api_key": api_key,
-                "base_url": base_url,
-                "model_name": model_name
+                "base_url": resolved_base_url,
+                "model_name": resolved_model_name
             }
 
         # 否则尝试使用默认预设
@@ -291,7 +343,62 @@ class ModelPresetsService:
                 "model_name": default_preset.model_name
             }
 
-        return None
+        return {
+            "provider": DEFAULT_PROVIDER,
+            "api_key": DEFAULT_API_KEY,
+            "base_url": DEFAULT_BASE_URL,
+            "model_name": DEFAULT_MODEL_NAME
+        }
+
+    @staticmethod
+    def _config_signature(config: Dict[str, Any]) -> tuple:
+        return (
+            (config.get("provider") or "").strip().lower(),
+            (config.get("api_key") or "").strip(),
+            (config.get("base_url") or "").strip(),
+            (config.get("model_name") or "").strip(),
+        )
+
+    def list_full_runtime_configs(self) -> List[Dict[str, Any]]:
+        """Return full runtime configs (including keys) for routing/failover."""
+        configs: List[Dict[str, Any]] = []
+        for preset in self.presets.values():
+            if not preset.api_key:
+                continue
+            configs.append({
+                "provider": preset.provider or DEFAULT_PROVIDER,
+                "api_key": preset.api_key,
+                "base_url": preset.base_url or None,
+                "model_name": preset.model_name or None,
+            })
+        return configs
+
+    def get_failover_configs(
+        self,
+        primary_config: Optional[Dict[str, Any]],
+        max_candidates: int = 3,
+    ) -> List[Dict[str, Any]]:
+        """
+        Build alternate configs for automatic failover.
+        The primary config is excluded from returned candidates.
+        """
+        if max_candidates <= 0:
+            return []
+
+        primary_sig = self._config_signature(primary_config or {})
+        seen = {primary_sig}
+        candidates: List[Dict[str, Any]] = []
+
+        for config in self.list_full_runtime_configs():
+            sig = self._config_signature(config)
+            if sig in seen:
+                continue
+            seen.add(sig)
+            candidates.append(config)
+            if len(candidates) >= max_candidates:
+                break
+
+        return candidates
 
 
 # 全局单例实例

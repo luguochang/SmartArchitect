@@ -3,7 +3,7 @@ Export API Router
 Handles PPT, Slidev, and Speech Script generation
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Body, Query
 from fastapi.responses import Response, StreamingResponse
 from typing import Optional, List
 import logging
@@ -20,6 +20,7 @@ from app.models.schemas import (
     ScriptMetadata,
     SaveDraftResponse,
     RefinedSectionResponse,
+    RefineSectionRequest,
     ImprovementSuggestions,
 )
 from app.services.ppt_exporter import create_ppt_exporter
@@ -106,7 +107,11 @@ async def export_slidev(request: ExportRequest):
 async def generate_script(
     request: SpeechScriptRequest,
     provider: Optional[str] = "gemini",
-    api_key: Optional[str] = None
+    api_key: Optional[str] = None,
+    base_url: Optional[str] = None,
+    model_name: Optional[str] = None,
+    api_base: Optional[str] = None,
+    model: Optional[str] = None
 ):
     """Generate presentation speech script
 
@@ -125,7 +130,9 @@ async def generate_script(
         presets_service = get_model_presets_service()
         config = presets_service.get_active_config(
             provider=provider,
-            api_key=api_key
+            api_key=api_key,
+            base_url=base_url or api_base,
+            model_name=model_name or model
         )
 
         if not config:
@@ -201,7 +208,9 @@ async def generate_script_stream(
     provider: Optional[str] = "gemini",
     api_key: Optional[str] = None,
     base_url: Optional[str] = None,
-    model_name: Optional[str] = None
+    model_name: Optional[str] = None,
+    api_base: Optional[str] = None,
+    model: Optional[str] = None
 ):
     """
     Generate professional speech script with streaming (Server-Sent Events)
@@ -247,8 +256,8 @@ async def generate_script_stream(
                 config = presets_service.get_active_config(
                     provider=provider,
                     api_key=api_key,
-                    base_url=base_url,
-                    model_name=model_name
+                    base_url=base_url or api_base,
+                    model_name=model_name or model
                 )
 
                 if not config:
@@ -482,9 +491,10 @@ async def load_script_draft(script_id: str):
 @router.post("/export/script/{script_id}/refine", response_model=RefinedSectionResponse)
 async def refine_script_section(
     script_id: str,
-    section: str,
-    user_feedback: str,
-    rag_context: Optional[dict] = None
+    payload: Optional[RefineSectionRequest] = Body(None),
+    section: Optional[str] = Query(None),
+    user_feedback: Optional[str] = Query(None),
+    rag_context: Optional[str] = Query(None),
 ):
     """
     Refine a specific section of the speech script based on user feedback
@@ -506,22 +516,39 @@ async def refine_script_section(
         404: Script not found
     """
     try:
-        # Validate section parameter
-        if section not in ["intro", "body", "conclusion"]:
+        # Prefer JSON body (frontend), fallback to legacy query params (backward compatibility)
+        effective_section = payload.section if payload else section
+        effective_feedback = payload.user_feedback if payload else user_feedback
+        if payload:
+            effective_rag_context = payload.rag_context
+        else:
+            try:
+                effective_rag_context = json.loads(rag_context) if rag_context else None
+            except json.JSONDecodeError as exc:
+                raise HTTPException(status_code=400, detail=f"Invalid rag_context JSON: {exc}") from exc
+
+        # Validate required params
+        if not effective_section or not effective_feedback:
             raise HTTPException(
-                status_code=400,
-                detail=f"Invalid section '{section}'. Must be 'intro', 'body', or 'conclusion'"
+                status_code=422,
+                detail="Missing required fields: section and user_feedback"
             )
 
-        logger.info(f"Refining {section} section for script {script_id}")
-        logger.info(f"User feedback: {user_feedback}")
+        if effective_section not in ["intro", "body", "conclusion"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid section '{effective_section}'. Must be 'intro', 'body', or 'conclusion'"
+            )
+
+        logger.info(f"Refining {effective_section} section for script {script_id}")
+        logger.info(f"User feedback: {effective_feedback}")
 
         editor = get_script_editor_service()
         response = await editor.refine_section(
             script_id=script_id,
-            section=section,
-            user_feedback=user_feedback,
-            rag_context=rag_context
+            section=effective_section,
+            user_feedback=effective_feedback,
+            rag_context=effective_rag_context
         )
 
         logger.info(f"Section refined successfully. Changes: {response.changes_summary}")
@@ -569,6 +596,9 @@ async def get_script_suggestions(
     try:
         if focus_areas is None:
             focus_areas = ["clarity", "engagement", "flow"]
+        elif len(focus_areas) == 1 and "," in focus_areas[0]:
+            # Frontend may send comma-separated list in a single query value
+            focus_areas = [item.strip() for item in focus_areas[0].split(",") if item.strip()]
 
         logger.info(f"Generating suggestions for script {script_id}")
         logger.info(f"Focus areas: {', '.join(focus_areas)}")
