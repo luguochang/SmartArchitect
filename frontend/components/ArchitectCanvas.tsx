@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useMemo, useEffect, useRef, useState } from "react";
 import ReactFlow, {
@@ -80,7 +80,7 @@ function ArchitectCanvasInner() {
   } = useArchitectStore();
   const { presentationStyleId, setPresentationStyle, fontStyleId, setFontStyle } = useFlowchartStyleStore();
   const { fitView, project } = useReactFlow();
-  const [layoutDirection, setLayoutDirection] = useState<LayoutDirection>("LR"); // 默认左到右
+  const [layoutDirection, setLayoutDirection] = useState<LayoutDirection>("LR"); // 榛樿宸﹀埌鍙?
   const styleOptions = useMemo(() => Object.values(FLOWCHART_PRESENTATION_STYLES), []);
   const fontOptions = useMemo(() => Object.values(FONT_STYLE_OPTIONS), []);
   const [styleDockOpen, setStyleDockOpen] = useState(false);
@@ -89,15 +89,15 @@ function ArchitectCanvasInner() {
   const { currentPresentationStyle, edgeType } = useFlowchartStyleStore();
   const wasGeneratingRef = useRef(false);
 
-  // 追踪上一次的样式，避免不必要的更新
+  // 杩借釜涓婁竴娆＄殑鏍峰紡锛岄伩鍏嶄笉蹇呰鐨勬洿鏂?
   const prevStyleRef = useRef({ edgeType, edge: currentPresentationStyle.edge });
 
-  // 监听样式变化，自动更新所有现有的边
+  // 鐩戝惉鏍峰紡鍙樺寲锛岃嚜鍔ㄦ洿鏂版墍鏈夌幇鏈夌殑杈?
   useEffect(() => {
-    // 检查edges是否为数组且不为空
+    // 妫€鏌dges鏄惁涓烘暟缁勪笖涓嶄负绌?
     if (!Array.isArray(edges) || edges.length === 0) return;
 
-    // 检查样式是否真的改变了
+    // 妫€鏌ユ牱寮忔槸鍚︾湡鐨勬敼鍙樹簡
     const prevStyle = prevStyleRef.current;
     const styleChanged =
       prevStyle.edgeType !== edgeType ||
@@ -110,7 +110,7 @@ function ArchitectCanvasInner() {
 
     console.log("[ArchitectCanvas] Style changed, updating", edges.length, "edges...");
 
-    // 更新ref
+    // 鏇存柊ref
     prevStyleRef.current = { edgeType, edge: currentPresentationStyle.edge };
 
     const updatedEdges = edges.map((edge) => ({
@@ -136,7 +136,7 @@ function ArchitectCanvasInner() {
     setEdges(updatedEdges);
   }, [edges, edgeType, currentPresentationStyle.edge, setEdges]);
 
-  // 监听流程图导入事件
+  // 鐩戝惉娴佺▼鍥惧鍏ヤ簨浠?
   useEffect(() => {
     const handleFlowchartImport = () => {
       console.log("[ArchitectCanvas] Flowchart imported, fitting view...");
@@ -149,18 +149,18 @@ function ArchitectCanvasInner() {
     return () => window.removeEventListener('flowchart-imported', handleFlowchartImport);
   }, [fitView]);
 
-  // 当nodes改变时也记录日志
+  // 褰搉odes鏀瑰彉鏃朵篃璁板綍鏃ュ織
   useEffect(() => {
     console.log("[ArchitectCanvas] Nodes updated:", nodes.length);
   }, [nodes]);
 
-  // 注册自定义节点类型
+  // 娉ㄥ唽鑷畾涔夎妭鐐圭被鍨?
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
   }, []);
 
-  // 网格对齐辅助函数 - 对齐到最近的网格点
+  // 缃戞牸瀵归綈杈呭姪鍑芥暟 - 瀵归綈鍒版渶杩戠殑缃戞牸鐐?
   const snapToGrid = useCallback((position: { x: number; y: number }, gridSize = 20) => {
     return {
       x: Math.round(position.x / gridSize) * gridSize,
@@ -187,7 +187,7 @@ function ArchitectCanvasInner() {
         y: event.clientY - bounds.top,
       });
 
-      // 🔥 自动网格对齐（可通过Shift键禁用）
+      // 馃敟 鑷姩缃戞牸瀵归綈锛堝彲閫氳繃Shift閿鐢級
       const position = event.shiftKey ? rawPosition : snapToGrid(rawPosition, 20);
 
       const newNode = {
@@ -204,8 +204,8 @@ function ArchitectCanvasInner() {
 
       setNodes([...nodes, newNode]);
 
-      // 提供视觉反馈
-      toast.success(`已添加 ${parsed.label || "节点"}`, {
+      // 鎻愪緵瑙嗚鍙嶉
+      toast.success(`宸叉坊鍔?${parsed.label || "鑺傜偣"}`, {
         duration: 1500,
         position: "bottom-right",
       });
@@ -253,12 +253,17 @@ function ArchitectCanvasInner() {
       };
     });
 
-    // Apply dagre layout algorithm with user-selected direction
-    const layoutedNodes = getLayoutedElements(nodesWithSize, edges, {
+    const isVertical = layoutDirection === "TB" || layoutDirection === "BT";
+    const isArchitecture = diagramType === "architecture";
+
+    const layoutOptions: LayoutOptions = {
       direction: layoutDirection,
-      ranksep: layoutDirection === "TB" || layoutDirection === "BT" ? 100 : 150,
-      nodesep: layoutDirection === "TB" || layoutDirection === "BT" ? 80 : 100,
-    });
+      ranksep: isArchitecture ? (isVertical ? 190 : 260) : (isVertical ? 120 : 180),
+      nodesep: isArchitecture ? (isVertical ? 150 : 210) : (isVertical ? 95 : 130),
+    };
+
+    // Apply dagre layout algorithm with user-selected direction
+    const layoutedNodes = getLayoutedElements(nodesWithSize, edges, layoutOptions);
 
     // Update nodes with new positions
     setNodes(layoutedNodes);
@@ -267,7 +272,7 @@ function ArchitectCanvasInner() {
     setTimeout(() => {
       fitView({ padding: 0.2, duration: 400 });
     }, 0);
-  }, [nodes, edges, setNodes, fitView, layoutDirection]);
+  }, [nodes, edges, setNodes, fitView, layoutDirection, diagramType]);
 
   const getLayoutIcon = () => {
     switch (layoutDirection) {
@@ -280,14 +285,14 @@ function ArchitectCanvasInner() {
 
   const getLayoutLabel = () => {
     switch (layoutDirection) {
-      case "TB": return "上→下";
-      case "LR": return "左→右";
-      case "BT": return "下→上";
-      case "RL": return "右→左";
+      case "TB": return "Top-Bottom";
+      case "LR": return "Left-Right";
+      case "BT": return "Bottom-Top";
+      case "RL": return "Right-Left";
     }
   };
 
-  // 自动 fit view 当节点数量变化时
+  // 鑷姩 fit view 褰撹妭鐐规暟閲忓彉鍖栨椂
   useEffect(() => {
     if (isGeneratingFlowchart) {
       wasGeneratingRef.current = true;
@@ -306,57 +311,57 @@ function ArchitectCanvasInner() {
     wasGeneratingRef.current = false;
   }, [nodes.length, fitView, isGeneratingFlowchart]);
 
-  // 处理键盘删除事件（Delete 和 Backspace）
+  // 澶勭悊閿洏鍒犻櫎浜嬩欢锛圖elete 鍜?Backspace锛?
   const handleNodesDelete = useCallback((nodesToDelete: Node[]) => {
-    // 节点删除由 onNodesChange 自动处理
+    // 鑺傜偣鍒犻櫎鐢?onNodesChange 鑷姩澶勭悊
     console.log("Deleted nodes:", nodesToDelete.map(n => n.id));
   }, []);
 
   const handleEdgesDelete = useCallback((edgesToDelete: Edge[]) => {
-    // 边删除由 onEdgesChange 自动处理
+    // 杈瑰垹闄ょ敱 onEdgesChange 鑷姩澶勭悊
     console.log("Deleted edges:", edgesToDelete.map(e => e.id));
   }, []);
 
-  // 处理边的点击事件 - 提供额外的交互反馈
+  // 澶勭悊杈圭殑鐐瑰嚮浜嬩欢 - 鎻愪緵棰濆鐨勪氦浜掑弽棣?
   const handleEdgeClick = useCallback((event: React.MouseEvent, edge: Edge) => {
     console.log("Edge clicked:", edge.id);
-    // 边会自动被选中,用户可以按 Delete 删除
+    // 杈逛細鑷姩琚€変腑,鐢ㄦ埛鍙互鎸?Delete 鍒犻櫎
   }, []);
 
-  // 🔥 快捷键支持
+  // 馃敟 蹇嵎閿敮鎸?
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Cmd/Ctrl + A: 全选所有节点
+      // Cmd/Ctrl + A: 鍏ㄩ€夋墍鏈夎妭鐐?
       if ((event.metaKey || event.ctrlKey) && event.key === "a") {
         event.preventDefault();
         console.log("Select all nodes");
-        // React Flow 已有内置全选支持
+        // React Flow 宸叉湁鍐呯疆鍏ㄩ€夋敮鎸?
       }
 
-      // Cmd/Ctrl + L: 自动布局
+      // Cmd/Ctrl + L: 鑷姩甯冨眬
       if ((event.metaKey || event.ctrlKey) && event.key === "l") {
         event.preventDefault();
         handleAutoLayout();
-        toast.success("已应用自动布局", { duration: 1500 });
+        toast.success("宸插簲鐢ㄨ嚜鍔ㄥ竷灞€", { duration: 1500 });
       }
 
       // Cmd/Ctrl + F: Fit View
       if ((event.metaKey || event.ctrlKey) && event.key === "f") {
         event.preventDefault();
         fitView({ padding: 0.2, duration: 400 });
-        toast.success("已适配视图", { duration: 1500 });
+        toast.success("宸查€傞厤瑙嗗浘", { duration: 1500 });
       }
 
-      // Cmd/Ctrl + Shift + C: 清空画布
+      // Cmd/Ctrl + Shift + C: 娓呯┖鐢诲竷
       if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key === "C") {
         event.preventDefault();
-        if (confirm("确定要清空画布吗？")) {
+        if (confirm("Clear the entire canvas?")) {
           setNodes([]);
           setEdges([]);
-          // 🆕 清空画布时删除会话
+          // 馃啎 娓呯┖鐢诲竷鏃跺垹闄や細璇?
           deleteCanvasSession();
           setIncrementalMode(false);
-          toast.info("画布已清空", { duration: 1500 });
+          toast.info("Canvas cleared", { duration: 1500 });
         }
       }
     };
@@ -368,6 +373,7 @@ function ArchitectCanvasInner() {
   return (
     <div className="relative h-full w-full">
       <ReactFlow
+        data-testid="reactflow-canvas"
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
@@ -419,33 +425,35 @@ function ArchitectCanvasInner() {
           maskColor="rgba(0, 0, 0, 0.08)"
         />
 
-        {/* 空状态欢迎界面 */}
+        {/* 绌虹姸鎬佹杩庣晫闈?*/}
         {nodes.length === 0 && <EmptyCanvasState />}
 
-        {/* 工具栏 */}
+        {/* 宸ュ叿鏍?*/}
         <Panel position="top-right" className="flex gap-2">
           <button
             onClick={() => {
               setNodes([]);
               setEdges([]);
-              // 🆕 清空画布时删除会话
+              // 馃啎 娓呯┖鐢诲竷鏃跺垹闄や細璇?
               deleteCanvasSession();
               setIncrementalMode(false);
             }}
+            data-testid="btn-clear-canvas"
             className="flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-600 shadow-sm hover:border-red-300 hover:bg-red-50 dark:border-red-500/50 dark:bg-slate-800 dark:text-red-300 dark:hover:border-red-400 dark:hover:bg-red-500/10"
-            title="清除画布上的所有节点和连线"
+            title="娓呴櫎鐢诲竷涓婄殑鎵€鏈夎妭鐐瑰拰杩炵嚎"
           >
             <Trash2 className="h-4 w-4" />
-            清空画布
+            娓呯┖鐢诲竷
           </button>
 
           <button
             onClick={() => setStyleDockOpen((v) => !v)}
+            data-testid="btn-toggle-style-dock"
             className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:border-indigo-300 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-indigo-400"
-            title="切换流程图样式 / 字体"
+            title="鍒囨崲娴佺▼鍥炬牱寮?/ 瀛椾綋"
           >
             <Palette className="h-4 w-4 text-indigo-500" />
-            画布风格
+            鐢诲竷椋庢牸
           </button>
 
           {/* Style switcher dock */}
@@ -453,12 +461,12 @@ function ArchitectCanvasInner() {
             {styleDockOpen && (
               <div className="absolute right-0 mt-2 w-72 rounded-xl border border-slate-200 bg-white/95 p-3 text-xs shadow-2xl dark:border-slate-700 dark:bg-slate-900/95">
                 <div className="mb-2 flex items-center justify-between text-[11px] font-semibold text-slate-700 dark:text-slate-200">
-                  <span>流程图样式</span>
+                  <span>Flowchart Style</span>
                   <button
                     onClick={() => setStyleDockOpen(false)}
                     className="rounded-full px-2 py-0.5 text-[10px] text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
                   >
-                    收起
+                    鏀惰捣
                   </button>
                 </div>
                 <div className="space-y-2">
@@ -484,7 +492,7 @@ function ArchitectCanvasInner() {
                   </div>
 
                   <div className="space-y-1">
-                    <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">字体样式</div>
+                    <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">瀛椾綋鏍峰紡</div>
                     <div className="grid grid-cols-2 gap-2">
                       {fontOptions.map((font) => {
                         const active = fontStyleId === font.id;
@@ -512,10 +520,8 @@ function ArchitectCanvasInner() {
             )}
           </div>
 
-          {/* 布局方向选择器 - 只在 flow 模式显示 */}
-          {diagramType === "flow" && (
-            <>
-              <div className="flex items-center gap-1 rounded-lg bg-white px-2 py-1 shadow-md dark:bg-slate-800">
+          {/* 甯冨眬鏂瑰悜閫夋嫨鍣?- 鍙湪 flow 妯″紡鏄剧ず */}
+          <div className="flex items-center gap-1 rounded-lg bg-white px-2 py-1 shadow-md dark:bg-slate-800">
                 <button
                   onClick={() => setLayoutDirection("LR")}
                   className={`p-2 rounded transition-colors ${
@@ -523,7 +529,7 @@ function ArchitectCanvasInner() {
                       ? "bg-indigo-100 text-indigo-600 dark:bg-indigo-900 dark:text-indigo-400"
                       : "hover:bg-slate-100 dark:hover:bg-slate-700"
                   }`}
-                  title="左→右"
+                  title="Left to Right"
                 >
                   <ArrowRight className="h-4 w-4" />
                 </button>
@@ -534,7 +540,7 @@ function ArchitectCanvasInner() {
                       ? "bg-indigo-100 text-indigo-600 dark:bg-indigo-900 dark:text-indigo-400"
                       : "hover:bg-slate-100 dark:hover:bg-slate-700"
                   }`}
-                  title="上→下"
+                  title="Top to Bottom"
                 >
                   <ArrowDown className="h-4 w-4" />
                 </button>
@@ -545,7 +551,7 @@ function ArchitectCanvasInner() {
                       ? "bg-indigo-100 text-indigo-600 dark:bg-indigo-900 dark:text-indigo-400"
                       : "hover:bg-slate-100 dark:hover:bg-slate-700"
                   }`}
-                  title="右→左"
+                  title="Right to Left"
                 >
                   <ArrowLeft className="h-4 w-4" />
                 </button>
@@ -556,22 +562,21 @@ function ArchitectCanvasInner() {
                       ? "bg-indigo-100 text-indigo-600 dark:bg-indigo-900 dark:text-indigo-400"
                       : "hover:bg-slate-100 dark:hover:bg-slate-700"
                   }`}
-                  title="下→上"
+                  title="Bottom to Top"
                 >
                   <ArrowUp className="h-4 w-4" />
                 </button>
               </div>
 
-              {/* Auto Layout 按钮 */}
+              {/* Auto Layout 鎸夐挳 */}
               <button
                 onClick={handleAutoLayout}
+                data-testid="btn-auto-layout"
                 className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white shadow-md hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 transition-colors"
               >
                 <Network className="h-4 w-4" />
-                <span>布局 {getLayoutLabel()}</span>
+                <span>甯冨眬 {getLayoutLabel()}</span>
               </button>
-            </>
-          )}
 
           <ExportMenu />
         </Panel>
@@ -580,7 +585,7 @@ function ArchitectCanvasInner() {
   );
 }
 
-// 导出包装后的组件
+// 瀵煎嚭鍖呰鍚庣殑缁勪欢
 export function ArchitectCanvas() {
   const { canvasMode } = useArchitectStore();
 
@@ -599,5 +604,6 @@ export function ArchitectCanvas() {
   );
 }
 
-// 保持向后兼容
+// 淇濇寔鍚戝悗鍏煎
 export const ArchitectCanvasWrapper = ArchitectCanvas;
+

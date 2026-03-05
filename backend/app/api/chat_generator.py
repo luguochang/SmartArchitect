@@ -85,7 +85,32 @@ _ARCH_CATEGORY_TO_NODE_TYPE = {
     "platform": "service",
 }
 
-_CARDINAL_HANDLE_NODE_TYPES = {"default", "api", "service", "database", "cache"}
+_CARDINAL_HANDLE_NODE_TYPES = {
+    "default",
+    "api",
+    "service",
+    "database",
+    "cache",
+    "queue",
+    "storage",
+    "client",
+    "gateway",
+}
+
+_LEGACY_HANDLE_ALIASES = {
+    "target-top": "top-target",
+    "target-right": "right-target",
+    "target-bottom": "bottom-target",
+    "target-left": "left-target",
+    "source-top": "top-source",
+    "source-right": "right-source",
+    "source-bottom": "bottom-source",
+    "source-left": "left-source",
+    "in-top": "top-target",
+    "in-left": "left-target",
+    "out-right-yes": "right-source",
+    "out-bottom-no": "bottom-source",
+}
 
 
 def _is_finite_number(value: Any) -> bool:
@@ -331,6 +356,15 @@ def _supports_cardinal_handles(node_payload: Dict[str, Any]) -> bool:
     return raw_type in _CARDINAL_HANDLE_NODE_TYPES
 
 
+def _normalize_handle_id(handle_id: Any) -> Optional[str]:
+    if not isinstance(handle_id, str):
+        return None
+    normalized = handle_id.strip()
+    if not normalized:
+        return None
+    return _LEGACY_HANDLE_ALIASES.get(normalized, normalized)
+
+
 def _extract_architecture_layer_key(node_payload: Dict[str, Any]) -> str:
     data = node_payload.get("data")
     data = data if isinstance(data, dict) else {}
@@ -392,7 +426,11 @@ def _decorate_partial_edge_handles(
     if not _supports_cardinal_handles(source_node) or not _supports_cardinal_handles(target_node):
         return edge_payload
 
-    if edge_payload.get("sourceHandle") and edge_payload.get("targetHandle"):
+    existing_source = _normalize_handle_id(edge_payload.get("sourceHandle"))
+    existing_target = _normalize_handle_id(edge_payload.get("targetHandle"))
+    if existing_source and existing_target:
+        edge_payload["sourceHandle"] = existing_source
+        edge_payload["targetHandle"] = existing_target
         return edge_payload
 
     position_cache: Dict[str, tuple[float, float]] = {}
@@ -412,8 +450,8 @@ def _decorate_partial_edge_handles(
         source_handle = "bottom-source"
         target_handle = "top-target"
 
-    edge_payload.setdefault("sourceHandle", source_handle)
-    edge_payload.setdefault("targetHandle", target_handle)
+    edge_payload["sourceHandle"] = existing_source or source_handle
+    edge_payload["targetHandle"] = existing_target or target_handle
     return edge_payload
 
 

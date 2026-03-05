@@ -23,6 +23,7 @@ export default function ExcalidrawBoard() {
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const scene = useArchitectStore((s) => s.excalidrawScene);
   const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastStreamingFitAtRef = useRef(0);
 
   const updateScene = (
     api: ExcalidrawImperativeAPI,
@@ -48,6 +49,21 @@ export default function ExcalidrawBoard() {
     });
 
     if (isStreaming) {
+      const now = Date.now();
+      // Keep viewport tracking stream growth so users can see real-time drawing.
+      if (now - lastStreamingFitAtRef.current >= 900) {
+        const targetElements = getElementsWithValidBounds(sceneData.elements);
+        if (targetElements.length > 0) {
+          api.scrollToContent(targetElements, {
+            fitToViewport: true,
+            viewportZoomFactor: 0.93,
+            animate: false,
+            minZoom: 0.15,
+            maxZoom: 1.2,
+          });
+        }
+        lastStreamingFitAtRef.current = now;
+      }
       return;
     }
 
@@ -101,7 +117,7 @@ export default function ExcalidrawBoard() {
   }, [scene]);
 
   return (
-    <div className="relative h-full w-full bg-white dark:bg-slate-900">
+    <div data-testid="excalidraw-board" className="relative h-full w-full bg-white dark:bg-slate-900">
       <Excalidraw
         excalidrawAPI={(api) => {
           apiRef.current = api;

@@ -63,7 +63,7 @@ export default function Home() {
   }, [modelConfig]);
 
   return (
-    <div className="flex h-screen w-screen flex-col bg-slate-50 dark:bg-slate-950">
+    <div className="flex min-h-screen w-full flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
       {/* 顶部导航栏 */}
       <header className="flex h-14 items-center justify-between border-b border-slate-200 bg-white px-6 dark:border-slate-800 dark:bg-slate-900">
         <div className="flex items-center gap-3">
@@ -168,12 +168,14 @@ export default function Home() {
           <div className="flex rounded-full border border-slate-200 bg-white text-xs dark:border-slate-800 dark:bg-slate-800">
             <button
               onClick={() => setCanvasMode("reactflow")}
+              data-testid="mode-reactflow"
               className={`px-3 py-1 rounded-l-full ${canvasMode === "reactflow" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200" : "text-slate-600 dark:text-slate-300"}`}
             >
               Flow Canvas
             </button>
             <button
               onClick={() => setCanvasMode("excalidraw")}
+              data-testid="mode-excalidraw"
               className={`px-3 py-1 rounded-r-full ${canvasMode === "excalidraw" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200" : "text-slate-600 dark:text-slate-300"}`}
             >
               Excalidraw
@@ -184,19 +186,19 @@ export default function Home() {
       </header>
 
       {/* 主内容区域 */}
-      <div className="flex flex-1 overflow-hidden gap-3 px-3 py-3 bg-gradient-to-br from-slate-50 via-slate-100 to-indigo-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+      <div className="flex min-w-0 flex-1 overflow-hidden gap-3 px-3 py-3 bg-gradient-to-br from-slate-50 via-slate-100 to-indigo-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
         {/* 左侧工具栏 - 仅在 ReactFlow 模式显示 */}
         {canvasMode === "reactflow" && <Sidebar />}
 
         {/* 中间画布 */}
-        <div className="flex flex-1 flex-col">
+        <div className="flex min-w-0 flex-1 flex-col">
           <div className="relative flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white/90 shadow-xl backdrop-blur dark:border-slate-800 dark:bg-slate-900/80">
             <ArchitectCanvas />
           </div>
         </div>
 
         {/* 右侧 AI 控制台 */}
-        <div className="w-[360px] min-w-[320px] rounded-xl border border-slate-200 bg-white/90 px-3 py-3 shadow-lg backdrop-blur-lg dark:border-slate-800 dark:bg-slate-900/85">
+        <div className="w-[360px] min-w-[320px] shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white/90 px-3 py-3 shadow-lg backdrop-blur-lg dark:border-slate-800 dark:bg-slate-900/85">
           <AiControlPanel />
         </div>
       </div>

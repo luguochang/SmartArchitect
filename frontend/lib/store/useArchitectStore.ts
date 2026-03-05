@@ -4,6 +4,7 @@ import { PROVIDER_DEFAULTS } from "@/lib/config/providerDefaults";
 import { getLayoutedElements, estimateNodeSize } from "@/lib/utils/autoLayout";
 import { API_ENDPOINTS, API_BASE_URL } from "@/lib/api-config";
 import { useFlowchartStyleStore } from "@/lib/stores/flowchartStyleStore";
+import { HANDLE_ID, inferCardinalHandles, normalizeHandleId } from "@/lib/utils/handleProtocol";
 
 export interface PromptScenario {
   id: string;
@@ -318,7 +319,7 @@ function isConnectableEdgeNode(node?: Node): boolean {
 function supportsCardinalHandles(node?: Node): boolean {
   if (!node) return false;
   const rawType = String(node.type || "default").toLowerCase();
-  return ["default", "api", "service", "database", "cache"].includes(rawType);
+  return ["default", "api", "service", "database", "cache", "queue", "storage", "client", "gateway"].includes(rawType);
 }
 
 function toFiniteNumber(value: unknown, fallback = 0): number {
@@ -363,9 +364,8 @@ function withInferredEdgeHandles(edges: Edge[], nodes: Node[]): Edge[] {
   const positionMemo = new Map<string, { x: number; y: number }>();
 
   return edges.map((edge) => {
-    if ((edge as any)?.sourceHandle && (edge as any)?.targetHandle) {
-      return edge;
-    }
+    const existingSourceHandle = normalizeHandleId((edge as any)?.sourceHandle);
+    const existingTargetHandle = normalizeHandleId((edge as any)?.targetHandle);
 
     const sourceNode = nodeMap.get(edge.source);
     const targetNode = nodeMap.get(edge.target);
@@ -379,25 +379,21 @@ function withInferredEdgeHandles(edges: Edge[], nodes: Node[]): Edge[] {
     const sourcePos = resolveAbsoluteNodePosition(edge.source, nodeMap, positionMemo);
     const targetPos = resolveAbsoluteNodePosition(edge.target, nodeMap, positionMemo);
 
-    let sourceHandle = "right-source";
-    let targetHandle = "left-target";
+    let sourceHandle = HANDLE_ID.rightSource;
+    let targetHandle = HANDLE_ID.leftTarget;
 
     if (sourcePos && targetPos) {
       const dx = targetPos.x - sourcePos.x;
       const dy = targetPos.y - sourcePos.y;
-      if (Math.abs(dx) >= Math.abs(dy)) {
-        sourceHandle = dx >= 0 ? "right-source" : "left-source";
-        targetHandle = dx >= 0 ? "left-target" : "right-target";
-      } else {
-        sourceHandle = dy >= 0 ? "bottom-source" : "top-source";
-        targetHandle = dy >= 0 ? "top-target" : "bottom-target";
-      }
+      const inferred = inferCardinalHandles(dx, dy);
+      sourceHandle = inferred.sourceHandle;
+      targetHandle = inferred.targetHandle;
     }
 
     return {
       ...edge,
-      sourceHandle: (edge as any)?.sourceHandle || sourceHandle,
-      targetHandle: (edge as any)?.targetHandle || targetHandle,
+      sourceHandle: existingSourceHandle || sourceHandle,
+      targetHandle: existingTargetHandle || targetHandle,
     } as Edge;
   });
 }
@@ -895,10 +891,10 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
           target,
           ...(typeof payload.label === "string" && payload.label.trim() ? { label: payload.label.trim() } : {}),
           ...(typeof payload.sourceHandle === "string" && payload.sourceHandle.trim()
-            ? { sourceHandle: payload.sourceHandle.trim() }
+            ? { sourceHandle: normalizeHandleId(payload.sourceHandle.trim()) || payload.sourceHandle.trim() }
             : {}),
           ...(typeof payload.targetHandle === "string" && payload.targetHandle.trim()
-            ? { targetHandle: payload.targetHandle.trim() }
+            ? { targetHandle: normalizeHandleId(payload.targetHandle.trim()) || payload.targetHandle.trim() }
             : {}),
         };
 
@@ -1545,6 +1541,16 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
     get().updateFromCanvas();
   },
 }));
+
+declare global {
+  interface Window {
+    __ARCHITECT_STORE__?: typeof useArchitectStore;
+  }
+}
+
+if (typeof window !== "undefined") {
+  window.__ARCHITECT_STORE__ = useArchitectStore;
+}
 
 
 

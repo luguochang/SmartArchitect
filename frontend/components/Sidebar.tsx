@@ -444,7 +444,7 @@ export function Sidebar() {
   );
 
   return (
-    <aside className="flex w-72 flex-col border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+    <aside className="flex w-72 min-w-72 shrink-0 flex-col border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
       {/* 标题 */}
       <div className="border-b border-slate-200 px-4 py-4 dark:border-slate-800">
         <h2 className="text-lg font-semibold text-slate-900 dark:text-white">节点库</h2>

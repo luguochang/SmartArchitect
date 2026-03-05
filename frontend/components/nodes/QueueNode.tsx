@@ -5,6 +5,7 @@ import { Handle, Position, NodeProps } from "reactflow";
 import { Layers } from "lucide-react";
 import { useArchitectStore } from "@/lib/store/useArchitectStore";
 import { useNodeStyle } from "@/lib/hooks/useNodeStyle";
+import { HANDLE_ID } from "@/lib/utils/handleProtocol";
 
 export const QueueNode = memo(({ id, data }: NodeProps) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -44,7 +45,7 @@ export const QueueNode = memo(({ id, data }: NodeProps) => {
     >
       {/* Input handles - Top and Left */}
       <Handle
-        id="target-top"
+        id={HANDLE_ID.topTarget}
         type="target"
         position={Position.Top}
         style={{
@@ -55,7 +56,7 @@ export const QueueNode = memo(({ id, data }: NodeProps) => {
         }}
       />
       <Handle
-        id="target-left"
+        id={HANDLE_ID.leftTarget}
         type="target"
         position={Position.Left}
         style={{
@@ -68,7 +69,7 @@ export const QueueNode = memo(({ id, data }: NodeProps) => {
 
       {/* Output handles - Right and Bottom */}
       <Handle
-        id="source-right"
+        id={HANDLE_ID.rightSource}
         type="source"
         position={Position.Right}
         style={{
@@ -79,7 +80,7 @@ export const QueueNode = memo(({ id, data }: NodeProps) => {
         }}
       />
       <Handle
-        id="source-bottom"
+        id={HANDLE_ID.bottomSource}
         type="source"
         position={Position.Bottom}
         style={{

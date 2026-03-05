@@ -6,6 +6,7 @@ import { Shield } from "lucide-react";
 import { useArchitectStore } from "@/lib/store/useArchitectStore";
 import { NodeShape, SHAPE_CONFIG } from "@/lib/utils/nodeShapes";
 import { useNodeStyle } from "@/lib/hooks/useNodeStyle";
+import { HANDLE_ID } from "@/lib/utils/handleProtocol";
 
 const toNumber = (value?: string) => (value ? Number.parseInt(value, 10) : undefined);
 
@@ -83,7 +84,7 @@ export const GatewayNode = memo(({ id, data }: NodeProps) => {
         {/* 判断节点专用连接点配置 - 清晰的入口和出口分离 */}
         {/* 入口: 上方和左侧 (用于流程流入) */}
         <Handle
-          id="in-top"
+          id={HANDLE_ID.topTarget}
           type="target"
           position={Position.Top}
           style={{
@@ -98,7 +99,7 @@ export const GatewayNode = memo(({ id, data }: NodeProps) => {
           }}
         />
         <Handle
-          id="in-left"
+          id={HANDLE_ID.leftTarget}
           type="target"
           position={Position.Left}
           style={{
@@ -115,7 +116,7 @@ export const GatewayNode = memo(({ id, data }: NodeProps) => {
 
         {/* 出口: 右侧(Yes)和下方(No) - 判断节点的标准输出 */}
         <Handle
-          id="out-right-yes"
+          id={HANDLE_ID.rightSource}
           type="source"
           position={Position.Right}
           style={{
@@ -130,7 +131,7 @@ export const GatewayNode = memo(({ id, data }: NodeProps) => {
           }}
         />
         <Handle
-          id="out-bottom-no"
+          id={HANDLE_ID.bottomSource}
           type="source"
           position={Position.Bottom}
           style={{
@@ -154,6 +155,7 @@ export const GatewayNode = memo(({ id, data }: NodeProps) => {
       style={nodeStyle.container}
     >
       <Handle
+        id={HANDLE_ID.leftTarget}
         type="target"
         position={Position.Left}
         style={{ backgroundColor: borderColor }}
@@ -209,6 +211,7 @@ export const GatewayNode = memo(({ id, data }: NodeProps) => {
       </div>
 
       <Handle
+        id={HANDLE_ID.rightSource}
         type="source"
         position={Position.Right}
         style={{ backgroundColor: borderColor }}

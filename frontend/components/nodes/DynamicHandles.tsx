@@ -1,4 +1,5 @@
 import { Handle, Position } from "reactflow";
+import { HANDLE_ID } from "@/lib/utils/handleProtocol";
 
 interface DynamicHandlesProps {
   color: string;
@@ -13,7 +14,7 @@ export function DynamicHandles({ color }: DynamicHandlesProps) {
     <>
       {/* Top - both source and target */}
       <Handle
-        id="top-target"
+        id={HANDLE_ID.topTarget}
         type="target"
         position={Position.Top}
         style={{
@@ -24,7 +25,7 @@ export function DynamicHandles({ color }: DynamicHandlesProps) {
         }}
       />
       <Handle
-        id="top-source"
+        id={HANDLE_ID.topSource}
         type="source"
         position={Position.Top}
         style={{
@@ -37,7 +38,7 @@ export function DynamicHandles({ color }: DynamicHandlesProps) {
 
       {/* Right - both source and target */}
       <Handle
-        id="right-target"
+        id={HANDLE_ID.rightTarget}
         type="target"
         position={Position.Right}
         style={{
@@ -48,7 +49,7 @@ export function DynamicHandles({ color }: DynamicHandlesProps) {
         }}
       />
       <Handle
-        id="right-source"
+        id={HANDLE_ID.rightSource}
         type="source"
         position={Position.Right}
         style={{
@@ -61,7 +62,7 @@ export function DynamicHandles({ color }: DynamicHandlesProps) {
 
       {/* Bottom - both source and target */}
       <Handle
-        id="bottom-target"
+        id={HANDLE_ID.bottomTarget}
         type="target"
         position={Position.Bottom}
         style={{
@@ -72,7 +73,7 @@ export function DynamicHandles({ color }: DynamicHandlesProps) {
         }}
       />
       <Handle
-        id="bottom-source"
+        id={HANDLE_ID.bottomSource}
         type="source"
         position={Position.Bottom}
         style={{
@@ -85,7 +86,7 @@ export function DynamicHandles({ color }: DynamicHandlesProps) {
 
       {/* Left - both source and target */}
       <Handle
-        id="left-target"
+        id={HANDLE_ID.leftTarget}
         type="target"
         position={Position.Left}
         style={{
@@ -96,7 +97,7 @@ export function DynamicHandles({ color }: DynamicHandlesProps) {
         }}
       />
       <Handle
-        id="left-source"
+        id={HANDLE_ID.leftSource}
         type="source"
         position={Position.Left}
         style={{

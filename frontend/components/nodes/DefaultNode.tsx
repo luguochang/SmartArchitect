@@ -41,6 +41,7 @@ import { useArchitectStore } from "@/lib/store/useArchitectStore";
 import { NodeShape, SHAPE_CONFIG } from "@/lib/utils/nodeShapes";
 import { SvgShape } from "./SvgShapes";
 import { useNodeStyle } from "@/lib/hooks/useNodeStyle";
+import { HANDLE_ID } from "@/lib/utils/handleProtocol";
 
 const DEFAULT_SHAPE_CONFIG = {
   width: "140px",
@@ -164,25 +165,25 @@ export const DefaultNode = memo(({ id, data }: NodeProps) => {
   const renderOrthogonalHandles = (color: string) => (
     <>
       <Handle
-        id="target-top"
+        id={HANDLE_ID.topTarget}
         type="target"
         position={Position.Top}
         style={{ backgroundColor: color, top: 0, left: "50%", transform: "translate(-50%, -50%)" }}
       />
       <Handle
-        id="target-left"
+        id={HANDLE_ID.leftTarget}
         type="target"
         position={Position.Left}
         style={{ backgroundColor: color, top: "50%", left: 0, transform: "translate(-50%, -50%)" }}
       />
       <Handle
-        id="source-right"
+        id={HANDLE_ID.rightSource}
         type="source"
         position={Position.Right}
         style={{ backgroundColor: color, top: "50%", right: 0, transform: "translate(50%, -50%)" }}
       />
       <Handle
-        id="source-bottom"
+        id={HANDLE_ID.bottomSource}
         type="source"
         position={Position.Bottom}
         style={{ backgroundColor: color, bottom: 0, left: "50%", transform: "translate(-50%, 50%)" }}
@@ -193,25 +194,25 @@ export const DefaultNode = memo(({ id, data }: NodeProps) => {
   const renderCircularHandles = (color: string) => (
     <>
     <Handle
-      id="target-top"
+      id={HANDLE_ID.topTarget}
       type="target"
       position={Position.Top}
       style={{ backgroundColor: color, top: 0, left: "50%", transform: "translate(-50%, -50%)" }}
     />
     <Handle
-      id="source-right"
+      id={HANDLE_ID.rightSource}
       type="source"
       position={Position.Right}
       style={{ backgroundColor: color, top: "50%", right: 0, transform: "translate(50%, -50%)" }}
     />
     <Handle
-      id="target-bottom"
+      id={HANDLE_ID.bottomTarget}
       type="target"
       position={Position.Bottom}
       style={{ backgroundColor: color, bottom: 0, left: "50%", transform: "translate(-50%, 50%)" }}
     />
     <Handle
-      id="source-left"
+      id={HANDLE_ID.leftSource}
       type="source"
       position={Position.Left}
       style={{ backgroundColor: color, top: "50%", left: 0, transform: "translate(-50%, -50%)" }}

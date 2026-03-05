@@ -288,7 +288,10 @@ export function AiControlPanel() {
   };
 
   return (
-    <aside className="flex h-full w-96 flex-col gap-3 border-l border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100/50 p-4 dark:border-slate-800 dark:from-slate-900 dark:to-slate-900/50">
+    <aside
+      data-testid="ai-control-panel"
+      className="flex h-full w-full flex-col gap-3 border-l border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100/50 p-4 dark:border-slate-800 dark:from-slate-900 dark:to-slate-900/50"
+    >
       {/* Header */}
       <div className="space-y-3">
         {/* Title */}
@@ -321,6 +324,7 @@ export function AiControlPanel() {
                 setShowUploader(false);
                 setShowExcalidrawUploader(false);
               }}
+              data-testid="btn-back-to-chat"
               className="flex-shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium shadow-sm transition bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:from-emerald-600 hover:to-teal-600"
               title="返回聊天界面"
             >
@@ -336,6 +340,7 @@ export function AiControlPanel() {
             onClick={() => {
               setShowExcalidrawUploader(true);
             }}
+            data-testid="btn-open-excalidraw-upload"
             className="w-full rounded-lg bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 p-3 border border-blue-100 dark:border-blue-900/50 hover:from-blue-100 hover:to-indigo-100 dark:hover:from-blue-950/50 dark:hover:to-indigo-950/50 transition-all text-left"
           >
             <div className="flex items-start gap-2">
@@ -396,6 +401,7 @@ export function AiControlPanel() {
           <div className="border-b border-slate-200 dark:border-slate-800">
             <button
               onClick={() => setShowTemplates(!showTemplates)}
+              data-testid="btn-toggle-quick-prompts"
               className="w-full px-4 py-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/50 transition"
             >
               <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
@@ -418,6 +424,7 @@ export function AiControlPanel() {
                         onClick={() => {
                           setFlowInput(prompt.prompt);
                         }}
+                        data-testid={`quick-prompt-excalidraw-${prompt.id}`}
                         disabled={isGeneratingFlowchart}
                         className={`rounded-lg border px-3 py-2.5 text-left text-xs transition-all border-purple-200 bg-purple-50/80 hover:border-purple-400 hover:bg-purple-100 hover:shadow-sm dark:border-purple-700 dark:bg-purple-900/30 dark:hover:border-purple-500 dark:hover:bg-purple-900/50 ${
                           isGeneratingFlowchart ? "opacity-50 cursor-not-allowed" : ""
@@ -437,6 +444,7 @@ export function AiControlPanel() {
                             setTemplateFilter("flow");
                             setDiagramType("flow");
                           }}
+                          data-testid="btn-filter-flow"
                           className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${
                             templateFilter === "flow"
                               ? "bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-md scale-105"
@@ -450,6 +458,7 @@ export function AiControlPanel() {
                             setTemplateFilter("architecture");
                             setDiagramType("architecture");
                           }}
+                          data-testid="btn-filter-architecture"
                           className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${
                             templateFilter === "architecture"
                               ? "bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-md scale-105"
@@ -470,6 +479,7 @@ export function AiControlPanel() {
                         <div className="grid grid-cols-2 gap-2">
                           <button
                             onClick={() => setArchitectureType("layered")}
+                            data-testid="btn-architecture-layered"
                             className={`px-3 py-2 rounded-lg text-xs font-medium transition-all ${
                               architectureType === "layered"
                                 ? "bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-md"
@@ -480,6 +490,7 @@ export function AiControlPanel() {
                           </button>
                           <button
                             onClick={() => setArchitectureType("business")}
+                            data-testid="btn-architecture-business"
                             className={`px-3 py-2 rounded-lg text-xs font-medium transition-all ${
                               architectureType === "business"
                                 ? "bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-md"
@@ -490,6 +501,7 @@ export function AiControlPanel() {
                           </button>
                           <button
                             onClick={() => setArchitectureType("technical")}
+                            data-testid="btn-architecture-technical"
                             className={`px-3 py-2 rounded-lg text-xs font-medium transition-all ${
                               architectureType === "technical"
                                 ? "bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-md"
@@ -500,6 +512,7 @@ export function AiControlPanel() {
                           </button>
                           <button
                             onClick={() => setArchitectureType("deployment")}
+                            data-testid="btn-architecture-deployment"
                             className={`px-3 py-2 rounded-lg text-xs font-medium transition-all ${
                               architectureType === "deployment"
                                 ? "bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-md"
@@ -510,6 +523,7 @@ export function AiControlPanel() {
                           </button>
                           <button
                             onClick={() => setArchitectureType("domain")}
+                            data-testid="btn-architecture-domain"
                             className={`px-3 py-2 rounded-lg text-xs font-medium transition-all col-span-2 ${
                               architectureType === "domain"
                                 ? "bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-md"
@@ -531,6 +545,7 @@ export function AiControlPanel() {
                             setFlowInput(prompt.prompt);
                             setSelectedTemplate(null);
                           }}
+                          data-testid={`quick-prompt-flow-${prompt.id}`}
                           disabled={isGeneratingFlowchart}
                           className={`rounded-lg border px-3 py-2.5 text-left text-xs transition-all border-emerald-200 bg-emerald-50/80 hover:border-emerald-400 hover:bg-emerald-100 hover:shadow-sm dark:border-emerald-700 dark:bg-emerald-900/30 dark:hover:border-emerald-500 dark:hover:bg-emerald-900/50 ${
                             isGeneratingFlowchart ? "opacity-50 cursor-not-allowed" : ""
@@ -547,7 +562,7 @@ export function AiControlPanel() {
           </div>
 
           {/* Messages Area - Unified */}
-          <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
+          <div data-testid="panel-messages" className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
             {/* Chat History */}
             {chatHistory.length > 0 && (
               <>
@@ -645,6 +660,7 @@ export function AiControlPanel() {
                 <textarea
                   value={flowInput}
                   onChange={(e) => setFlowInput(e.target.value)}
+                  data-testid="input-flow-prompt"
                   placeholder={
                     canvasMode === "excalidraw"
                       ? "e.g. A colorful robot with glowing eyes..."
@@ -694,6 +710,7 @@ export function AiControlPanel() {
 
               <button
                 onClick={handleGenerateFlow}
+                data-testid="btn-generate-flow"
                 disabled={isGeneratingFlowchart || !apiReady}
                 className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-4 py-3 text-sm font-bold text-white shadow-md transition hover:from-emerald-700 hover:to-teal-700 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-sm"
               >

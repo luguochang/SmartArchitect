@@ -122,11 +122,35 @@ class ExcalidrawGeneratorService:
         base.update(kwargs)
         return base
 
+    def _resolve_style_profile(self, style: Optional[str]) -> dict:
+        style_key = (style or "balanced").strip().lower()
+        profiles = {
+            "balanced": {
+                "palette": ["#1f2937", "#2563eb", "#0f766e", "#b45309", "#dc2626"],
+                "fills": ["transparent", "#e0f2fe", "#fef3c7", "#dcfce7", "#fee2e2"],
+                "roughness": 1,
+                "stroke_width": 2,
+            },
+            "professional": {
+                "palette": ["#0f172a", "#1d4ed8", "#0369a1", "#7c3aed", "#be123c"],
+                "fills": ["transparent", "#dbeafe", "#e0f2fe", "#ede9fe", "#ffe4e6"],
+                "roughness": 0,
+                "stroke_width": 2,
+            },
+            "enterprise": {
+                "palette": ["#111827", "#1e3a8a", "#0f766e", "#854d0e", "#9f1239", "#475569"],
+                "fills": ["#eff6ff", "#f0fdfa", "#fef9c3", "#fdf2f8", "#f8fafc", "transparent"],
+                "roughness": 0,
+                "stroke_width": 2,
+            },
+        }
+        return profiles.get(style_key, profiles["balanced"])
+
     def _build_prompt(self, prompt: str, style: Optional[str], width: int, height: int) -> str:
         """
-        Build Excalidraw generation prompt - inspired by FlowPilot's concise approach.
-        Simple, clear instructions lead to more stable AI output.
+        Build Excalidraw generation prompt with enterprise-grade structure constraints.
         """
+        style_profile = self._resolve_style_profile(style)
         return f"""You are an Excalidraw expert. Produce a finished, readable diagram as pure JSON (no prose).
 
 OUTPUT FORMAT (must be valid JSON):
@@ -141,25 +165,37 @@ CRITICAL RULES:
 2) Every element must have: id (string), type, x, y, width, height, angle, strokeColor, backgroundColor, fillStyle, strokeWidth, strokeStyle, roughness, opacity, groupIds (array), boundElements (array), seed, version, versionNonce, isDeleted=false.
 3) Use "arrow" to connect shapes; prefer "text" for labels (include "text", "fontSize", "textAlign").
 4) Do NOT return images/icons; use basic shapes and arrows only. Ensure the JSON is closed (ends with "}}").
+5) Emit elements incrementally: output core shapes in order first, then connectors, then labels. Do not batch all connectors at the very end.
+6) Every node must have at least one incoming or outgoing edge; avoid isolated nodes.
 
 REQUIRED ELEMENT MIX:
-- Total 28-84 elements depending on complexity.
-- At least 12 shape nodes (rectangle/ellipse/diamond) for the main content.
-- At least 14 connectors (arrow/line) linking the shapes into a complete flow.
+- Total 36-180 elements depending on complexity.
+- At least 16 shape nodes (rectangle/ellipse/diamond) for the main content.
+- At least 20 connectors (arrow/line) linking the shapes into a complete flow.
 - Ensure every major shape participates in at least one incoming or outgoing connector.
-- Use 6-14 text labels to annotate decisions, branches, critical paths, and failure handling.
-- For complex requests, include at least 1-2 branch merges and at least 1 loop-back connector.
+- Use 10-36 text labels to annotate decisions, branches, critical paths, and failure handling.
+- For complex requests, include at least 3 branch merges, at least 2 loop-back connectors, and at least 1 fallback/retry path.
 - Output elements in this order: (1) core shapes, (2) connectors, (3) text labels.
 
 LAYOUT:
-- Canvas: {width}x{height}px. Keep a 40px margin; avoid overlap; distribute nodes evenly left-to-right/top-to-bottom.
-- If request is "complex" or "production-level", use at least 75% of canvas area.
+- Canvas: {width}x{height}px. Keep a 36px margin; avoid overlap; distribute nodes across full board.
+- For architecture/business prompts, use Layering + Grouping:
+  - groupIds by layer and sub-domain (e.g. ["layer-client"], ["layer-service","group-orders"]).
+  - organize into 3-8 logical lanes (client / gateway / service / data / observability / security etc.).
+- If request is complex or production-level, use >= 82% of canvas area.
 - Make connectors clean and direct; avoid zero-length points.
 
-STYLE (hand-drawn):
-- strokeColor: choose from ["#1e1e1e","#2563eb","#dc2626","#059669"]
-- backgroundColor: choose from ["transparent","#a5d8ff","#fde68a","#bbf7d0"]
-- fillStyle: "hachure" or "solid"; roughness: 1 for sketch feel; strokeWidth: 2.
+ENTERPRISE PRESET HINTS:
+- Provide board language similar to big tech architecture docs (service mesh, gateway, degradation, circuit-breaker, async queue, observability).
+- Prefer explicit resilience branches: timeout -> retry -> fallback -> degrade -> recover.
+- For business scenarios include traffic surge handling, gray release, and emergency downgrade paths.
+
+STYLE:
+- strokeColor choices: {style_profile["palette"]}
+- backgroundColor choices: {style_profile["fills"]}
+- fillStyle: "solid" or "hachure"
+- roughness: {style_profile["roughness"]}
+- strokeWidth: {style_profile["stroke_width"]}
 - Use compact JSON (minimal whitespace) and short element ids to reduce streaming latency.
 
 USER REQUEST: "{prompt}"
@@ -262,7 +298,8 @@ Return ONLY the JSON structure above. Generate the full set of elements; do not 
             elements = []
 
         cleaned = []
-        max_elems = 120  # keep larger diagrams from being truncated
+        area = max(width * height, 1)
+        max_elems = max(220, min(1200, int(area / 12000)))
         seen_ids = set()
         allowed_types = {"rectangle", "ellipse", "diamond", "freedraw", "line", "arrow", "text"}
 
@@ -342,8 +379,10 @@ Return ONLY the JSON structure above. Generate the full set of elements; do not 
             else:
                 x = float(elem.get("x", base["x"]))
                 y = float(elem.get("y", base["y"]))
-                w = min(max(float(elem.get("width", base["width"])), 5), 400)
-                h = min(max(float(elem.get("height", base["height"])), 5), 400)
+                max_width = max(240.0, width * 0.72)
+                max_height = max(200.0, height * 0.72)
+                w = min(max(float(elem.get("width", base["width"])), 5), max_width)
+                h = min(max(float(elem.get("height", base["height"])), 5), max_height)
                 base["x"] = max(0, min(x, width - w))
                 base["y"] = max(0, min(y, height - h))
                 base["width"] = w
