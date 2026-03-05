@@ -41,6 +41,52 @@ _ALLOWED_NODE_TYPES = {
     "layerframe": "layerFrame",
 }
 
+_ARCH_CATEGORY_ALIASES = {
+    "api-gateway": "gateway",
+    "gateway": "gateway",
+    "ingress": "gateway",
+    "proxy": "gateway",
+    "load-balancer": "gateway",
+    "load_balancer": "gateway",
+    "api": "api",
+    "service": "service",
+    "application": "service",
+    "database": "database",
+    "db": "database",
+    "cache": "cache",
+    "queue": "queue",
+    "mq": "queue",
+    "event": "queue",
+    "storage": "storage",
+    "object-storage": "storage",
+    "client": "client",
+    "frontend": "client",
+    "web": "client",
+    "network": "network",
+    "security": "security",
+    "observability": "observability",
+    "monitoring": "observability",
+    "platform": "platform",
+    "infrastructure": "platform",
+}
+
+_ARCH_CATEGORY_TO_NODE_TYPE = {
+    "gateway": "gateway",
+    "api": "api",
+    "service": "service",
+    "database": "database",
+    "cache": "cache",
+    "queue": "queue",
+    "storage": "storage",
+    "client": "client",
+    "network": "gateway",
+    "security": "gateway",
+    "observability": "service",
+    "platform": "service",
+}
+
+_CARDINAL_HANDLE_NODE_TYPES = {"default", "api", "service", "database", "cache"}
+
 
 def _is_finite_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
@@ -176,12 +222,21 @@ def _normalize_partial_node(node_payload: Dict[str, Any], fallback_index: int) -
         elif raw_node_type in {"task", "process", "subprocess"}:
             raw_data["shape"] = "task"
 
-    return {
+    normalized: Dict[str, Any] = {
         "id": node_id,
         "type": node_type,
         "position": {"x": x, "y": y},
         "data": raw_data,
     }
+    if isinstance(node_payload.get("parentNode"), str):
+        normalized["parentNode"] = node_payload["parentNode"]
+    if isinstance(node_payload.get("extent"), str):
+        normalized["extent"] = node_payload["extent"]
+    if isinstance(node_payload.get("style"), dict):
+        normalized["style"] = dict(node_payload["style"])
+    if "draggable" in node_payload and isinstance(node_payload.get("draggable"), bool):
+        normalized["draggable"] = node_payload["draggable"]
+    return normalized
 
 
 def _classify_upstream_error(error: Exception) -> tuple[int, str]:
@@ -263,6 +318,347 @@ def _normalize_partial_edge(edge_payload: Dict[str, Any], fallback_index: int) -
             normalized["label"] = label_text
 
     return normalized
+
+
+def _is_architecture_connectable_node(node_payload: Dict[str, Any]) -> bool:
+    """Only non-frame nodes can safely participate in streamed preview edges."""
+    raw_type = str(node_payload.get("type") or "").strip().lower()
+    return raw_type not in {"frame", "layerframe", "layer-frame"}
+
+
+def _supports_cardinal_handles(node_payload: Dict[str, Any]) -> bool:
+    raw_type = str(node_payload.get("type") or "").strip().lower()
+    return raw_type in _CARDINAL_HANDLE_NODE_TYPES
+
+
+def _extract_architecture_layer_key(node_payload: Dict[str, Any]) -> str:
+    data = node_payload.get("data")
+    data = data if isinstance(data, dict) else {}
+    raw_type = str(node_payload.get("type") or "").strip().lower()
+
+    layer_value = data.get("layer")
+    if not layer_value and raw_type in {"layerframe", "layer-frame"}:
+        layer_value = data.get("label")
+    if not layer_value:
+        node_id = str(node_payload.get("id") or "").strip()
+        if node_id and "-" in node_id:
+            layer_value = node_id.split("-", 1)[0]
+    return _normalize_alias_token(layer_value)
+
+
+def _resolve_absolute_node_position(
+    node_id: str,
+    node_lookup: Dict[str, Dict[str, Any]],
+    memo: Dict[str, tuple[float, float]],
+) -> Optional[tuple[float, float]]:
+    if node_id in memo:
+        return memo[node_id]
+
+    node = node_lookup.get(node_id)
+    if not isinstance(node, dict):
+        return None
+
+    raw_position = node.get("position")
+    raw_position = raw_position if isinstance(raw_position, dict) else {}
+    x = float(raw_position.get("x") or 0.0)
+    y = float(raw_position.get("y") or 0.0)
+
+    parent_id = node.get("parentNode")
+    if isinstance(parent_id, str) and parent_id:
+        parent_pos = _resolve_absolute_node_position(parent_id, node_lookup, memo)
+        if parent_pos:
+            x += parent_pos[0]
+            y += parent_pos[1]
+
+    memo[node_id] = (x, y)
+    return memo[node_id]
+
+
+def _decorate_partial_edge_handles(
+    edge_payload: Dict[str, Any],
+    node_lookup: Dict[str, Dict[str, Any]],
+) -> Dict[str, Any]:
+    source_id = str(edge_payload.get("source") or "").strip()
+    target_id = str(edge_payload.get("target") or "").strip()
+    if not source_id or not target_id:
+        return edge_payload
+
+    source_node = node_lookup.get(source_id)
+    target_node = node_lookup.get(target_id)
+    if not isinstance(source_node, dict) or not isinstance(target_node, dict):
+        return edge_payload
+    if not _is_architecture_connectable_node(source_node) or not _is_architecture_connectable_node(target_node):
+        return edge_payload
+    if not _supports_cardinal_handles(source_node) or not _supports_cardinal_handles(target_node):
+        return edge_payload
+
+    if edge_payload.get("sourceHandle") and edge_payload.get("targetHandle"):
+        return edge_payload
+
+    position_cache: Dict[str, tuple[float, float]] = {}
+    source_pos = _resolve_absolute_node_position(source_id, node_lookup, position_cache)
+    target_pos = _resolve_absolute_node_position(target_id, node_lookup, position_cache)
+
+    if source_pos and target_pos:
+        dx = target_pos[0] - source_pos[0]
+        dy = target_pos[1] - source_pos[1]
+        if abs(dx) >= abs(dy):
+            source_handle = "right-source" if dx >= 0 else "left-source"
+            target_handle = "left-target" if dx >= 0 else "right-target"
+        else:
+            source_handle = "bottom-source" if dy >= 0 else "top-source"
+            target_handle = "top-target" if dy >= 0 else "bottom-target"
+    else:
+        source_handle = "bottom-source"
+        target_handle = "top-target"
+
+    edge_payload.setdefault("sourceHandle", source_handle)
+    edge_payload.setdefault("targetHandle", target_handle)
+    return edge_payload
+
+
+def _normalize_alias_token(value: Any) -> str:
+    text = str(value or "").strip().lower().replace("_", "-").replace(" ", "-")
+    normalized = "".join(ch if ("a" <= ch <= "z" or "0" <= ch <= "9" or ch == "-") else "-" for ch in text)
+    while "--" in normalized:
+        normalized = normalized.replace("--", "-")
+    return normalized.strip("-")
+
+
+def _normalize_architecture_category(raw_category: Any, layer_name: Any) -> str:
+    candidate = _normalize_alias_token(raw_category)
+    if not candidate:
+        candidate = _normalize_alias_token(layer_name)
+    if not candidate:
+        return "service"
+    return _ARCH_CATEGORY_ALIASES.get(candidate, candidate)
+
+
+def _select_architecture_partial_node_type(category: str, architecture_type: str) -> str:
+    if architecture_type in {"layered", "business"}:
+        return "frame"
+    return _ARCH_CATEGORY_TO_NODE_TYPE.get(category, "service")
+
+
+def _resolve_architecture_columns(items_count: int, requested: Any, default_columns: int) -> int:
+    columns = requested if isinstance(requested, int) and requested > 0 else default_columns
+    columns = max(3, columns)
+    if items_count <= 0:
+        return columns
+
+    # Favor readability over ultra-wide single rows for very large layers.
+    recommended = max(columns, int((items_count * 1.35) ** 0.5 + 0.999))
+    adaptive_upper = max(columns + 2, int((items_count ** 0.5) * 1.7 + 0.999))
+    return max(3, min(max(recommended, columns), adaptive_upper))
+
+
+def _calculate_architecture_frame_size(items_count: int, columns: int) -> Dict[str, int]:
+    if items_count >= 36:
+        card_width = 212
+        card_height = 96
+    elif items_count >= 20:
+        card_width = 224
+        card_height = 104
+    elif items_count >= 12:
+        card_width = 236
+        card_height = 110
+    else:
+        card_width = 252
+        card_height = 114
+
+    padding_x = 46
+    padding_y = 34
+    gap_x = 20
+    gap_y = 20
+    header_height = 54
+
+    actual_columns = min(items_count, columns) if items_count > 0 else columns
+    actual_columns = max(1, actual_columns)
+    rows = ((items_count + actual_columns - 1) // actual_columns) if items_count > 0 else 1
+
+    width = actual_columns * card_width + (actual_columns - 1) * gap_x + padding_x * 2
+    height = rows * card_height + (rows - 1) * gap_y + padding_y * 2 + header_height
+
+    min_width = card_width * 2 + gap_x + padding_x * 2
+    min_height = card_height + padding_y * 2 + header_height
+    return {
+        "width": max(width, min_width),
+        "height": max(height, min_height),
+        "padding_x": padding_x,
+        "padding_y": padding_y,
+        "gap_x": gap_x,
+        "gap_y": gap_y,
+        "header_height": header_height,
+        "card_width": card_width,
+        "card_height": card_height,
+    }
+
+
+def _build_architecture_partial_nodes(
+    layer_payload: Dict[str, Any],
+    layer_index: int,
+    architecture_type: str,
+    default_columns: int,
+    base_y: float = 100.0,
+) -> List[Dict[str, Any]]:
+    if not isinstance(layer_payload, dict):
+        return []
+
+    layer_name = str(layer_payload.get("name") or f"layer-{layer_index + 1}")
+    layer_key = _normalize_alias_token(layer_name) or f"layer-{layer_index + 1}"
+    items = layer_payload.get("items")
+    groups = layer_payload.get("groups")
+    layer_layout = layer_payload.get("layout")
+    layer_layout = layer_layout if isinstance(layer_layout, dict) else {}
+    layer_color = layer_payload.get("color") or "#64748b"
+
+    normalized_items: List[tuple[Any, Optional[str]]] = []
+    if isinstance(items, list):
+        normalized_items.extend((item, None) for item in items)
+    if isinstance(groups, list):
+        for group_idx, group in enumerate(groups):
+            if not isinstance(group, dict):
+                continue
+            group_name = str(group.get("name") or f"group-{group_idx + 1}")
+            group_items = group.get("items")
+            if not isinstance(group_items, list):
+                continue
+            normalized_items.extend((item, group_name) for item in group_items)
+
+    columns = _resolve_architecture_columns(
+        items_count=len(normalized_items),
+        requested=layer_layout.get("columns"),
+        default_columns=default_columns,
+    )
+    frame_size = _calculate_architecture_frame_size(len(normalized_items), columns)
+
+    layer_y = base_y + layer_index * (frame_size["height"] + 92)
+    frame_id = f"{layer_key}-frame"
+    partial_nodes: List[Dict[str, Any]] = [
+        {
+            "id": frame_id,
+            "type": "layerFrame",
+            "position": {"x": 80.0, "y": float(layer_y)},
+            "draggable": False,
+            "style": {"width": frame_size["width"], "height": frame_size["height"]},
+            "data": {
+                "label": layer_name.capitalize(),
+                "color": layer_color,
+                "width": frame_size["width"],
+                "height": frame_size["height"],
+                "layout": "grid",
+                "columns": columns,
+                "itemsCount": len(normalized_items),
+                "groupCount": len(groups) if isinstance(groups, list) else 0,
+            },
+        }
+    ]
+
+    for item_idx, (raw_item, group_name) in enumerate(normalized_items):
+        if isinstance(raw_item, dict):
+            explicit_item_id = raw_item.get("id")
+            label = str(raw_item.get("label") or raw_item.get("name") or f"{layer_key}-{item_idx + 1}")
+            category = _normalize_architecture_category(raw_item.get("category"), layer_name)
+            note = str(raw_item.get("note") or "").strip()
+            tech_stack = raw_item.get("tech_stack", [])
+            if isinstance(tech_stack, str):
+                tech_stack = [item.strip() for item in tech_stack.split(",") if item.strip()]
+            if not isinstance(tech_stack, list):
+                tech_stack = []
+            tech_stack = [str(item).strip() for item in tech_stack if str(item).strip()]
+            group_value = str(raw_item.get("group") or group_name or "").strip() or None
+        else:
+            explicit_item_id = None
+            label = str(raw_item)
+            category = _normalize_architecture_category(None, layer_name)
+            note = ""
+            tech_stack = []
+            group_value = group_name
+
+        if not note and tech_stack:
+            note = " / ".join(tech_stack[:4])
+
+        node_type = _select_architecture_partial_node_type(category, architecture_type)
+        item_id = _normalize_alias_token(explicit_item_id or f"{layer_key}-{item_idx + 1}") or f"{layer_key}-{item_idx + 1}"
+
+        row = item_idx // columns
+        col = item_idx % columns
+        item_x = frame_size["padding_x"] + col * (frame_size["card_width"] + frame_size["gap_x"])
+        item_y = frame_size["header_height"] + frame_size["padding_y"] + row * (frame_size["card_height"] + frame_size["gap_y"])
+
+        partial_nodes.append(
+            {
+                "id": item_id,
+                "type": node_type,
+                "position": {"x": float(item_x), "y": float(item_y)},
+                "parentNode": frame_id,
+                "extent": "parent",
+                "data": {
+                    "label": label,
+                    "shape": "task",
+                    "color": layer_color,
+                    "layer": layer_name,
+                    "note": note,
+                    "layerColor": layer_color,
+                    "tech_stack": tech_stack,
+                    "category": category,
+                    "group": group_value,
+                    "size": "large" if len(tech_stack) >= 4 else "medium",
+                },
+            }
+        )
+
+    return partial_nodes
+
+
+def _build_architecture_item_partial_node(
+    item_payload: Dict[str, Any],
+    fallback_index: int,
+    architecture_type: str,
+) -> Optional[Dict[str, Any]]:
+    """Best-effort atomic node parsing from layer items while layer object is still incomplete."""
+    if not isinstance(item_payload, dict):
+        return None
+
+    explicit_id = item_payload.get("id")
+    label = str(item_payload.get("label") or item_payload.get("name") or "").strip()
+    if not label and not explicit_id:
+        return None
+
+    node_id = _normalize_alias_token(explicit_id or label) or f"arch-item-{fallback_index + 1}"
+    category = _normalize_architecture_category(item_payload.get("category"), item_payload.get("layer") or "application")
+    node_type = _select_architecture_partial_node_type(category, architecture_type)
+
+    tech_stack = item_payload.get("tech_stack", [])
+    if isinstance(tech_stack, str):
+        tech_stack = [part.strip() for part in tech_stack.split(",") if part.strip()]
+    if not isinstance(tech_stack, list):
+        tech_stack = []
+    tech_stack = [str(part).strip() for part in tech_stack if str(part).strip()]
+
+    note = str(item_payload.get("note") or "").strip()
+    if not note and tech_stack:
+        note = " / ".join(tech_stack[:4])
+
+    column_count = 5
+    row = fallback_index // column_count
+    col = fallback_index % column_count
+    x = 160 + col * 290
+    y = 140 + row * 170
+
+    return {
+        "id": node_id,
+        "type": node_type,
+        "position": {"x": float(x), "y": float(y)},
+        "data": {
+            "label": label or node_id,
+            "shape": "task",
+            "category": category,
+            "tech_stack": tech_stack,
+            "note": note,
+            "size": "large" if len(tech_stack) >= 4 else "medium",
+        },
+    }
 
 
 @router.get("/chat-generator/templates", response_model=FlowTemplateList)
@@ -364,8 +760,14 @@ async def generate_flowchart_stream(request: ChatGenerationRequest):
 
             seen_partial_node_keys: Set[str] = set()
             seen_partial_edge_keys: Set[str] = set()
+            seen_partial_layer_keys: Set[str] = set()
             partial_nodes_sent = 0
             partial_edges_sent = 0
+            partial_node_order: List[str] = []
+            partial_node_order_seen: Set[str] = set()
+            partial_node_payload_by_id: Dict[str, Dict[str, Any]] = {}
+            architecture_layer_order: List[str] = []
+            architecture_layer_nodes: Dict[str, List[str]] = {}
             attempt_errors: List[Dict[str, Any]] = []
             parse_interval_chars = 96
             heartbeat_seconds = 6.0
@@ -436,11 +838,49 @@ async def generate_flowchart_stream(request: ChatGenerationRequest):
                     nonlocal last_heartbeat
                     nonlocal partial_nodes_sent
                     nonlocal partial_edges_sent
+                    nonlocal partial_node_order
+                    nonlocal partial_node_order_seen
+                    nonlocal partial_node_payload_by_id
+                    nonlocal architecture_layer_order
+                    nonlocal architecture_layer_nodes
                     nonlocal token_batch
 
                     events: List[str] = []
                     if not text:
                         return events
+
+                    def register_partial_node(node_payload: Dict[str, Any]) -> None:
+                        nonlocal partial_nodes_sent
+                        nonlocal partial_node_order
+                        nonlocal partial_node_order_seen
+                        nonlocal partial_node_payload_by_id
+                        nonlocal architecture_layer_order
+                        nonlocal architecture_layer_nodes
+
+                        node_id = str(node_payload.get("id") or "").strip()
+                        partial_nodes_sent += 1
+
+                        if node_id:
+                            partial_node_payload_by_id[node_id] = node_payload
+                            if node_id not in partial_node_order_seen:
+                                partial_node_order_seen.add(node_id)
+                                partial_node_order.append(node_id)
+
+                            if effective_diagram_type == "architecture":
+                                layer_key = _extract_architecture_layer_key(node_payload)
+                                if layer_key:
+                                    if layer_key not in architecture_layer_nodes:
+                                        architecture_layer_nodes[layer_key] = []
+                                        architecture_layer_order.append(layer_key)
+                                    if _is_architecture_connectable_node(node_payload):
+                                        bucket = architecture_layer_nodes[layer_key]
+                                        if node_id not in bucket:
+                                            bucket.append(node_id)
+
+                    def emit_partial_node(node_payload: Dict[str, Any]) -> None:
+                        events.append(
+                            f"data: [PARTIAL_NODE] {json.dumps(node_payload, ensure_ascii=False)}\n\n"
+                        )
 
                     accumulated += text
                     token_batch += text
@@ -454,6 +894,62 @@ async def generate_flowchart_stream(request: ChatGenerationRequest):
                     if should_parse_partials:
                         chars_since_parse = 0
 
+                        if effective_diagram_type == "architecture":
+                            arch_type = request.architecture_type or "layered"
+                            arch_template = ARCHITECTURE_TEMPLATES.get(
+                                arch_type,
+                                ARCHITECTURE_TEMPLATES["layered"],
+                            )
+                            arch_default_columns = int(arch_template.get("default_columns", 4))
+                            for layer_idx, raw_layer in enumerate(_extract_array_objects(accumulated, "layers")):
+                                layer_name = str(raw_layer.get("name") or f"layer-{layer_idx + 1}").strip()
+                                layer_key = _normalize_alias_token(layer_name) or f"layer-{layer_idx + 1}"
+                                if layer_key not in seen_partial_layer_keys:
+                                    seen_partial_layer_keys.add(layer_key)
+                                    layer_layout = raw_layer.get("layout")
+                                    layer_layout = layer_layout if isinstance(layer_layout, dict) else {}
+                                    layer_event = {
+                                        "id": f"{layer_key}-frame",
+                                        "layer": layer_name,
+                                        "index": layer_idx,
+                                        "columns": layer_layout.get("columns"),
+                                    }
+                                    events.append(
+                                        f"data: [PARTIAL_LAYER] {json.dumps(layer_event, ensure_ascii=False)}\n\n"
+                                    )
+                                arch_partial_nodes = _build_architecture_partial_nodes(
+                                    layer_payload=raw_layer,
+                                    layer_index=layer_idx,
+                                    architecture_type=arch_type,
+                                    default_columns=arch_default_columns,
+                                )
+                                for partial_node in arch_partial_nodes:
+                                    identity = _node_stream_identity(partial_node)
+                                    if identity in seen_partial_node_keys:
+                                        continue
+                                    seen_partial_node_keys.add(identity)
+                                    register_partial_node(partial_node)
+                                    emit_partial_node(partial_node)
+
+                            # Atomic parsing fallback: emit nodes from items/components objects
+                            # before a full layer object is closed.
+                            item_object_keys = ("items", "components", "services")
+                            for item_key in item_object_keys:
+                                for raw_item in _extract_array_objects(accumulated, item_key):
+                                    atomic_node = _build_architecture_item_partial_node(
+                                        item_payload=raw_item,
+                                        fallback_index=partial_nodes_sent,
+                                        architecture_type=arch_type,
+                                    )
+                                    if not atomic_node:
+                                        continue
+                                    identity = _node_stream_identity(atomic_node)
+                                    if identity in seen_partial_node_keys:
+                                        continue
+                                    seen_partial_node_keys.add(identity)
+                                    register_partial_node(atomic_node)
+                                    emit_partial_node(atomic_node)
+
                         for raw_node in _extract_array_objects(accumulated, "nodes"):
                             identity = _node_stream_identity(raw_node)
                             if identity in seen_partial_node_keys:
@@ -464,10 +960,8 @@ async def generate_flowchart_stream(request: ChatGenerationRequest):
                                 continue
 
                             seen_partial_node_keys.add(identity)
-                            partial_nodes_sent += 1
-                            events.append(
-                                f"data: [PARTIAL_NODE] {json.dumps(partial_node, ensure_ascii=False)}\n\n"
-                            )
+                            register_partial_node(partial_node)
+                            emit_partial_node(partial_node)
 
                         for raw_edge in _extract_array_objects(accumulated, "edges"):
                             identity = _edge_stream_identity(raw_edge)
@@ -477,12 +971,87 @@ async def generate_flowchart_stream(request: ChatGenerationRequest):
                             partial_edge = _normalize_partial_edge(raw_edge, partial_edges_sent)
                             if not partial_edge:
                                 continue
+                            if effective_diagram_type == "architecture":
+                                partial_edge = _decorate_partial_edge_handles(
+                                    partial_edge,
+                                    partial_node_payload_by_id,
+                                )
 
                             seen_partial_edge_keys.add(identity)
                             partial_edges_sent += 1
                             events.append(
                                 f"data: [PARTIAL_EDGE] {json.dumps(partial_edge, ensure_ascii=False)}\n\n"
                             )
+
+                        # Architecture streaming fallback:
+                        # if nodes are already available but real edges are still pending,
+                        # emit a minimal progressive backbone to avoid "floating nodes" UX.
+                        if (
+                            effective_diagram_type == "architecture"
+                            and partial_edges_sent == 0
+                            and len(partial_node_order) >= 4
+                        ):
+                            arch_type = request.architecture_type or "layered"
+                            arch_template = ARCHITECTURE_TEMPLATES.get(
+                                arch_type,
+                                ARCHITECTURE_TEMPLATES["layered"],
+                            )
+                            if arch_template.get("show_edges", False):
+                                preview_pairs: List[tuple[str, str]] = []
+
+                                # Prefer layer-aware preview wiring between adjacent layers.
+                                if len(architecture_layer_order) >= 2:
+                                    for layer_idx in range(len(architecture_layer_order) - 1):
+                                        source_layer = architecture_layer_order[layer_idx]
+                                        target_layer = architecture_layer_order[layer_idx + 1]
+                                        sources = architecture_layer_nodes.get(source_layer, [])
+                                        targets = architecture_layer_nodes.get(target_layer, [])
+                                        if not sources or not targets:
+                                            continue
+                                        pair_budget = min(3, max(len(sources), len(targets)))
+                                        for pair_idx in range(pair_budget):
+                                            preview_pairs.append(
+                                                (
+                                                    sources[pair_idx % len(sources)],
+                                                    targets[pair_idx % len(targets)],
+                                                )
+                                            )
+
+                                # Fallback: connect adjacent connectable nodes in first-seen order.
+                                if not preview_pairs:
+                                    connectable_node_order = [
+                                        node_id
+                                        for node_id in partial_node_order
+                                        if node_id in partial_node_payload_by_id
+                                        and _is_architecture_connectable_node(partial_node_payload_by_id[node_id])
+                                    ]
+                                    for idx in range(len(connectable_node_order) - 1):
+                                        preview_pairs.append(
+                                            (connectable_node_order[idx], connectable_node_order[idx + 1])
+                                        )
+
+                                max_preview_edges = 12
+                                for source, target in preview_pairs[:max_preview_edges]:
+                                    if not source or not target or source == target:
+                                        continue
+                                    edge_key = f"{source}->{target}|preview"
+                                    if edge_key in seen_partial_edge_keys:
+                                        continue
+                                    seen_partial_edge_keys.add(edge_key)
+                                    preview_edge = {
+                                        "id": f"auto-partial-edge-{partial_edges_sent + 1}",
+                                        "source": source,
+                                        "target": target,
+                                        "label": "preview",
+                                    }
+                                    preview_edge = _decorate_partial_edge_handles(
+                                        preview_edge,
+                                        partial_node_payload_by_id,
+                                    )
+                                    partial_edges_sent += 1
+                                    events.append(
+                                        f"data: [PARTIAL_EDGE] {json.dumps(preview_edge, ensure_ascii=False)}\n\n"
+                                    )
 
                     now = time.monotonic()
                     if now - last_heartbeat >= heartbeat_seconds:

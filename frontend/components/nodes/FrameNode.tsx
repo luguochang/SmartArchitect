@@ -13,6 +13,9 @@ import {
   Cpu,
   Package,
   FileText,
+  Activity,
+  Lock,
+  HardDrive,
 } from "lucide-react";
 
 // Category icon mapping
@@ -21,12 +24,35 @@ const CATEGORY_ICONS = {
   database: Database,
   api: Globe,
   security: Shield,
+  observability: Activity,
   platform: Layers,
   infrastructure: Cloud,
   network: Network,
   compute: Cpu,
+  queue: Network,
   storage: Package,
+  data: HardDrive,
+  gateway: Shield,
+  cache: Cpu,
+  messaging: Network,
+  monitoring: Activity,
+  auth: Lock,
   default: FileText,
+};
+
+const CATEGORY_ACCENTS: Record<string, string> = {
+  service: "#22c55e",
+  api: "#3b82f6",
+  gateway: "#f59e0b",
+  database: "#8b5cf6",
+  cache: "#06b6d4",
+  queue: "#6366f1",
+  storage: "#0ea5e9",
+  network: "#ef4444",
+  security: "#f97316",
+  observability: "#14b8a6",
+  platform: "#64748b",
+  infrastructure: "#0ea5e9",
 };
 
 export function FrameNode({ id, data, selected }: NodeProps) {
@@ -37,6 +63,7 @@ export function FrameNode({ id, data, selected }: NodeProps) {
     tech_stack = [],
     category = "default",
     size = "medium",
+    group,
   } = data || {};
   const { updateNodeLabel } = useArchitectStore.getState();
 
@@ -51,6 +78,7 @@ export function FrameNode({ id, data, selected }: NodeProps) {
   const IconComponent =
     CATEGORY_ICONS[category as keyof typeof CATEGORY_ICONS] ||
     CATEGORY_ICONS.default;
+  const accentColor = CATEGORY_ACCENTS[String(category)] || layerColor || "#64748b";
 
   // Size configurations
   const sizeConfig = {
@@ -91,7 +119,7 @@ export function FrameNode({ id, data, selected }: NodeProps) {
             background: `linear-gradient(135deg, ${layerColor || "#e2e8f0"}30, ${
               layerColor || "#e2e8f0"
             }50)`,
-            color: layerColor || "#0f172a",
+            color: accentColor,
           }}
         >
           <IconComponent className="h-4 w-4" />
@@ -105,11 +133,11 @@ export function FrameNode({ id, data, selected }: NodeProps) {
               background: `linear-gradient(135deg, ${layerColor || "#e2e8f0"}25, ${
                 layerColor || "#e2e8f0"
               }40)`,
-              color: layerColor || "#0f172a",
+              color: accentColor,
               border: `1px solid ${layerColor || "#e2e8f0"}50`,
             }}
           >
-            {note || data?.layer}
+            {data?.layer || category}
           </span>
         )}
       </div>
@@ -118,10 +146,15 @@ export function FrameNode({ id, data, selected }: NodeProps) {
       <div className="mb-3">
         <h3
           className="text-sm font-bold leading-tight"
-          style={{ color: layerColor || "#0f172a" }}
+          style={{ color: accentColor }}
         >
           {label || "Component"}
         </h3>
+        {group && (
+          <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+            {String(group)}
+          </p>
+        )}
       </div>
 
       {/* Tech Stack Badges */}
@@ -133,7 +166,7 @@ export function FrameNode({ id, data, selected }: NodeProps) {
               className="inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-medium"
               style={{
                 background: `${layerColor || "#e2e8f0"}15`,
-                color: layerColor || "#0f172a",
+                color: accentColor,
                 border: `1px solid ${layerColor || "#e2e8f0"}30`,
               }}
             >
@@ -145,13 +178,22 @@ export function FrameNode({ id, data, selected }: NodeProps) {
               className="inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-medium"
               style={{
                 background: `${layerColor || "#e2e8f0"}10`,
-                color: layerColor || "#0f172a",
+                color: accentColor,
               }}
             >
               +{tech_stack.length - 3}
             </span>
           )}
         </div>
+      )}
+
+      {(!tech_stack || tech_stack.length === 0) && note && (
+        <p
+          className="mt-1 line-clamp-2 text-[11px] leading-snug text-slate-600 dark:text-slate-300"
+          title={String(note)}
+        >
+          {String(note)}
+        </p>
       )}
     </div>
   );

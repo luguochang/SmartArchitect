@@ -297,7 +297,7 @@ function ArchitectCanvasInner() {
     if (nodes.length > 0) {
       const delay = wasGeneratingRef.current ? 180 : 100;
       const timer = setTimeout(() => {
-        fitView({ padding: 0.1, duration: 300 });
+        fitView({ padding: 0.12, duration: 320, minZoom: 0.24, maxZoom: 1.1 });
         wasGeneratingRef.current = false;
       }, delay);
       return () => clearTimeout(timer);

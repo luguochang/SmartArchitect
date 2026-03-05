@@ -1,9 +1,10 @@
-from pydantic import AliasChoices, BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from typing import List, Optional, Literal
 
 
 # React Flow 节点和边的数据模型
 class NodeData(BaseModel):
+    model_config = ConfigDict(extra="allow")
     label: str
     shape: Optional[Literal["rectangle", "circle", "diamond", "start-event", "end-event", "intermediate-event", "task"]] = None
     iconType: Optional[str] = None  # Icon identifier (e.g., "play-circle", "stop-circle")
@@ -16,6 +17,7 @@ class Position(BaseModel):
 
 
 class Node(BaseModel):
+    model_config = ConfigDict(extra="allow")
     id: str
     type: Optional[str] = "default"
     position: Position
@@ -23,6 +25,7 @@ class Node(BaseModel):
 
 
 class Edge(BaseModel):
+    model_config = ConfigDict(extra="allow")
     id: str
     source: str
     target: str

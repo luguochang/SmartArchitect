@@ -257,6 +257,56 @@ def test_chat_generator_stream_emits_partial_graph_events(monkeypatch):
     assert payload.index("[PARTIAL_NODE]") < payload.index("[LAYOUT_DATA]")
 
 
+def test_chat_generator_stream_architecture_layers_emit_partial_nodes(monkeypatch):
+    """Architecture stream should emit partial nodes from layers/items before final layout."""
+    from app.api import chat_generator as cg_api
+
+    class DummyPresetsService:
+        def get_active_config(self, **kwargs):
+            return {
+                "provider": "custom",
+                "api_key": "test-key",
+                "base_url": "https://example.invalid/v1",
+                "model_name": "mock-model",
+            }
+
+    class DummyVisionService:
+        provider = "custom"
+        model_name = "mock-model"
+
+        async def generate_with_stream(self, prompt: str):
+            chunks = [
+                '{"layers":[{"name":"presentation","layout":{"columns":3},"items":[',
+                '{"id":"web-ui","label":"Web UI","category":"client","tech_stack":["React"]},',
+                '{"id":"api-gateway","label":"API Gateway","category":"gateway","tech_stack":["Kong"]}',
+                ']}],"edges":[{"id":"e1","source":"web-ui","target":"api-gateway","label":"https"}]}',
+            ]
+            for item in chunks:
+                yield item
+
+    monkeypatch.setattr(cg_api, "get_model_presets_service", lambda: DummyPresetsService(), raising=True)
+    monkeypatch.setattr(cg_api, "create_vision_service", lambda **kwargs: DummyVisionService(), raising=True)
+
+    response = client.post(
+        "/api/chat-generator/generate-stream",
+        json={
+            "user_input": "generate technical architecture",
+            "provider": "custom",
+            "diagram_type": "architecture",
+            "architecture_type": "technical",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.text
+    assert "[PARTIAL_NODE]" in payload
+    assert "[PARTIAL_LAYER]" in payload
+    assert "layerFrame" in payload
+    assert "web-ui" in payload
+    assert "[LAYOUT_DATA]" in payload
+    assert payload.index("[PARTIAL_NODE]") < payload.index("[LAYOUT_DATA]")
+
+
 def test_chat_generator_auto_failover_on_usage_limit(monkeypatch):
     """Non-stream chat generation should fail over to backup config when primary is rate-limited."""
     from app.services import chat_generator as cg_service

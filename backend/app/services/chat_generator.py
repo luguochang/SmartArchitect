@@ -71,6 +71,80 @@ ARCHITECTURE_TEMPLATES = {
     },
 }
 
+ARCHITECTURE_CATEGORY_ALIASES = {
+    "api-gateway": "gateway",
+    "gateway": "gateway",
+    "ingress": "gateway",
+    "proxy": "gateway",
+    "edge": "gateway",
+    "lb": "gateway",
+    "load-balancer": "gateway",
+    "load_balancer": "gateway",
+    "api": "api",
+    "bff": "api",
+    "backend-for-frontend": "api",
+    "service": "service",
+    "application": "service",
+    "app": "service",
+    "compute": "service",
+    "worker": "service",
+    "database": "database",
+    "db": "database",
+    "rdbms": "database",
+    "warehouse": "database",
+    "cache": "cache",
+    "queue": "queue",
+    "mq": "queue",
+    "broker": "queue",
+    "stream": "queue",
+    "event": "queue",
+    "storage": "storage",
+    "object-storage": "storage",
+    "blob": "storage",
+    "filesystem": "storage",
+    "client": "client",
+    "frontend": "client",
+    "web": "client",
+    "mobile": "client",
+    "portal": "client",
+    "network": "network",
+    "cdn": "network",
+    "vpc": "network",
+    "subnet": "network",
+    "security": "security",
+    "waf": "security",
+    "iam": "security",
+    "firewall": "security",
+    "platform": "platform",
+    "infrastructure": "platform",
+    "monitoring": "observability",
+    "logging": "observability",
+    "tracing": "observability",
+    "metrics": "observability",
+    "observability": "observability",
+}
+
+ARCHITECTURE_CATEGORY_TO_NODE_TYPE = {
+    "gateway": "gateway",
+    "api": "api",
+    "service": "service",
+    "database": "database",
+    "cache": "cache",
+    "queue": "queue",
+    "storage": "storage",
+    "client": "client",
+    "network": "gateway",
+    "security": "gateway",
+    "platform": "service",
+    "observability": "service",
+}
+
+ARCHITECTURE_EDGE_LABEL_HINTS = {
+    "technical": "call",
+    "deployment": "network",
+    "domain": "dependency",
+}
+
 
 class ChatGeneratorService:
     """Chat-based flowchart generation service (mock-first)."""
@@ -286,9 +360,10 @@ CRITICAL: This is a DDD view showing domain boundaries!
                 edge_guidance = """
 **EDGE/CONNECTION RULES:**
 - Include "edges" array to show dependencies/data flow
-- Each edge: {{"source": "layer-item-id", "target": "layer-item-id", "label": "connection type"}}
-- Example: {{"source": "application-0", "target": "integration-0", "label": "API鐠嬪啰鏁?}}
-- Keep edge labels concise (API鐠嬪啰鏁? 閺佺増宓佸ù? 缂冩垹绮舵潻鐐村复, etc.)
+- Each edge MUST use item IDs defined in layers.items[].id
+- Edge format: {{"source": "stable-node-id", "target": "stable-node-id", "label": "connection type"}}
+- Keep edge labels concise (call, event, sync, async, read, write, etc.)
+- Do not reference labels in source/target; use IDs only
 """
             else:
                 edge_guidance = """
@@ -318,24 +393,33 @@ CRITICAL: This is a DDD view showing domain boundaries!
 
 {layer_examples}
 
-3. **GRID LAYOUT SUPPORT:**
+3. **GRID + GROUPING SUPPORT (NO HARD CAP):**
    - Each layer can specify "layout": {{ "columns": N }}
    - Default columns: {template.get('default_columns', 4)}
-   - For layers with many items (10+), use more columns (5-6)
-   - For simple layers (< 5 items), use fewer columns (3-4)
+   - Add optional "groups" in each layer for large systems:
+     {{
+       "name": "application",
+       "groups": [
+         {{"name": "core-domain", "items": [ ... ]}},
+         {{"name": "supporting-services", "items": [ ... ]}}
+       ]
+     }}
+   - Do NOT artificially cap complexity. If user asks for large architecture, keep all key components.
+   - Prefer readable segmentation over dropping nodes.
 
 4. **Item Format:**
+   - "id": Stable slug ID (required for robust edge linking)
    - "label": Component/service name (Chinese if user input is Chinese)
    - "tech_stack": Array of technologies used (e.g., ["React", "Next.js"])
    - "note": Brief description or tech stack summary
-   - "category": Optional category for icon selection ("service", "database", "api", "platform", etc.)
+   - "category": Optional category for icon selection ("service", "database", "api", "gateway", "cache", "queue", "storage", "client", "platform", "observability", "security", "network")
+   - "group": Optional group key inside a layer for mega-topology diagrams
 
-5. **SMART CARD DISTRIBUTION:**
-   - Capability/service layers: 6-12 items across 4-6 columns
-   - Application layer: 5-10 items across 3-5 columns
-   - Integration layer: 3-6 items across 3-4 columns
-   - Data layer: 3-5 items across 3-4 columns
-   - Automatically wrap items into multiple rows
+5. **ARCHITECTURE DSL CONTRACT (ATOMIC):**
+   - Treat each item as an atomic node and each edge as an atomic relation.
+   - IDs must be stable and reusable by later edge fragments.
+   - Keep JSON compact and stream-friendly (avoid huge verbose notes).
+   - For large outputs, prioritize completing valid layer/group/item objects early.
 
 {edge_guidance}
 
@@ -568,50 +652,127 @@ Generate a well-laid-out flowchart. Focus on clarity and visual balance. Return 
             return payload.model_dump()
         return json.loads(json.dumps(payload, default=str))
 
-    def _calculate_frame_size(self, items_count: int, columns: int = 4) -> dict:
-        """
-        Calculate dynamic frame size based on number of items and columns.
+    @staticmethod
+    def _normalize_alias_token(value: Any) -> str:
+        text = str(value or "").strip().lower().replace("_", "-").replace(" ", "-")
+        normalized = "".join(ch if ("a" <= ch <= "z" or "0" <= ch <= "9" or ch == "-") else "-" for ch in text)
+        while "--" in normalized:
+            normalized = normalized.replace("--", "-")
+        return normalized.strip("-")
 
-        Args:
-            items_count: Number of items in the layer
-            columns: Number of columns in grid layout (default: 4)
+    def _slug_identifier(self, value: Any, fallback: str) -> str:
+        slug = self._normalize_alias_token(value)
+        return slug or fallback
 
-        Returns:
-            dict with 'width' and 'height' in pixels
-        """
-        item_width = 240  # Width of each component card
-        item_height = 100  # Height of each component card
-        padding = 60  # Frame padding
-        gap = 20  # Gap between items
-        header_height = 40  # Layer header height
+    def _normalize_architecture_category(self, raw_category: Any, layer_name: str) -> str:
+        candidate = self._normalize_alias_token(raw_category)
+        if not candidate:
+            candidate = self._normalize_alias_token(layer_name)
+        if not candidate:
+            return "service"
+        return ARCHITECTURE_CATEGORY_ALIASES.get(candidate, candidate)
 
-        # Calculate actual columns (don't exceed items count)
+    def _select_architecture_node_type(self, category: str, architecture_type: str) -> str:
+        if architecture_type in {"business", "layered"}:
+            return "frame"
+        return ARCHITECTURE_CATEGORY_TO_NODE_TYPE.get(category, "service")
+
+    def _resolve_layer_columns(self, item_count: int, requested_columns: Any, default_columns: int) -> int:
+        base_columns = requested_columns if isinstance(requested_columns, int) and requested_columns > 0 else default_columns
+        base_columns = max(3, base_columns)
+
+        if item_count <= 0:
+            return base_columns
+
+        # Dynamic scaling with readability bias: avoid ultra-wide single-row layers.
+        recommended = max(base_columns, int(math.ceil(math.sqrt(item_count * 1.35))))
+        adaptive_upper = max(base_columns + 2, int(math.ceil(math.sqrt(item_count) * 1.7)))
+        return max(3, min(max(recommended, base_columns), adaptive_upper))
+
+    def _calculate_frame_size(
+        self,
+        items_count: int,
+        columns: int = 4,
+        card_width: int = 252,
+        card_height: int = 114,
+    ) -> dict:
+        """Calculate dynamic layer frame dimensions for large-scale architectures."""
+        if items_count >= 36:
+            card_width = 212
+            card_height = 96
+        elif items_count >= 20:
+            card_width = 224
+            card_height = 104
+        elif items_count >= 12:
+            card_width = 236
+            card_height = 110
+
+        padding_x = 46
+        padding_y = 34
+        gap_x = 20
+        gap_y = 20
+        header_height = 54
+
         actual_columns = min(items_count, columns) if items_count > 0 else columns
+        actual_columns = max(1, actual_columns)
+        rows = int(math.ceil(items_count / actual_columns)) if items_count > 0 else 1
 
-        # Calculate rows needed
-        rows = (items_count + columns - 1) // columns if items_count > 0 else 1
+        width = actual_columns * card_width + (actual_columns - 1) * gap_x + padding_x * 2
+        height = rows * card_height + (rows - 1) * gap_y + padding_y * 2 + header_height
 
-        # Calculate dimensions
-        width = actual_columns * item_width + (actual_columns - 1) * gap + padding * 2
-        height = rows * item_height + (rows - 1) * gap + padding * 2 + header_height
-
+        min_width = card_width * 2 + gap_x + padding_x * 2
+        min_height = card_height + padding_y * 2 + header_height
         return {
-            "width": max(width, 800),  # Minimum width for aesthetics
-            "height": max(height, 150),  # Minimum height
+            "width": max(width, min_width),
+            "height": max(height, min_height),
+            "padding_x": padding_x,
+            "padding_y": padding_y,
+            "gap_x": gap_x,
+            "gap_y": gap_y,
+            "header_height": header_height,
+            "card_width": card_width,
+            "card_height": card_height,
         }
 
+    def _infer_architecture_edges(
+        self,
+        layer_node_ids: List[List[str]],
+        architecture_type: str,
+        seen_keys: set,
+    ) -> List[dict]:
+        """Infer a minimum readable backbone when model omits all edges."""
+        inferred: List[dict] = []
+        edge_label = ARCHITECTURE_EDGE_LABEL_HINTS.get(architecture_type, "link")
+        edge_index = 1
+
+        for layer_idx in range(len(layer_node_ids) - 1):
+            sources = layer_node_ids[layer_idx]
+            targets = layer_node_ids[layer_idx + 1]
+            if not sources or not targets:
+                continue
+
+            edge_count = max(len(sources), len(targets))
+            for i in range(edge_count):
+                source = sources[i % len(sources)]
+                target = targets[i % len(targets)]
+                edge_key = (source, target, edge_label)
+                if edge_key in seen_keys or source == target:
+                    continue
+                seen_keys.add(edge_key)
+                inferred.append(
+                    {
+                        "id": f"auto-arch-edge-{edge_index}",
+                        "source": source,
+                        "target": target,
+                        "label": edge_label,
+                    }
+                )
+                edge_index += 1
+
+        return inferred
+
     def _normalize_architecture_graph(self, ai_data: dict, architecture_type: str = "layered"):
-        """
-        Normalize architecture JSON (layers/items) into nodes with LayerFrame backgrounds.
-        Supports dynamic sizing and grid layout.
-
-        Args:
-            ai_data: AI-generated architecture data
-            architecture_type: Type of architecture (layered, business, technical, deployment, domain)
-
-        Returns:
-            Tuple of (nodes, edges, mermaid_code)
-        """
+        """Normalize architecture JSON into layered/grouped React Flow nodes and robust edges."""
         try:
             layers = (
                 ai_data.get("layers")
@@ -620,174 +781,245 @@ Generate a well-laid-out flowchart. Focus on clarity and visual balance. Return 
                 or ai_data.get("groups")
                 or []
             )
-            # Extract edges if provided (for technical/deployment architectures)
             ai_edges = ai_data.get("edges", [])
         except Exception:
             return [], [], ""
-
-        nodes = []
-        edges = []
-
-        # Enhanced layer colors with more types
-        layer_colors = {
-            # Layered architecture
-            "frontend": "#f59e0b",      # Orange
-            "backend": "#22c55e",       # Green
-            "middleware": "#6366f1",    # Indigo
-            "data": "#a855f7",          # Purple
-            "infrastructure": "#0ea5e9", # Sky blue
-            "observability": "#14b8a6", # Teal
-            # Business architecture
-            "capability": "#f59e0b",    # Orange
-            "service": "#22c55e",       # Green
-            "process": "#6366f1",       # Indigo
-            "organization": "#a855f7",  # Purple
-            # Technical architecture
-            "presentation": "#f59e0b",  # Orange
-            "application": "#22c55e",   # Green
-            "integration": "#6366f1",   # Indigo
-            # Deployment architecture
-            "dmz": "#ef4444",           # Red
-            "app-tier": "#22c55e",      # Green
-            "data-tier": "#a855f7",     # Purple
-            "monitoring": "#14b8a6",    # Teal
-            # Domain architecture
-            "domain-services": "#22c55e",     # Green
-            "shared-kernel": "#6366f1",       # Indigo
-            "anti-corruption": "#f59e0b",     # Orange
-        }
-
-        # Get template configuration
-        template = ARCHITECTURE_TEMPLATES.get(architecture_type, ARCHITECTURE_TEMPLATES["layered"])
-        default_columns = template.get("default_columns", 4)
-
-        # Configuration for layout
-        frame_padding_x = 60
-        frame_padding_y = 100
-        layer_spacing_y = 200
-        item_width = 240
-        item_height = 100
-        padding = 60
-        gap = 20
-        header_height = 40
 
         if isinstance(layers, dict):
             layers = [{"name": k, "items": v} for k, v in layers.items()]
         elif not isinstance(layers, list):
             return [], [], ""
 
-        # Track cumulative Y position
-        current_y = frame_padding_y
+        template = ARCHITECTURE_TEMPLATES.get(architecture_type, ARCHITECTURE_TEMPLATES["layered"])
+        default_columns = int(template.get("default_columns", 4))
 
-        # Generate nodes with LayerFrame backgrounds
+        layer_colors = {
+            "frontend": "#f59e0b",
+            "backend": "#22c55e",
+            "middleware": "#6366f1",
+            "data": "#a855f7",
+            "infrastructure": "#0ea5e9",
+            "observability": "#14b8a6",
+            "capability": "#f59e0b",
+            "service": "#22c55e",
+            "process": "#6366f1",
+            "organization": "#a855f7",
+            "presentation": "#f59e0b",
+            "application": "#22c55e",
+            "integration": "#6366f1",
+            "dmz": "#ef4444",
+            "app-tier": "#22c55e",
+            "data-tier": "#a855f7",
+            "monitoring": "#14b8a6",
+            "domain-services": "#22c55e",
+            "shared-kernel": "#6366f1",
+            "anti-corruption": "#f59e0b",
+        }
+
+        nodes: List[dict] = []
+        edges: List[dict] = []
+        alias_to_node_id: Dict[str, str] = {}
+        existing_node_ids = set()
+        layer_node_ids: List[List[str]] = []
+        mermaid_lines = [f"# {template['name']} ({template['name_en']})"]
+
+        frame_origin_x = 80
+        frame_origin_y = 100
+        layer_spacing_y = 92 if len(layers) >= 4 else 120
+        current_y = frame_origin_y
+
+        def register_alias(alias: Any, node_id: str) -> None:
+            token = self._normalize_alias_token(alias)
+            if token and token not in alias_to_node_id:
+                alias_to_node_id[token] = node_id
+
         for layer_idx, layer in enumerate(layers):
-            layer_name = layer.get("name") if isinstance(layer, dict) else f"layer-{layer_idx}"
-            items = layer.get("items", []) if isinstance(layer, dict) else []
-            color = layer_colors.get(layer_name.lower(), "#64748b")
+            if isinstance(layer, dict):
+                layer_name = str(layer.get("name") or f"layer-{layer_idx + 1}")
+                layer_layout = layer.get("layout", {}) if isinstance(layer.get("layout"), dict) else {}
+                items = layer.get("items", [])
+                groups = layer.get("groups", [])
+            else:
+                layer_name = str(layer or f"layer-{layer_idx + 1}")
+                layer_layout = {}
+                items = []
+                groups = []
 
-            # Get layout configuration for this layer
-            layer_layout = layer.get("layout", {}) if isinstance(layer, dict) else {}
-            columns = layer_layout.get("columns", default_columns)
+            normalized_items: List[Tuple[Any, Optional[str]]] = []
+            if isinstance(items, list):
+                normalized_items.extend((item, None) for item in items)
 
-            # Calculate dynamic frame size based on items count
-            frame_size = self._calculate_frame_size(len(items), columns)
+            if isinstance(groups, list):
+                for group_idx, group in enumerate(groups):
+                    if not isinstance(group, dict):
+                        continue
+                    group_name = str(group.get("name") or f"group-{group_idx + 1}")
+                    group_items = group.get("items", [])
+                    if not isinstance(group_items, list):
+                        continue
+                    for group_item in group_items:
+                        normalized_items.append((group_item, group_name))
 
-            # Add LayerFrame background node with dynamic sizing
-            layer_frame_id = f"{layer_name}-frame"
-            nodes.append({
-                "id": layer_frame_id,
-                "type": "layerFrame",
-                "position": {"x": frame_padding_x, "y": current_y},
-                "data": {
-                    "label": layer_name.capitalize(),
-                    "color": color,
-                    "width": frame_size["width"],
-                    "height": frame_size["height"],
-                    "layout": "grid",  # NEW: Indicate grid layout mode
-                    "columns": columns,  # NEW: Number of columns for grid
-                    "itemsCount": len(items),  # NEW: Track item count
-                },
-                "draggable": False,
-                # CRITICAL: Set style to define the draggable area for child nodes
-                "style": {
-                    "width": frame_size["width"],
-                    "height": frame_size["height"],
-                },
-            })
+            layer_key = self._slug_identifier(layer_name, f"layer-{layer_idx + 1}")
+            layer_color = layer_colors.get(layer_key, "#64748b")
+            columns = self._resolve_layer_columns(
+                item_count=len(normalized_items),
+                requested_columns=layer_layout.get("columns"),
+                default_columns=default_columns,
+            )
+            frame_size = self._calculate_frame_size(len(normalized_items), columns)
 
-            # Position component nodes in grid layout RELATIVE to parent
-            for item_idx, item in enumerate(items):
-                if isinstance(item, dict):
-                    label = item.get("label") or item.get("name") or f"{layer_name}-{item_idx}"
-                    tech_stack = item.get("tech_stack", []) or []
-                    note = item.get("note") or (", ".join(tech_stack) if tech_stack else "")
-                    category = item.get("category", "service")  # NEW: Category for icons
+            layer_frame_id = f"{layer_key}-frame"
+            frame_suffix = 1
+            while layer_frame_id in existing_node_ids:
+                frame_suffix += 1
+                layer_frame_id = f"{layer_key}-frame-{frame_suffix}"
+            existing_node_ids.add(layer_frame_id)
+
+            nodes.append(
+                {
+                    "id": layer_frame_id,
+                    "type": "layerFrame",
+                    "position": {"x": frame_origin_x, "y": current_y},
+                    "data": {
+                        "label": layer_name.capitalize(),
+                        "color": layer_color,
+                        "width": frame_size["width"],
+                        "height": frame_size["height"],
+                        "layout": "grid",
+                        "columns": columns,
+                        "itemsCount": len(normalized_items),
+                        "groupCount": len(groups) if isinstance(groups, list) else 0,
+                    },
+                    "draggable": False,
+                    "style": {"width": frame_size["width"], "height": frame_size["height"]},
+                }
+            )
+
+            mermaid_lines.append(f"## {layer_name.capitalize()}")
+            current_layer_node_ids: List[str] = []
+
+            for item_idx, (raw_item, group_name) in enumerate(normalized_items):
+                if isinstance(raw_item, dict):
+                    explicit_item_id = raw_item.get("id")
+                    label = str(raw_item.get("label") or raw_item.get("name") or f"{layer_key}-{item_idx + 1}")
+                    category = self._normalize_architecture_category(raw_item.get("category"), layer_name)
+                    note = str(raw_item.get("note") or "").strip()
+                    tech_stack_value = raw_item.get("tech_stack", [])
+                    group_value = str(raw_item.get("group") or group_name or "").strip() or None
+                    size_value = str(raw_item.get("size") or "").strip().lower()
                 else:
-                    label = str(item)
+                    explicit_item_id = None
+                    label = str(raw_item)
+                    category = self._normalize_architecture_category(None, layer_name)
                     note = ""
-                    tech_stack = []
-                    category = "service"
+                    tech_stack_value = []
+                    group_value = group_name
+                    size_value = ""
 
-                # Calculate grid position
+                if isinstance(tech_stack_value, list):
+                    tech_stack = [str(item).strip() for item in tech_stack_value if str(item).strip()]
+                elif isinstance(tech_stack_value, str) and tech_stack_value.strip():
+                    tech_stack = [part.strip() for part in tech_stack_value.split(",") if part.strip()]
+                else:
+                    tech_stack = []
+
+                if not note and tech_stack:
+                    note = " / ".join(tech_stack[:4])
+
+                size = size_value if size_value in {"small", "medium", "large"} else ("large" if len(tech_stack) >= 4 else "medium")
+
+                node_id_seed = explicit_item_id or f"{layer_key}-{item_idx + 1}"
+                node_id = self._slug_identifier(node_id_seed, f"{layer_key}-{item_idx + 1}")
+                suffix = 1
+                while node_id in existing_node_ids:
+                    suffix += 1
+                    node_id = f"{self._slug_identifier(node_id_seed, f'{layer_key}-{item_idx + 1}')}-{suffix}"
+                existing_node_ids.add(node_id)
+
                 row = item_idx // columns
                 col = item_idx % columns
+                item_x = frame_size["padding_x"] + col * (frame_size["card_width"] + frame_size["gap_x"])
+                item_y = frame_size["header_height"] + frame_size["padding_y"] + row * (frame_size["card_height"] + frame_size["gap_y"])
 
-                # Calculate RELATIVE position (relative to parent LayerFrame)
-                # Start from padding, not absolute coordinates
-                item_x_relative = padding + col * (item_width + gap)
-                item_y_relative = header_height + padding + row * (item_height + gap)
-
-                nodes.append({
-                    "id": f"{layer_name}-{item_idx}",
-                    "type": "frame",
-                    "position": {"x": item_x_relative, "y": item_y_relative},  # RELATIVE position
-                    "parentNode": layer_frame_id,  # CRITICAL: Set parent relationship
-                    "extent": "parent",  # CRITICAL: Constrain dragging within parent
+                node_type = self._select_architecture_node_type(category, architecture_type)
+                node_payload = {
+                    "id": node_id,
+                    "type": node_type,
+                    "position": {"x": item_x, "y": item_y},
+                    "parentNode": layer_frame_id,
+                    "extent": "parent",
                     "data": {
                         "label": label,
                         "shape": "task",
-                        "color": color,
+                        "color": layer_color,
                         "layer": layer_name,
                         "note": note,
-                        "layerColor": color,
-                        "tech_stack": tech_stack if isinstance(tech_stack, list) else [],
-                        "category": category,  # NEW: For visual enhancements
+                        "layerColor": layer_color,
+                        "tech_stack": tech_stack,
+                        "category": category,
+                        "group": group_value,
+                        "size": size,
                     },
-                })
+                }
+                nodes.append(node_payload)
+                current_layer_node_ids.append(node_id)
 
-            # Update current_y for next layer (with spacing)
-            current_y += frame_size["height"] + layer_spacing_y
+                register_alias(node_id, node_id)
+                register_alias(explicit_item_id, node_id)
+                register_alias(label, node_id)
+                register_alias(f"{layer_key}-{item_idx}", node_id)
+                register_alias(f"{layer_key}-{item_idx + 1}", node_id)
 
-        # Process edges if provided (for technical/deployment architectures)
-        for edge_idx, edge_data in enumerate(ai_edges):
-            if isinstance(edge_data, dict):
-                source = edge_data.get("source")
-                target = edge_data.get("target")
-                if source and target:
-                    edges.append({
-                        "id": edge_data.get("id") or f"e-{edge_idx}",
-                        "source": source,
-                        "target": target,
-                        "label": edge_data.get("label", ""),
-                        "type": edge_data.get("type", "dependency"),
-                    })
-
-        # Generate mermaid code
-        mermaid_lines = [f"# {template['name']} ({template['name_en']})"]
-        for layer in layers:
-            lname = layer.get("name") if isinstance(layer, dict) else str(layer)
-            mermaid_lines.append(f"## {lname.capitalize()}")
-            items = layer.get("items", []) if isinstance(layer, dict) else []
-            for item in items:
-                if isinstance(item, dict):
-                    label = item.get("label") or item.get("name") or "component"
-                    tech_stack = item.get("tech_stack", []) or []
-                    note = item.get("note") or ", ".join(tech_stack)
+                if note:
                     mermaid_lines.append(f"- **{label}**: {note}")
                 else:
-                    mermaid_lines.append(f"- {item}")
-        mermaid_code = "\n".join(mermaid_lines)
+                    mermaid_lines.append(f"- **{label}**")
 
+            layer_node_ids.append(current_layer_node_ids)
+            current_y += frame_size["height"] + layer_spacing_y
+
+        def resolve_edge_endpoint(raw_value: Any) -> Optional[str]:
+            if not raw_value:
+                return None
+            raw_text = str(raw_value).strip()
+            if raw_text in existing_node_ids:
+                return raw_text
+            token = self._normalize_alias_token(raw_text)
+            if token in alias_to_node_id:
+                return alias_to_node_id[token]
+            return None
+
+        seen_edge_keys = set()
+        if isinstance(ai_edges, list):
+            for edge_idx, edge_data in enumerate(ai_edges, start=1):
+                if not isinstance(edge_data, dict):
+                    continue
+                source = resolve_edge_endpoint(edge_data.get("source"))
+                target = resolve_edge_endpoint(edge_data.get("target"))
+                if not source or not target or source == target:
+                    continue
+
+                label = str(edge_data.get("label") or "").strip()
+                edge_key = (source, target, label)
+                if edge_key in seen_edge_keys:
+                    continue
+                seen_edge_keys.add(edge_key)
+
+                edge_id = self._slug_identifier(edge_data.get("id"), f"e-{edge_idx}")
+                edges.append(
+                    {
+                        "id": edge_id,
+                        "source": source,
+                        "target": target,
+                        "label": label,
+                    }
+                )
+
+        if template.get("show_edges", False) and not edges:
+            edges.extend(self._infer_architecture_edges(layer_node_ids, architecture_type, seen_edge_keys))
+
+        mermaid_code = "\n".join(mermaid_lines)
         return nodes, edges, mermaid_code
 
     def _ensure_positions(self, nodes: List[dict]) -> List[dict]:

@@ -309,6 +309,99 @@ function mermaidToCanvas(code: string): { nodes: Node[]; edges: Edge[] } {
   return { nodes, edges };
 }
 
+function isConnectableEdgeNode(node?: Node): boolean {
+  if (!node) return false;
+  const rawType = String(node.type || "default").toLowerCase();
+  return rawType !== "frame" && rawType !== "layerframe";
+}
+
+function supportsCardinalHandles(node?: Node): boolean {
+  if (!node) return false;
+  const rawType = String(node.type || "default").toLowerCase();
+  return ["default", "api", "service", "database", "cache"].includes(rawType);
+}
+
+function toFiniteNumber(value: unknown, fallback = 0): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function resolveAbsoluteNodePosition(
+  nodeId: string,
+  nodeMap: Map<string, Node>,
+  memo: Map<string, { x: number; y: number }>
+): { x: number; y: number } | null {
+  if (memo.has(nodeId)) {
+    return memo.get(nodeId)!;
+  }
+
+  const node = nodeMap.get(nodeId);
+  if (!node) return null;
+
+  const base = {
+    x: toFiniteNumber((node as any)?.position?.x, 0),
+    y: toFiniteNumber((node as any)?.position?.y, 0),
+  };
+
+  const parentId = (node as any)?.parentNode;
+  if (typeof parentId === "string" && parentId.trim()) {
+    const parentPos = resolveAbsoluteNodePosition(parentId.trim(), nodeMap, memo);
+    if (parentPos) {
+      base.x += parentPos.x;
+      base.y += parentPos.y;
+    }
+  }
+
+  memo.set(nodeId, base);
+  return base;
+}
+
+function withInferredEdgeHandles(edges: Edge[], nodes: Node[]): Edge[] {
+  if (!edges.length || !nodes.length) return edges;
+
+  const nodeMap = new Map<string, Node>(nodes.map((node) => [node.id, node]));
+  const positionMemo = new Map<string, { x: number; y: number }>();
+
+  return edges.map((edge) => {
+    if ((edge as any)?.sourceHandle && (edge as any)?.targetHandle) {
+      return edge;
+    }
+
+    const sourceNode = nodeMap.get(edge.source);
+    const targetNode = nodeMap.get(edge.target);
+    if (!isConnectableEdgeNode(sourceNode) || !isConnectableEdgeNode(targetNode)) {
+      return edge;
+    }
+    if (!supportsCardinalHandles(sourceNode) || !supportsCardinalHandles(targetNode)) {
+      return edge;
+    }
+
+    const sourcePos = resolveAbsoluteNodePosition(edge.source, nodeMap, positionMemo);
+    const targetPos = resolveAbsoluteNodePosition(edge.target, nodeMap, positionMemo);
+
+    let sourceHandle = "right-source";
+    let targetHandle = "left-target";
+
+    if (sourcePos && targetPos) {
+      const dx = targetPos.x - sourcePos.x;
+      const dy = targetPos.y - sourcePos.y;
+      if (Math.abs(dx) >= Math.abs(dy)) {
+        sourceHandle = dx >= 0 ? "right-source" : "left-source";
+        targetHandle = dx >= 0 ? "left-target" : "right-target";
+      } else {
+        sourceHandle = dy >= 0 ? "bottom-source" : "top-source";
+        targetHandle = dy >= 0 ? "top-target" : "bottom-target";
+      }
+    }
+
+    return {
+      ...edge,
+      sourceHandle: (edge as any)?.sourceHandle || sourceHandle,
+      targetHandle: (edge as any)?.targetHandle || targetHandle,
+    } as Edge;
+  });
+}
+
 // 缂佹瑨绔熸惔鏃傛暏瑜版挸澧犻惃鍕壉瀵繘鍘ょ純?
 function applyEdgeStyles(edges: Edge[]): Edge[] {
   const { currentPresentationStyle, edgeType } = useFlowchartStyleStore.getState();
@@ -338,7 +431,7 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
   nodes: [],
   edges: [],
   diagramType: "flow",
-  architectureType: "layered",
+  architectureType: "technical",
   mermaidCode: "",
   uploadedImage: null,
   imagePreviewUrl: null,
@@ -697,11 +790,22 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
 
         const flush = () => {
           partialFlushScheduled = false;
-          const visibleNodes = Array.from(partialNodeMap.values());
+          const visibleNodes = Array.from(partialNodeMap.values()).sort((a: any, b: any) => {
+            const aHasParent = a?.parentNode ? 1 : 0;
+            const bHasParent = b?.parentNode ? 1 : 0;
+            if (aHasParent !== bHasParent) return aHasParent - bHasParent;
+
+            const aLayerFrame = a?.type === "layerFrame" ? 0 : 1;
+            const bLayerFrame = b?.type === "layerFrame" ? 0 : 1;
+            if (aLayerFrame !== bLayerFrame) return aLayerFrame - bLayerFrame;
+
+            return String(a?.id || "").localeCompare(String(b?.id || ""));
+          });
           const visibleNodeIds = new Set(visibleNodes.map((n) => n.id));
-          const visibleEdges = Array.from(partialEdgeMap.values()).filter(
+          const rawVisibleEdges = Array.from(partialEdgeMap.values()).filter(
             (edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target)
           );
+          const visibleEdges = applyEdgeStyles(withInferredEdgeHandles(rawVisibleEdges, visibleNodes));
           set({ nodes: visibleNodes, edges: visibleEdges });
         };
 
@@ -720,9 +824,24 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
           ? payload.id.trim()
           : `partial-node-${fallbackIndex + 1}`;
 
-        const nodeType = (typeof payload.type === "string" && payload.type.trim())
-          ? payload.type.trim()
+        const rawType = (typeof payload.type === "string" && payload.type.trim())
+          ? payload.type.trim().toLowerCase()
           : "default";
+        const supportedTypeMap: Record<string, string> = {
+          default: "default",
+          database: "database",
+          api: "api",
+          service: "service",
+          gateway: "gateway",
+          cache: "cache",
+          queue: "queue",
+          storage: "storage",
+          client: "client",
+          frame: "frame",
+          layerframe: "layerFrame",
+          layerFrame: "layerFrame",
+        };
+        const nodeType = supportedTypeMap[rawType] || (rawType === "decision" ? "gateway" : "default");
 
         const rawPosition = payload.position && typeof payload.position === "object" ? payload.position : {};
         const x = Number.isFinite(rawPosition.x)
@@ -737,12 +856,25 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
           ? rawData.label.trim()
           : id;
 
-        return {
+        const partialNode: any = {
           id,
           type: nodeType,
           position: { x, y },
           data: { ...rawData, label },
         };
+        if (typeof payload.parentNode === "string" && payload.parentNode.trim()) {
+          partialNode.parentNode = payload.parentNode.trim();
+        }
+        if (typeof payload.extent === "string" && payload.extent.trim()) {
+          partialNode.extent = payload.extent.trim();
+        }
+        if (payload.style && typeof payload.style === "object") {
+          partialNode.style = { ...payload.style };
+        }
+        if (typeof payload.draggable === "boolean") {
+          partialNode.draggable = payload.draggable;
+        }
+        return partialNode as Node;
       };
 
       const normalizePartialEdge = (payload: any): Edge | null => {
@@ -762,9 +894,15 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
           source,
           target,
           ...(typeof payload.label === "string" && payload.label.trim() ? { label: payload.label.trim() } : {}),
+          ...(typeof payload.sourceHandle === "string" && payload.sourceHandle.trim()
+            ? { sourceHandle: payload.sourceHandle.trim() }
+            : {}),
+          ...(typeof payload.targetHandle === "string" && payload.targetHandle.trim()
+            ? { targetHandle: payload.targetHandle.trim() }
+            : {}),
         };
 
-        return applyEdgeStyles([edgePayload])[0];
+        return edgePayload;
       };
 
       updateChatStatus(statusMessage);
@@ -849,6 +987,11 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
             continue;
           }
 
+          if (content.startsWith("[PARTIAL_LAYER]")) {
+            pushLog(content);
+            continue;
+          }
+
           if (content.startsWith("[PARTIAL_NODE]")) {
             try {
               const payload = JSON.parse(content.replace("[PARTIAL_NODE]", "").trim());
@@ -888,7 +1031,7 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
               const finalDiagramType = layoutData.diagram_type;
               const mermaidCode = layoutData.mermaid_code;
 
-              const edges = applyEdgeStyles(rawEdges);
+              const edges = applyEdgeStyles(withInferredEdgeHandles(rawEdges, rawNodes));
               let preparedNodes: Node[];
 
               if (finalDiagramType === "flow") {
@@ -956,7 +1099,7 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
                 hasLayoutData = true;
                 const rawNodes = data.nodes as Node[];
                 const rawEdges = data.edges as Edge[];
-                const edges = applyEdgeStyles(rawEdges);
+                const edges = applyEdgeStyles(withInferredEdgeHandles(rawEdges, rawNodes));
 
                 let finalNodes: Node[];
                 if (get().diagramType === "flow") {
@@ -997,7 +1140,7 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
         if (data?.nodes && data?.edges) {
           const rawNodes = data.nodes as Node[];
           const rawEdges = data.edges as Edge[];
-          const edges = applyEdgeStyles(rawEdges);
+          const edges = applyEdgeStyles(withInferredEdgeHandles(rawEdges, rawNodes));
 
           let finalNodes: Node[];
           if (get().diagramType === "flow") {
@@ -1375,7 +1518,7 @@ export const useArchitectStore = create<ArchitectState>((set, get) => ({
       const rawEdges = data.edges as Edge[];
 
       // 鎼存梻鏁よぐ鎾冲閺嶅嘲绱￠崚鎷岀珶
-      const updatedEdges = applyEdgeStyles(rawEdges);
+      const updatedEdges = applyEdgeStyles(withInferredEdgeHandles(rawEdges, updatedNodes));
 
       const updatedMermaid = data.mermaid_code || get().mermaidCode;
 
